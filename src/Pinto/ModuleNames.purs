@@ -1,11 +1,6 @@
-module ModuleNames where
+module Pinto.ModuleNames where
 
-import Erl.Atom (atom)
 import Erl.ModuleName (ModuleName(..))
-
-
-pinto :: ModuleName
-pinto = ModuleName "Pinto"
 
 pintoApp :: ModuleName
 pintoApp = ModuleName "Pinto.App"
@@ -21,6 +16,3 @@ pintoTimer = ModuleName "Pinto.Timer"
 
 pintoTypes :: ModuleName
 pintoTypes = ModuleName "Pinto.Types"
-
-moduleNames :: ModuleName
-moduleNames = ModuleName "ModuleNames"

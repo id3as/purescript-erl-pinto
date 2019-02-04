@@ -6,7 +6,7 @@ OUTPUT = output
 all: output
 
 output: $(PS_SRC)/**/*.purs $(PS_SRC)/**/*.erl $(PS_SRC)/*.purs .psc-package
-	.psc-package/erl-0.12.1-20181214/erl-modules/v0.1.1/scripts/gen_module_names.sh src/
+	.psc-package/erl-0.12.1-20181214/erl-modules/v0.1.1/scripts/gen_module_names.sh src/Pinto Pinto.ModuleNames
 	psc-package sources | xargs purs compile '$(PS_SRC)/**/*.purs'
 	@touch output
 
