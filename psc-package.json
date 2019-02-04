@@ -1,0 +1,9 @@
+{
+  "name": "hlsodcontrol",
+  "set": "erl-0.12.1-20181214",
+  "source": "https://github.com/purerl/package-sets.git",
+  "depends": [
+    "erl-cowboy",
+    "erl-process"
+  ]
+}
