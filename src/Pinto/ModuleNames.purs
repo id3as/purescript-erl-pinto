@@ -16,3 +16,6 @@ pintoTimer = ModuleName "Pinto.Timer"
 
 pintoTypes :: ModuleName
 pintoTypes = ModuleName "Pinto.Types"
+
+pintoModuleNames :: ModuleName
+pintoModuleNames = ModuleName "Pinto.ModuleNames"
