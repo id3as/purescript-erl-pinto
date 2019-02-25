@@ -25,5 +25,5 @@ startChildImpl(AlreadyStarted, Started, Name, Args) ->
 
 init([Effect]) ->
   Spec = Effect(),
-  { ok, frameworkSup@ps:reify(Spec) }.
+  { ok, pinto_sup@ps:reify(Spec) }.
 

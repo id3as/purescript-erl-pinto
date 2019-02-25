@@ -136,8 +136,8 @@ reifySupervisorChild spec =
   {
     id : (atom spec.id)
   , start : (case spec.type_ of
-                 GenSupervisor -> tuple3 (atom "frameworkSup@foreign") (atom "start_from_spec") (spec : nil)
-                 GenServer -> tuple3 (atom "frameworkGen@foreign") (atom "start_from_spec") (spec : nil)
+                 GenSupervisor -> tuple3 (atom "pinto_sup@foreign") (atom "start_from_spec") (spec : nil)
+                 GenServer -> tuple3 (atom "pinto_gen@foreign") (atom "start_from_spec") (spec : nil)
             )
   , restart : (case spec.restart of
                         Transient -> (atom "transient")
