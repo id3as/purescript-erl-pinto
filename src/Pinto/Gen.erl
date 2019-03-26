@@ -46,13 +46,18 @@ start_from_spec(_Spec = #{ startFn := Fn }, Args) ->
 init([Effect]) ->
   {ok, Effect()}.
 
+
 handle_call({wrapped_effectful_call, Fn}, _From, State) ->
-  { Result, NewState } = (Fn(State))(),
-  {reply, Result, NewState};
+  case (Fn(State))() of
+    { reply, Result, NewState } -> {reply, Result, NewState};
+    { stop, Result, NewState } -> {stop, normal, Result, NewState}
+  end;
 
 handle_call({wrapped_pure_call, Fn}, _From, State) ->
-  { Result, NewState } = Fn(State),
-  {reply, Result, NewState}.
+  case Fn(State) of
+    { reply, Result, NewState } -> {reply, Result, NewState};
+    { stop, Result, NewState } -> {stop, normal, Result, NewState}
+  end.
 
 handle_cast(_Msg, State) ->
   {noreply, State}.
