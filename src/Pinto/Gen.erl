@@ -6,7 +6,9 @@
 -export([
          startLinkImpl/2,
          callImpl/2,
-         doCallImpl/2
+         doCallImpl/2,
+         castImpl/2,
+         doCastImpl/2
         ]).
 
 % Pinto supervision entry point
@@ -31,6 +33,14 @@ callImpl(Name, Fn) -> fun() ->
                             gen_server:call(Name, { wrapped_pure_call, Fn })
                         end.
 
+doCastImpl(Name, Fn) -> fun() ->
+                            gen_server:cast(Name, { wrapped_effectful_cast, Fn })
+                        end.
+
+castImpl(Name, Fn) -> fun() ->
+                            gen_server:cast(Name, { wrapped_pure_cast, Fn })
+                        end.
+
 startLinkImpl(Name, Effect) ->
   fun() ->
       gen_server:start_link({local, Name}, ?MODULE, [Effect], [])
@@ -46,21 +56,29 @@ start_from_spec(_Spec = #{ startFn := Fn }, Args) ->
 init([Effect]) ->
   {ok, Effect()}.
 
-
 handle_call({wrapped_effectful_call, Fn}, _From, State) ->
   case (Fn(State))() of
-    { reply, Result, NewState } -> {reply, Result, NewState};
-    { stop, Result, NewState } -> {stop, normal, Result, NewState}
+    { callReply, Result, NewState } -> {reply, Result, NewState};
+    { callStop, Result, NewState } -> {stop, normal, Result, NewState}
   end;
 
 handle_call({wrapped_pure_call, Fn}, _From, State) ->
   case Fn(State) of
-    { reply, Result, NewState } -> {reply, Result, NewState};
-    { stop, Result, NewState } -> {stop, normal, Result, NewState}
+    { callReply, Result, NewState } -> {reply, Result, NewState};
+    { callStop, Result, NewState } -> {stop, normal, Result, NewState}
   end.
 
-handle_cast(_Msg, State) ->
-  {noreply, State}.
+handle_cast({wrapped_effectful_cast, Fn}, State) ->
+  case (Fn(State))() of
+    { castNoReply, NewState } -> {noreply, NewState};
+    { castStop, NewState } -> {stop, normal, NewState}
+  end;
+
+handle_cast({wrapped_pure_cast, Fn}, State) ->
+  case Fn(State) of
+    { castNoReply, NewState } -> {noreply, NewState};
+    { castStop, NewState } -> {stop, normal, NewState}
+  end.
 
 handle_info({routed_message, Fn}, State) ->
   NewState = (Fn(State))(),
