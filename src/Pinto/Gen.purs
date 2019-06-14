@@ -15,8 +15,8 @@ startLink :: forall state. ServerName state -> Effect state -> Effect StartLinkR
 startLink (ServerName name) eff =
   startLinkImpl (atom name) eff
 
-data CallResult response state = CallReply response state | CallStop response state
-data CastResult state = CastNoReply state | CastStop state
+data CallResult response state = CallReply response state | CallReplyHibernate response state | CallStop response state
+data CastResult state = CastNoReply state | CastNoReplyHibernate state | CastStop state
 
 -- Pure
 call :: forall response state. ServerName state -> (state -> (CallResult response state)) -> Effect response

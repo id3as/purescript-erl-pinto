@@ -59,24 +59,28 @@ init([Effect]) ->
 handle_call({wrapped_effectful_call, Fn}, _From, State) ->
   case (Fn(State))() of
     { callReply, Result, NewState } -> {reply, Result, NewState};
+    { callReplyHibernate, Result, NewState } -> {reply, Result, NewState, hibernate};
     { callStop, Result, NewState } -> {stop, normal, Result, NewState}
   end;
 
 handle_call({wrapped_pure_call, Fn}, _From, State) ->
   case Fn(State) of
     { callReply, Result, NewState } -> {reply, Result, NewState};
+    { callReplyHibernate, Result, NewState } -> {reply, Result, NewState, hibernate};
     { callStop, Result, NewState } -> {stop, normal, Result, NewState}
   end.
 
 handle_cast({wrapped_effectful_cast, Fn}, State) ->
   case (Fn(State))() of
     { castNoReply, NewState } -> {noreply, NewState};
+    { castNoReplyHibernate, NewState } -> {noreply, NewState, hibernate};
     { castStop, NewState } -> {stop, normal, NewState}
   end;
 
 handle_cast({wrapped_pure_cast, Fn}, State) ->
   case Fn(State) of
     { castNoReply, NewState } -> {noreply, NewState};
+    { castNoReplyHibernate, NewState } -> {noreply, NewState, hibernate};
     { castStop, NewState } -> {stop, normal, NewState}
   end.
 
