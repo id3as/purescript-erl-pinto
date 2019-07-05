@@ -1,0 +1,84 @@
+# purescript-erl-pinto
+
+Opinionated Bindings to OTP
+
+## Type-safe bindings
+
+Low level bindings to OTP aren't directly user friendly, so this library goes a step up and while a lot of the functionality is recognisable intuitively from the original OTP documentation, the usage is more function-centric so it reads more like an actual Purescript application.
+
+## Define a gen server
+```purescript
+
+module MyGenServer where
+
+import Pinto (ServerName(..), StartLinkResult)
+import Pinto.Gen as Gen
+
+type State = { }
+
+serverName :: ServerName State
+serverName = ServerName "some_uuid"
+
+doSomething :: Unit -> Effect Unit
+doSomething input = 
+  Gen.doCall serverName \state -> do
+    pure $ CallReply unit state
+
+startLink :: Unit -> Effect StartLinkResult
+startLink args =
+  Gen.startLink serverName $ init args
+
+init :: Unit -> Effect State
+init args = do
+  pure $ {}
+```
+
+## Define a gen supervisor that uses that gen server
+
+```purescript
+
+module MyGenSup where
+
+import Pinto as Pinto
+import Pinto.Sup 
+
+startLink :: Effect Pinto.StartLinkResult
+startLink = Sup.startLink "my_cool_sup" init
+
+init :: Effect SupervisorSpec
+init = do
+  pure $ buildSupervisor
+                # supervisorStrategy OneForOne
+                # supervisorChildren ( ( buildChild
+                                       # childType GenServer
+                                       # childId "some_child"
+                                       # childStart MyGenServer.startLink unit)
+                                        : nil)
+
+```
+
+## Define an application that uses this supervisor
+
+```purescript
+import Pinto.App as App
+
+start = App.simpleStart MyGenSup.startLink
+```
+
+## Link to it in an ordinary erlang app.src
+
+```erlang
+{application, my_amazing_app,
+ [{description, "An OTP application"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {mod, { bookApp@ps, []}},
+  {applications,
+   [kernel,
+    stdlib
+   ]}
+ ]}.
+```
+
+An end-to-end example can be found in the [demo project](https://github.com/id3as/demo-ps)
+
