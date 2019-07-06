@@ -8,6 +8,9 @@ pintoApp = ModuleName "Pinto.App"
 pintoGen :: ModuleName
 pintoGen = ModuleName "Pinto.Gen"
 
+pintoModuleNames :: ModuleName
+pintoModuleNames = ModuleName "Pinto.ModuleNames"
+
 pintoSup :: ModuleName
 pintoSup = ModuleName "Pinto.Sup"
 
@@ -16,6 +19,3 @@ pintoTimer = ModuleName "Pinto.Timer"
 
 pintoTypes :: ModuleName
 pintoTypes = ModuleName "Pinto.Types"
-
-pintoModuleNames :: ModuleName
-pintoModuleNames = ModuleName "Pinto.ModuleNames"

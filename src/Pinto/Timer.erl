@@ -1,8 +1,8 @@
 -module(pinto_timer@foreign).
 
 -export([ cancel_/1,
-          sendEvery_/4,
-          sendAfter_/4 ]).
+          sendEvery_/3,
+          sendAfter_/3 ]).
 
 cancel_(Pid) ->
   fun() ->
@@ -10,26 +10,44 @@ cancel_(Pid) ->
       ok
   end.
 
-sendEvery_(Wrapper, _, Milliseconds, Fn) ->
+sendEvery_(Wrapper, Milliseconds, Effect) ->
   Parent = self(),
-  Fun = fun Fun() ->
+  Fun = fun Fun(MaybeMonitorRef) ->
+            MonitorRef = case MaybeMonitorRef of
+                           undefined ->
+                             monitor(process, Parent);
+                           _ -> MaybeMonitorRef
+                         end,
             { ok, Ref } = timer:send_interval(Milliseconds, tick),
             receive
-              stop -> timer:cancel(Ref);
+              stop ->
+                demonitor(MonitorRef),
+                timer:cancel(Ref);
+              {'DOWN', _, _, _, _} ->
+                timer:cancel(Ref),
+                ok;
               tick ->
-                Parent ! { routed_message, Fn },
-                Fun()
+                Effect(),
+                Fun(MonitorRef)
             end
         end,
-  fun() -> Pid = spawn_link(Fun), Wrapper(Pid) end.
+  fun() -> Pid = spawn_link(fun() -> Fun(undefined) end), Wrapper(Pid) end.
 
-sendAfter_(Wrapper, _, Milliseconds, Fn) ->
+sendAfter_(Wrapper, Milliseconds, Fn) ->
   Parent = self(),
-  Fun = fun _Fun() ->
+  Fun = fun Fun(MaybeMonitorRef) ->
+            MonitorRef = monitor(process, Parent),
             { ok, Ref } = timer:send_after(Milliseconds, tick),
             receive
-              stop -> timer:cancel(Ref);
-              tick ->  Parent ! { routed_message, Fn }
+              stop ->
+                demonitor(MonitorRef),
+                timer:cancel(Ref);
+              {'DOWN', _, _, _, _} ->
+                timer:cancel(Ref),
+                ok;
+              tick ->
+                demonitor(MonitorRef),
+                Effect(),
             end
         end,
-  fun() -> Pid = spawn_link(Fun), Wrapper(Pid) end.
+  fun() -> Pid = spawn_link(fun() -> Fun(undefined) end), Wrapper(Pid) end.
