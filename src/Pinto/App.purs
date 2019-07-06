@@ -1,3 +1,5 @@
+-- | Module roughly representing interactions with the 'application' 
+-- | See also 'application' in the OTP docs
 module Pinto.App where
 
 import Effect (Effect)

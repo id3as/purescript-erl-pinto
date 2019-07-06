@@ -1,3 +1,5 @@
+-- | Module roughly representing interactions with the 'gen_server' 
+-- | See also 'gen_server' in the OTP docs
 module Pinto.Gen ( startLink
                  , CallResult(..)
                  , CastResult(..)

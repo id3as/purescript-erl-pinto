@@ -1,5 +1,8 @@
 ## Module Pinto.App
 
+Module roughly representing interactions with the 'application' 
+See also 'application' in the OTP docs
+
 #### `simpleStart`
 
 ``` purescript
