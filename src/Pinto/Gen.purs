@@ -10,16 +10,26 @@ module Pinto.Gen ( startLink
                  ) 
   where
 
+import Prelude
+
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Pinto (ServerName(..), StartLinkResult)
-import Prelude (Unit)
 
 foreign import callImpl :: forall response state. Atom -> (state -> (CallResult response state)) -> Effect response
 foreign import doCallImpl :: forall response state. Atom -> (state -> Effect (CallResult response state)) -> Effect response
 foreign import castImpl :: forall state. Atom -> (state -> (CastResult state)) -> Effect Unit
 foreign import doCastImpl :: forall state. Atom -> (state -> Effect (CastResult state)) -> Effect Unit
 foreign import startLinkImpl :: forall state. Atom -> Effect state -> Effect StartLinkResult
+
+-- These imports are just so we don't get warnings
+foreign import code_change :: forall a. a -> a -> a -> a
+foreign import handle_call :: forall a. a -> a -> a -> a
+foreign import handle_cast :: forall a. a -> a -> a -> a
+foreign import handle_info :: forall a. a -> a -> a
+foreign import init :: forall a. a -> a
+foreign import terminate :: forall a. a -> a -> a
+foreign import start_from_spec :: forall a. a -> a
 
 -- | Starts a typed gen-server proxy with the supplied ServerName, with the state being the result of the supplied effect
 -- |

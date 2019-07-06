@@ -54,6 +54,14 @@ data BoxedStartFn :: Type
 data BoxedStartArgs :: Type
 ```
 
+#### `SupervisorSpec`
+
+``` purescript
+type SupervisorSpec = { strategy :: SupervisorStrategy, intensity :: Int, period :: Int, children :: List SupervisorChildSpec }
+```
+
+This type is not used directly, but is here to support the buildSupervisor hierarchy
+
 #### `SupervisorStrategy`
 
 ``` purescript
@@ -103,14 +111,6 @@ Maps to infinity | brutal | { timeout, N }
 
 ``` purescript
 type SupervisorChildSpec = { type_ :: SupervisorChildType, id :: String, startFn :: BoxedStartFn, startArgs :: BoxedStartArgs, restart :: SupervisorChildRestart, shutdown :: SupervisorChildShutdown }
-```
-
-This type is not used directly, but is here to support the buildSupervisor hierarchy
-
-#### `SupervisorSpec`
-
-``` purescript
-type SupervisorSpec = { strategy :: SupervisorStrategy, intensity :: Int, period :: Int, children :: List SupervisorChildSpec }
 ```
 
 This type is not used directly, but is here to support the buildSupervisor hierarchy

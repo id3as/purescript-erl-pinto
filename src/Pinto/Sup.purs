@@ -28,7 +28,6 @@ module Pinto.Sup ( startChild
                  , SupervisorChildRestart(..)
                  , SupervisorChildShutdown(..)
                  , SupervisorChildSpec
-                 , SupervisorSpec
                  , ReifiedSupervisorSpec
                  , ReifiedSupervisorFlags
                  , ReifiedSupervisorChild
@@ -66,6 +65,10 @@ foreign import data BoxedStartArgs :: Type
 foreign import startLinkImpl :: Atom -> Effect SupervisorSpec -> Effect Pinto.StartLinkResult
 foreign import startChildImpl :: forall args. (Pid -> Pinto.StartChildResult) -> (Pid -> Pinto.StartChildResult) -> Atom -> args -> Effect Pinto.StartChildResult
 
+
+-- These imports are just so we don't get warnings
+foreign import init :: forall a. a -> a
+foreign import start_from_spec :: forall a. a -> a
 
 
 -- | Starts a supervisor with the supplied name, using the supplied SupervisorSpec
