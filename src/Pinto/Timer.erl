@@ -14,22 +14,24 @@ cancel_(Pid) ->
 %% this sort of thing because it means needlessly exhauting the process pool
 %% so a cleverer solution will probably be needed in time
 sendEvery_(Wrapper, Milliseconds, Effect) ->
-  Parent = self(),
-  Fun = fun Fun() ->
-            { ok, Ref } = timer:send_interval(Milliseconds, tick),
+  Fun = fun Fun(MaybeRef) ->
+            { ok, Ref } = case MaybeRef of
+                            undefined -> timer:send_interval(Milliseconds, tick);
+                            _ -> {  ok, MaybeRef }
+                          end,
             receive
               stop ->
                 io:format(user, "Shutting down timer cos parent died", []),
                 timer:cancel(Ref);
               tick ->
                 Effect(),
-                Fun()
+                Fun(Ref)
             end
         end,
-  fun() -> Pid = spawn_link(fun() -> Fun() end), Wrapper(Pid) end.
+  fun() -> Pid = spawn_link(fun() -> Fun(undefined) end), Wrapper(Pid) end.
 
 sendAfter_(Wrapper, Milliseconds, Effect) ->
-  Parent = self(),
+  _Parent = self(),
   Fun = fun Fun() ->
             { ok, Ref } = timer:send_after(Milliseconds, tick),
             receive
