@@ -37,6 +37,7 @@ module Pinto.Sup ( startChild
                  , supervisorStrategy
                  , supervisorIntensity 
                  , supervisorPeriod
+                 , supervisorChildren
                  , childType
                  , childShutdown
                  , childId

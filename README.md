@@ -50,7 +50,7 @@ init = do
   pure $ buildSupervisor
                 # supervisorStrategy OneForOne
                 # supervisorChildren ( ( buildChild
-                                       # childType GenServer
+                                       # childType Worker
                                        # childId "some_child"
                                        # childStart MyGenServer.startLink unit)
                                         : nil)
