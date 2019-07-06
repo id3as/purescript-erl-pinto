@@ -10,44 +10,35 @@ cancel_(Pid) ->
       ok
   end.
 
+%% Note: The actual timer implementation deliberately avoids using processes for
+%% this sort of thing because it means needlessly exhauting the process pool
+%% so a cleverer solution will probably be needed in time
 sendEvery_(Wrapper, Milliseconds, Effect) ->
   Parent = self(),
-  Fun = fun Fun(MaybeMonitorRef) ->
-            MonitorRef = case MaybeMonitorRef of
-                           undefined ->
-                             monitor(process, Parent);
-                           _ -> MaybeMonitorRef
-                         end,
+  Fun = fun Fun() ->
             { ok, Ref } = timer:send_interval(Milliseconds, tick),
             receive
               stop ->
-                demonitor(MonitorRef),
+                io:format(user, "Shutting down timer cos parent died", []),
                 timer:cancel(Ref);
-              {'DOWN', _, _, _, _} ->
-                timer:cancel(Ref),
-                ok;
               tick ->
                 Effect(),
-                Fun(MonitorRef)
+                Fun()
             end
         end,
-  fun() -> Pid = spawn_link(fun() -> Fun(undefined) end), Wrapper(Pid) end.
+  fun() -> Pid = spawn_link(fun() -> Fun() end), Wrapper(Pid) end.
 
-sendAfter_(Wrapper, Milliseconds, Fn) ->
+sendAfter_(Wrapper, Milliseconds, Effect) ->
   Parent = self(),
-  Fun = fun Fun(MaybeMonitorRef) ->
-            MonitorRef = monitor(process, Parent),
+  Fun = fun Fun() ->
             { ok, Ref } = timer:send_after(Milliseconds, tick),
             receive
               stop ->
-                demonitor(MonitorRef),
                 timer:cancel(Ref);
-              {'DOWN', _, _, _, _} ->
-                timer:cancel(Ref),
-                ok;
               tick ->
-                demonitor(MonitorRef),
-                Effect(),
+                Effect();
+              Other ->
+                io:format(user, "Wtf ~p~n", [ Other])
             end
         end,
-  fun() -> Pid = spawn_link(fun() -> Fun(undefined) end), Wrapper(Pid) end.
+  fun() -> Pid = spawn_link(fun() -> Fun() end), Wrapper(Pid) end.
