@@ -25,6 +25,10 @@
          terminate/2,
          code_change/3]).
 
+-ffi([
+      startLinkImpl/2
+     ]).
+
 doCallImpl(Name, Fn) -> fun() ->
                             gen_server:call(Name, { wrapped_effectful_call, Fn })
                         end.
