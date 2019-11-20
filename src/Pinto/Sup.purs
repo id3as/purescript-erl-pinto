@@ -82,8 +82,8 @@ startLink name spec = startLinkImpl (atom name) spec
 -- | Note: This API is subject to change, as it is "handwavingly" typed and currently maps 1-1 with the 
 -- | native Erlang implementation
 -- | See also: supervisor:start_child in the OTP docs
-startChild :: forall args. String -> args -> Effect Pinto.StartChildResult
-startChild name args = startChildImpl Pinto.AlreadyStarted Pinto.Started (atom name) args
+startChild :: String -> SupervisorChildSpec -> Effect Pinto.StartChildResult
+startChild name childSpec = startChildImpl Pinto.AlreadyStarted Pinto.Started (atom name) (reifySupervisorChild childSpec)
 
 -- | See also supervisor:strategy()
 -- | Maps to simple_one_for_one | one_for_one .. etc
