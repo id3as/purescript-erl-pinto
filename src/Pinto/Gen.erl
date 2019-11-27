@@ -4,7 +4,7 @@
 
 % FFI
 -export([
-         startLinkImpl/2,
+         startLinkImpl/3,
          callImpl/2,
          doCallImpl/2,
          castImpl/2,
@@ -25,9 +25,17 @@
          terminate/2,
          code_change/3]).
 
--ffi([
-      startLinkImpl/2
-     ]).
+
+%% Pinto specific APIs
+-export([
+         registerExternalMappingImpl/2
+        ]).
+
+-record(state_impl, {
+          state :: term(),
+          handle_info :: fun(),
+          mappings :: list(fun())
+         }).
 
 doCallImpl(Name, Fn) -> fun() ->
                             gen_server:call(Name, { wrapped_effectful_call, Fn })
@@ -45,9 +53,9 @@ castImpl(Name, Fn) -> fun() ->
                             gen_server:cast(Name, { wrapped_pure_cast, Fn })
                         end.
 
-startLinkImpl(Name, Effect) ->
+startLinkImpl(Name, Effect, HandleInfo) ->
   fun() ->
-      gen_server:start_link({local, Name}, ?MODULE, [Effect], [])
+      gen_server:start_link({local, Name}, ?MODULE, [Effect, HandleInfo], [])
   end.
 
 start_from_spec(_Spec = #{ startFn := Fn, startArgs := Args }) ->
@@ -56,48 +64,66 @@ start_from_spec(_Spec = #{ startFn := Fn, startArgs := Args }) ->
 start_from_spec(_Spec = #{ startFn := Fn }, Args) ->
   (Fn(Args))().
 
-
-init([Effect]) ->
-  {ok, Effect()}.
-
-handle_call({wrapped_effectful_call, Fn}, _From, State) ->
-  case (Fn(State))() of
-    { callReply, Result, NewState } -> {reply, Result, NewState};
-    { callReplyHibernate, Result, NewState } -> {reply, Result, NewState, hibernate};
-    { callStop, Result, NewState } -> {stop, normal, Result, NewState}
-  end;
-
-handle_call({wrapped_pure_call, Fn}, _From, State) ->
-  case Fn(State) of
-    { callReply, Result, NewState } -> {reply, Result, NewState};
-    { callReplyHibernate, Result, NewState } -> {reply, Result, NewState, hibernate};
-    { callStop, Result, NewState } -> {stop, normal, Result, NewState}
+%% This is wrong, ideally we'd just be using the current context
+%% of the call to work out where we were and just manipulating the state
+%% I think we can do this if we use a state monad...
+registerExternalMappingImpl(Name, Mapper) ->
+  fun() ->
+    gen_server:cast(Name, { register_mapping, Mapper })
   end.
 
-handle_cast({wrapped_effectful_cast, Fn}, State) ->
+init([Effect, HandleInfo]) ->
+  {ok, #state_impl { state = Effect()
+                   , handle_info = HandleInfo
+                   , mappings = []
+                   }}.
+
+handle_call({wrapped_effectful_call, Fn}, _From, StateImpl = #state_impl { state = State } ) ->
   case (Fn(State))() of
-    { castNoReply, NewState } -> {noreply, NewState};
-    { castNoReplyHibernate, NewState } -> {noreply, NewState, hibernate};
-    { castStop, NewState } -> {stop, normal, NewState}
+    { callReply, Result, NewState } -> {reply, Result, StateImpl#state_impl { state = NewState}};
+    { callReplyHibernate, Result, NewState } -> {reply, Result, StateImpl#state_impl { state = NewState }, hibernate};
+    { callStop, Result, NewState } -> {stop, normal, Result, StateImpl#state_impl { state = NewState }}
   end;
 
-handle_cast({wrapped_pure_cast, Fn}, State) ->
+handle_call({wrapped_pure_call, Fn}, _From, StateImpl = #state_impl { state = State }) ->
   case Fn(State) of
-    { castNoReply, NewState } -> {noreply, NewState};
-    { castNoReplyHibernate, NewState } -> {noreply, NewState, hibernate};
-    { castStop, NewState } -> {stop, normal, NewState}
+    { callReply, Result, NewState } -> {reply, Result, StateImpl#state_impl { state = NewState}};
+    { callReplyHibernate, Result, NewState } -> {reply, Result, StateImpl#state_impl { state = NewState }, hibernate};
+    { callStop, Result, NewState } -> {stop, normal, Result, StateImpl#state_impl { state = NewState }}
   end.
 
-handle_info({routed_message, Fn}, State) ->
-  NewState = (Fn(State))(),
-  {noreply, NewState};
+handle_cast({wrapped_effectful_cast, Fn}, StateImpl = #state_impl { state = State }) ->
+  case (Fn(State))() of
+    { castNoReply, NewState } -> {noreply, StateImpl#state_impl { state = NewState}};
+    { castNoReplyHibernate, NewState } -> {noreply, StateImpl#state_impl { state = NewState }, hibernate};
+    { castStop, NewState } -> {stop, normal, StateImpl#state_impl { state = NewState }}
+  end;
 
-handle_info({routed_message, Msg, Fn}, State) ->
-  NewState = ((Fn(Msg))(State))(),
-  {noreply, NewState}.
+handle_cast({wrapped_pure_cast, Fn}, StateImpl = #state_impl { state = State }) ->
+  case Fn(State) of
+    { castNoReply, NewState } -> {noreply, StateImpl#state_impl { state = NewState}};
+    { castNoReplyHibernate, NewState } -> {noreply, StateImpl#state_impl { state = NewState }, hibernate};
+    { castStop, NewState } -> {stop, normal, StateImpl#state_impl { state = NewState }}
+  end;
+
+handle_cast({register_mapping, Mapping}, StateImpl = #state_impl { mappings = Mappings }) ->
+  { noreply, StateImpl#state_impl { mappings = [ Mapping | Mappings ] }}.
+
+handle_info(Msg, StateImpl = #state_impl { state = State, handle_info = HandleInfo, mappings = Mappings }) ->
+  MappedMsg = try_map(Msg, Mappings),
+  NewState = ((HandleInfo(MappedMsg))(State))(),
+  {noreply, StateImpl#state_impl { state = NewState }}.
 
 terminate(_Reason, _State) ->
   ok.
 
 code_change(_OldVsn, State, _Extra) ->
   {ok, State}.
+
+try_map(Msg, []) -> Msg;
+try_map(Msg, [ Head | Tail ]) ->
+  case Head(Msg) of
+    {just, Mapped} -> Mapped;
+    {nothing} -> try_map(Msg, Tail)
+  end.
+
