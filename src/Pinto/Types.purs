@@ -3,6 +3,7 @@ module Pinto.Types where
 import Erl.Atom (Atom)
 import Erl.Data.Tuple (Tuple2)
 import Erl.Process.Raw (Pid)
+import Effect (Effect)
 
 -- | Defines the server name for a gen server, along with the 'state' that the gen server
 -- | will be using internally and the 'msg' type that will be received in the handleInfo calls
@@ -15,3 +16,6 @@ type StartLinkResult = (Tuple2 Atom Pid)
   
 -- | The result of supervisor:start_child
 data StartChildResult = AlreadyStarted Pid | Started Pid
+
+-- | The type used to link startSimpleChild and startTemplate together
+data ChildTemplate args = ChildTemplate (args -> Effect StartLinkResult)
