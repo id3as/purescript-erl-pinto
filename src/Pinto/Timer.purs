@@ -1,5 +1,5 @@
 -- | This module provides a means of using the timer functionality in core Erlang
--- | This is subject to change as currently it only works within the context of a genserver
+-- | This is specifically for use within the context of gen-servers and will not work otherwise
 module Pinto.Timer 
   ( sendEvery,
     sendAfter,
@@ -15,21 +15,19 @@ import Pinto (ServerName)
 
 newtype TimerRef = TimerRef Pid
 
-foreign import sendEvery_ :: (Pid -> TimerRef) -> Int -> Effect Unit -> Effect TimerRef
-foreign import sendAfter_ :: (Pid -> TimerRef) -> Int -> Effect Unit -> Effect TimerRef
+foreign import sendEvery_ :: forall msg.  (Pid -> TimerRef) -> Int -> msg -> Effect TimerRef
+foreign import sendAfter_ :: forall msg.  (Pid -> TimerRef) -> Int -> msg -> Effect TimerRef
 foreign import cancel_ :: Pid -> Effect Unit
 
--- | Invokes the supplied effect every N milliseconds 
+-- | Sends the supplied message back to the recipient every N milliseconds
 -- | See also timer:send_every in the OTP docs
--- | The process started by this will automatically terminate when the parent process dies
-sendEvery :: forall state. Int -> Effect Unit -> Effect TimerRef
-sendEvery = sendEvery_ TimerRef
+sendEvery :: forall state msg. ServerName state msg -> Int -> msg -> Effect TimerRef
+sendEvery _ = sendEvery_ TimerRef
 
--- | Invokes the supplied effect after N milliseconds 
--- | See also timer:send_every in the OTP docs
--- | The process started by this will automatically terminate when the parent process dies
-sendAfter :: forall state. Int -> Effect Unit -> Effect TimerRef
-sendAfter = sendAfter_ TimerRef
+-- | Sends the supplied message back to the recipient after N milliseconds
+-- | See also timer:send_after in the OTP docs
+sendAfter :: forall state msg. ServerName state msg -> Int -> msg -> Effect TimerRef
+sendAfter _ = sendAfter_ TimerRef
 
 -- | Cancels a timer started by either sendEvery or sendAfter
 -- | See also timer:cancel in the OTP docs

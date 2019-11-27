@@ -17,7 +17,7 @@ startLinkImpl(Name, Effect) ->
 
 startChildImpl(AlreadyStarted, Started, Name, Args) ->
   fun() ->
-    case supervisor:start_child(Name, Args) of
+    case supervisor:start_child(Name, [Args]) of
       {error, {already_started, Pid}} -> AlreadyStarted(Pid);
       { ok, Pid } -> Started(Pid)
     end

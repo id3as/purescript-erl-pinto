@@ -5,9 +5,10 @@ import Erl.Data.Tuple (Tuple2)
 import Erl.Process.Raw (Pid)
 
 -- | Defines the server name for a gen server, along with the 'state' that the gen server
--- | will be using internally - this will be supplied to every call to the gen server API in order
+-- | will be using internally and the 'msg' type that will be received in the handleInfo calls
+-- | this will be supplied to every call to the gen server API in order
 -- | to enforce type safety across calls
-data ServerName state = ServerName String
+data ServerName state msg = ServerName String
 
 -- | The result of invoking gen_server:start_link
 type StartLinkResult = (Tuple2 Atom Pid)
