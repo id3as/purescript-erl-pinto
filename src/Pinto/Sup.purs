@@ -18,7 +18,8 @@
 -- |                                        # childStart MyGenServer.startLink unit)
 -- |                                         : nil)
 -- | ```
-module Pinto.Sup ( startChild
+module Pinto.Sup ( startSimpleChild
+                 , startSpeccedChild
                  , startLink
                  , BoxedStartFn
                  , BoxedStartArgs
@@ -79,11 +80,15 @@ startLink :: String -> Effect SupervisorSpec -> Effect Pinto.StartLinkResult
 startLink name spec = startLinkImpl (atom name) spec
 
 -- | Dynamically starts a child with the supplied name and args as specified with the child template
--- | Note: This API is subject to change, as it is "handwavingly" typed and currently maps 1-1 with the 
--- | native Erlang implementation
 -- | See also: supervisor:start_child in the OTP docs
-startChild :: forall args. String -> args -> Effect Pinto.StartChildResult
-startChild name args = startChildImpl Pinto.AlreadyStarted Pinto.Started (atom name) args
+startSimpleChild :: forall args. Pinto.ChildTemplate args -> String -> args -> Effect Pinto.StartChildResult
+startSimpleChild _ name args = startChildImpl Pinto.AlreadyStarted Pinto.Started (atom name) args
+
+-- | Dynamically starts a child with the supplied spec
+-- | See also: supervisor:start_child in the OTP docs
+startSpeccedChild :: String -> SupervisorChildSpec  -> Effect Pinto.StartChildResult
+startSpeccedChild name spec = startChildImpl Pinto.AlreadyStarted Pinto.Started (atom name) spec
+
 
 -- | See also supervisor:strategy()
 -- | Maps to simple_one_for_one | one_for_one .. etc
@@ -196,10 +201,9 @@ childId :: String -> SupervisorChildSpec -> SupervisorChildSpec
 childId id spec = (spec { id = id })
 
 -- | Configures the template for the children started by this supervisor
--- | Again - this API is subject to change as it's "handwavingly" typed, see also Sup.startChild
 -- | See also the OTP docs for supervisor specs
-childStartTemplate :: forall args. (args -> Effect Pinto.StartLinkResult) -> SupervisorChildSpec -> SupervisorChildSpec
-childStartTemplate startTemplate spec = (spec { startFn = (unsafeCoerce startTemplate) })
+childStartTemplate :: forall args. Pinto.ChildTemplate args -> SupervisorChildSpec -> SupervisorChildSpec
+childStartTemplate (Pinto.ChildTemplate startFn) spec = (spec { startFn = (unsafeCoerce startFn) })
 
 -- | Sets the 'restart' value of a child spec
 -- | See also the OTP docs for supervisor specs
