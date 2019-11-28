@@ -18,13 +18,17 @@ import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Pinto (ServerName(..), StartLinkResult)
 import Data.Maybe (Maybe(..))
+import Erl.Data.Tuple (Tuple2, Tuple3, tuple2, tuple3)
+import Erl.ModuleName (NativeModuleName(..))
+import Foreign (Foreign)
+import Unsafe.Coerce (unsafeCoerce)
 
-foreign import callImpl :: forall response state. Atom -> (state -> (CallResult response state)) -> Effect response
-foreign import doCallImpl :: forall response state. Atom -> (state -> Effect (CallResult response state)) -> Effect response
-foreign import castImpl :: forall state. Atom -> (state -> (CastResult state)) -> Effect Unit
-foreign import doCastImpl :: forall state. Atom -> (state -> Effect (CastResult state)) -> Effect Unit
-foreign import startLinkImpl :: forall state msg. Atom -> Effect state -> (msg -> state -> Effect state) -> Effect StartLinkResult
-foreign import registerExternalMappingImpl :: forall state externalMsg msg. Atom -> (externalMsg -> Maybe msg) -> Effect Unit
+foreign import callImpl :: forall response state name. name -> (state -> (CallResult response state)) -> Effect response
+foreign import doCallImpl :: forall response state name. name -> (state -> Effect (CallResult response state)) -> Effect response
+foreign import castImpl :: forall state name. name -> (state -> (CastResult state)) -> Effect Unit
+foreign import doCastImpl :: forall state name. name -> (state -> Effect (CastResult state)) -> Effect Unit
+foreign import startLinkImpl :: forall name state msg. name -> Effect state -> (msg -> state -> Effect state) -> Effect StartLinkResult
+foreign import registerExternalMappingImpl :: forall state externalMsg msg name. name -> (externalMsg -> Maybe msg) -> Effect Unit
 
 -- These imports are just so we don't get warnings
 foreign import code_change :: forall a. a -> a -> a -> a
@@ -35,11 +39,16 @@ foreign import init :: forall a. a -> a
 foreign import terminate :: forall a. a -> a -> a
 foreign import start_from_spec :: forall a. a -> a
 
+nativeName :: forall state msg name. ServerName state msg -> Foreign
+nativeName (Local name) = unsafeCoerce $ (atom name)
+nativeName (Global name) = unsafeCoerce $ tuple2 (atom "global") (atom name)
+nativeName (Via (NativeModuleName m) name) = unsafeCoerce $ tuple3 (atom "via") m name
+
 
 -- | Adds a (presumably) native Erlang function into the gen server to map external messages into types that this
 -- | gen server actually understands
 registerExternalMapping :: forall state externalMsg msg. ServerName state msg -> (externalMsg -> Maybe msg) -> Effect Unit
-registerExternalMapping (ServerName name) = registerExternalMappingImpl (atom name)
+registerExternalMapping name = registerExternalMappingImpl (nativeName name)
 
 
 -- | Starts a typed gen-server proxy with the supplied ServerName, with the state being the result of the supplied effect
@@ -56,10 +65,13 @@ registerExternalMapping (ServerName name) = registerExternalMappingImpl (atom na
 -- | ```
 -- | See also: gen_server:start_link in the OTP docs (roughly)
 startLink :: forall state msg. ServerName state msg -> Effect state -> (msg -> state -> Effect state) -> Effect StartLinkResult
-startLink (ServerName name) = startLinkImpl (atom name)
+startLink (Local name) = startLinkImpl $ tuple2 (atom "local") (atom name)
+startLink (Global name) = startLinkImpl $ tuple2 (atom "global") (atom name)
+startLink (Via (NativeModuleName m) name) = startLinkImpl $ tuple3 (atom "via") m name
 
 data CallResult response state = CallReply response state | CallReplyHibernate response state | CallStop response state
 data CastResult state = CastNoReply state | CastNoReplyHibernate state | CastStop state
+
 
 -- | A default implementation of handleInfo that just ignores any messages received
 defaultHandleInfo :: forall state msg. msg -> state -> Effect state
@@ -74,7 +86,7 @@ defaultHandleInfo msg state = pure state
 -- | ```
 -- | See also handle_call and gen_server:call in the OTP docs
 call :: forall response state msg. ServerName state msg -> (state -> (CallResult response state)) -> Effect response
-call (ServerName name) fn = callImpl (atom name) fn
+call name fn = callImpl (nativeName name) fn
 
 -- | Defines an effectful call that performs an interaction on the state held by the gen server, and perhaps side-effects
 -- | Directly returns the result of the callback provided
@@ -85,7 +97,7 @@ call (ServerName name) fn = callImpl (atom name) fn
 -- | ```
 -- | See also handle_call and gen_server:call in the OTP docs
 doCall :: forall response state msg. ServerName state msg -> (state -> Effect (CallResult response state)) -> Effect response
-doCall (ServerName name) fn = doCallImpl (atom name) fn
+doCall name fn = doCallImpl (nativeName name) fn
 
 -- | Defines an "pure" cast that performs an interaction on the state held by the gen server
 -- | ```purescript
@@ -94,7 +106,7 @@ doCall (ServerName name) fn = doCallImpl (atom name) fn
 -- | ```
 -- | See also handle_cast and gen_server:cast in the OTP docs
 cast :: forall state msg. ServerName state msg -> (state -> (CastResult state)) -> Effect Unit
-cast (ServerName name) fn = castImpl (atom name) fn
+cast name fn = castImpl (nativeName name) fn
 
 -- | Defines an effectful cast that performs an interaction on the state held by the gen server
 -- | ```purescript
@@ -103,4 +115,4 @@ cast (ServerName name) fn = castImpl (atom name) fn
 -- | ```
 -- | See also handle_cast and gen_server:cast in the OTP docs
 doCast :: forall state msg. ServerName state msg -> (state -> Effect (CastResult state)) -> Effect Unit
-doCast (ServerName name) fn = doCastImpl (atom name) fn
+doCast name fn = doCastImpl (nativeName name) fn
