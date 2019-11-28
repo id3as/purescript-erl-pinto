@@ -55,7 +55,7 @@ castImpl(Name, Fn) -> fun() ->
 
 startLinkImpl(Name, Effect, HandleInfo) ->
   fun() ->
-      gen_server:start_link({local, Name}, ?MODULE, [Effect, HandleInfo], [])
+      gen_server:start_link(Name, ?MODULE, [Effect, HandleInfo], [])
   end.
 
 start_from_spec(_Spec = #{ startFn := Fn, startArgs := Args }) ->
