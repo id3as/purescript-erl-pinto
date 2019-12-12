@@ -15,10 +15,10 @@ module Pinto.Gen ( startLink
 import Prelude
 
 import Effect (Effect)
-import Erl.Atom (Atom, atom)
+import Erl.Atom (atom)
 import Pinto (ServerName(..), StartLinkResult)
-import Data.Maybe (Maybe(..))
-import Erl.Data.Tuple (Tuple2, Tuple3, tuple2, tuple3)
+import Data.Maybe (Maybe)
+import Erl.Data.Tuple (tuple2, tuple3)
 import Erl.ModuleName (NativeModuleName(..))
 import Foreign (Foreign)
 import Unsafe.Coerce (unsafeCoerce)
@@ -27,8 +27,8 @@ foreign import callImpl :: forall response state name. name -> (state -> (CallRe
 foreign import doCallImpl :: forall response state name. name -> (state -> Effect (CallResult response state)) -> Effect response
 foreign import castImpl :: forall state name. name -> (state -> (CastResult state)) -> Effect Unit
 foreign import doCastImpl :: forall state name. name -> (state -> Effect (CastResult state)) -> Effect Unit
-foreign import startLinkImpl :: forall name state msg. name -> Effect state -> (msg -> state -> Effect state) -> Effect StartLinkResult
-foreign import registerExternalMappingImpl :: forall state externalMsg msg name. name -> (externalMsg -> Maybe msg) -> Effect Unit
+foreign import startLinkImpl :: forall name state msg. name -> Effect state -> (msg -> state -> Effect (CastResult state)) -> Effect StartLinkResult
+foreign import registerExternalMappingImpl :: forall externalMsg msg name. name -> (externalMsg -> Maybe msg) -> Effect Unit
 
 -- These imports are just so we don't get warnings
 foreign import code_change :: forall a. a -> a -> a -> a
@@ -39,7 +39,7 @@ foreign import init :: forall a. a -> a
 foreign import terminate :: forall a. a -> a -> a
 foreign import start_from_spec :: forall a. a -> a
 
-nativeName :: forall state msg name. ServerName state msg -> Foreign
+nativeName :: forall state msg. ServerName state msg -> Foreign
 nativeName (Local name) = unsafeCoerce $ (atom name)
 nativeName (Global name) = unsafeCoerce $ tuple2 (atom "global") (atom name)
 nativeName (Via (NativeModuleName m) name) = unsafeCoerce $ tuple3 (atom "via") m name
@@ -64,7 +64,7 @@ registerExternalMapping name = registerExternalMappingImpl (nativeName name)
 -- | init = pure {}
 -- | ```
 -- | See also: gen_server:start_link in the OTP docs (roughly)
-startLink :: forall state msg. ServerName state msg -> Effect state -> (msg -> state -> Effect state) -> Effect StartLinkResult
+startLink :: forall state msg. ServerName state msg -> Effect state -> (msg -> state -> Effect (CastResult state)) -> Effect StartLinkResult
 startLink (Local name) = startLinkImpl $ tuple2 (atom "local") (atom name)
 startLink (Global name) = startLinkImpl $ tuple2 (atom "global") (atom name)
 startLink (Via (NativeModuleName m) name) = startLinkImpl $ tuple3 (atom "via") m name
@@ -74,8 +74,8 @@ data CastResult state = CastNoReply state | CastNoReplyHibernate state | CastSto
 
 
 -- | A default implementation of handleInfo that just ignores any messages received
-defaultHandleInfo :: forall state msg. msg -> state -> Effect state
-defaultHandleInfo msg state = pure state
+defaultHandleInfo :: forall state msg. msg -> state -> Effect (CastResult state)
+defaultHandleInfo msg state = pure $ CastNoReply state
 
 -- | Defines a "pure" "call" that performs an interaction on the state held by the gen server, but with no other side effects
 -- | Directly returns the result of the callback provided
