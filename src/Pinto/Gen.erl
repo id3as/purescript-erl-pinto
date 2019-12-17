@@ -42,16 +42,16 @@ doCallImpl(Name, Fn) -> fun() ->
                         end.
 
 callImpl(Name, Fn) -> fun() ->
-                            gen_server:call(Name, { wrapped_pure_call, Fn })
-                        end.
+                          gen_server:call(Name, { wrapped_pure_call, Fn })
+                      end.
 
 doCastImpl(Name, Fn) -> fun() ->
                             gen_server:cast(Name, { wrapped_effectful_cast, Fn })
                         end.
 
 castImpl(Name, Fn) -> fun() ->
-                            gen_server:cast(Name, { wrapped_pure_cast, Fn })
-                        end.
+                          gen_server:cast(Name, { wrapped_pure_cast, Fn })
+                      end.
 
 startLinkImpl(Name, Effect, HandleInfo) ->
   fun() ->
@@ -111,8 +111,11 @@ handle_cast({register_mapping, Mapping}, StateImpl = #state_impl { mappings = Ma
 
 handle_info(Msg, StateImpl = #state_impl { state = State, handle_info = HandleInfo, mappings = Mappings }) ->
   MappedMsg = try_map(Msg, Mappings),
-  NewState = ((HandleInfo(MappedMsg))(State))(),
-  {noreply, StateImpl#state_impl { state = NewState }}.
+  case ((HandleInfo(MappedMsg))(State))() of
+    { castNoReply, NewState } -> {noreply, StateImpl#state_impl { state = NewState}};
+    { castNoReplyHibernate, NewState } -> {noreply, StateImpl#state_impl { state = NewState }, hibernate};
+    { castStop, NewState } -> {stop, normal, StateImpl#state_impl { state = NewState }}
+  end.
 
 terminate(_Reason, _State) ->
   ok.
@@ -126,4 +129,3 @@ try_map(Msg, [ Head | Tail ]) ->
     {just, Mapped} -> Mapped;
     {nothing} -> try_map(Msg, Tail)
   end.
-
