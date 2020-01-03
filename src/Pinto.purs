@@ -3,4 +3,4 @@ module Pinto (
 )
 where
 
-import Pinto.Types (ServerName(..), StartChildResult(..), StartLinkResult, ChildTemplate(..))
+import Pinto.Types (ServerName(..), SupervisorName, StartChildResult(..), StartLinkResult, ChildTemplate(..))
