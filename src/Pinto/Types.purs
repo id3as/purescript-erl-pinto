@@ -1,11 +1,12 @@
 module Pinto.Types where
 
+import Effect (Effect)
 import Erl.Atom (Atom)
 import Erl.Data.Tuple (Tuple2)
-import Erl.Process.Raw (Pid)
-import Effect (Effect)
 import Erl.ModuleName (NativeModuleName)
+import Erl.Process.Raw (Pid)
 import Foreign (Foreign)
+import Prelude (Unit)
 
 -- | Defines the server name for a gen server, along with the 'state' that the gen server
 -- | will be using internally and the 'msg' type that will be received in the handleInfo calls
@@ -14,6 +15,8 @@ import Foreign (Foreign)
 data ServerName state msg = Local String
                           | Global String
                           | Via NativeModuleName Foreign
+
+type SupervisorName = ServerName Unit Unit
 
 -- | The result of invoking gen_server:start_link
 type StartLinkResult = (Tuple2 Atom Pid)

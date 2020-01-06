@@ -57,38 +57,44 @@ import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
 import Erl.Data.Tuple (Tuple2, Tuple3, tuple2, tuple3)
+import Erl.ModuleName (NativeModuleName(..))
 import Erl.Process.Raw (Pid)
 import Pinto as Pinto
+import Pinto.Types (ServerName(..), SupervisorName)
 import Unsafe.Coerce (unsafeCoerce)
 
 foreign import data BoxedStartFn :: Type
 foreign import data BoxedStartArgs :: Type
 
-foreign import startLinkImpl :: Atom -> Effect SupervisorSpec -> Effect Pinto.StartLinkResult
-foreign import startChildImpl :: forall args. (Pid -> Pinto.StartChildResult) -> (Pid -> Pinto.StartChildResult) -> Atom -> args -> Effect Pinto.StartChildResult
+foreign import startLinkImpl :: forall name. name -> Effect SupervisorSpec -> Effect Pinto.StartLinkResult
+foreign import startChildImpl :: forall name args. (Pid -> Pinto.StartChildResult) -> (Pid -> Pinto.StartChildResult) -> name -> args -> Effect Pinto.StartChildResult
 
 
 -- These imports are just so we don't get warnings
 foreign import init :: forall a. a -> a
 foreign import start_from_spec :: forall a. a -> a
 
-
 -- | Starts a supervisor with the supplied name, using the supplied SupervisorSpec
 -- | This is effectful to allow for reading of config/etc
 -- | See also: supervisor:start_child in the OTP docs
-startLink :: String -> Effect SupervisorSpec -> Effect Pinto.StartLinkResult
-startLink name spec = startLinkImpl (atom name) spec
+startLink :: SupervisorName -> Effect SupervisorSpec -> Effect Pinto.StartLinkResult
+startLink (Local name) = startLinkImpl $ tuple2 (atom "local") (atom name)
+startLink (Global name) = startLinkImpl $ tuple2 (atom "global") (atom name)
+startLink (Via (NativeModuleName m) name) = startLinkImpl $ tuple3 (atom "via") m name
 
 -- | Dynamically starts a child with the supplied name and args as specified with the child template
 -- | See also: supervisor:start_child in the OTP docs
-startSimpleChild :: forall args. Pinto.ChildTemplate args -> String -> args -> Effect Pinto.StartChildResult
-startSimpleChild _ name args = startChildImpl Pinto.AlreadyStarted Pinto.Started (atom name) args
+startSimpleChild :: forall args. Pinto.ChildTemplate args -> SupervisorName -> args -> Effect Pinto.StartChildResult
+startSimpleChild _ (Local name) args = startChildImpl Pinto.AlreadyStarted Pinto.Started (atom name) args
+startSimpleChild _ (Global name) args = startChildImpl Pinto.AlreadyStarted Pinto.Started (tuple2 (atom "global") (atom name)) args
+startSimpleChild _ (Via (NativeModuleName m) name) args = startChildImpl Pinto.AlreadyStarted Pinto.Started (tuple3 (atom "via") m name) args
 
 -- | Dynamically starts a child with the supplied spec
 -- | See also: supervisor:start_child in the OTP docs
-startSpeccedChild :: String -> SupervisorChildSpec  -> Effect Pinto.StartChildResult
-startSpeccedChild name spec = startChildImpl Pinto.AlreadyStarted Pinto.Started (atom name) spec
-
+startSpeccedChild :: SupervisorName -> SupervisorChildSpec  -> Effect Pinto.StartChildResult
+startSpeccedChild (Local name) spec = startChildImpl Pinto.AlreadyStarted Pinto.Started (atom name) spec
+startSpeccedChild (Global name) spec = startChildImpl Pinto.AlreadyStarted Pinto.Started (tuple2 (atom "global") (atom name)) spec
+startSpeccedChild (Via (NativeModuleName m) name) spec = startChildImpl Pinto.AlreadyStarted Pinto.Started (tuple3 (atom "via") m name) spec
 
 -- | See also supervisor:strategy()
 -- | Maps to simple_one_for_one | one_for_one .. etc

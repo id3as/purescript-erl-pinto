@@ -12,7 +12,7 @@ start_from_spec(_Spec = #{ startFn := Fn, startArgs := Args }) ->
 
 startLinkImpl(Name, Effect) ->
   fun() ->
-      supervisor:start_link({local, Name}, ?MODULE, [Effect])
+      supervisor:start_link(Name, ?MODULE, [Effect])
   end.
 
 startChildImpl(AlreadyStarted, Started, Name, Args) ->
@@ -26,4 +26,3 @@ startChildImpl(AlreadyStarted, Started, Name, Args) ->
 init([Effect]) ->
   Spec = Effect(),
   { ok, pinto_sup@ps:reify(Spec) }.
-
