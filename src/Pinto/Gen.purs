@@ -1,4 +1,4 @@
--- | Module roughly representing interactions with the 'gen_server' 
+-- | Module roughly representing interactions with the 'gen_server'
 -- | See also 'gen_server' in the OTP docs
 module Pinto.Gen ( startLink
                  , CallResult(..)
@@ -9,7 +9,8 @@ module Pinto.Gen ( startLink
                  , doCast
                  , defaultHandleInfo
                  , registerExternalMapping
-                 ) 
+                 , monitor
+                 )
   where
 
 import Prelude
@@ -29,6 +30,7 @@ foreign import castImpl :: forall state name. name -> (state -> (CastResult stat
 foreign import doCastImpl :: forall state name. name -> (state -> Effect (CastResult state)) -> Effect Unit
 foreign import startLinkImpl :: forall name state msg. name -> Effect state -> (msg -> state -> Effect (CastResult state)) -> Effect StartLinkResult
 foreign import registerExternalMappingImpl :: forall externalMsg msg name. name -> (externalMsg -> Maybe msg) -> Effect Unit
+foreign import monitorImpl :: forall externalMsg msg name toMonitor. name -> toMonitor -> (externalMsg -> msg) -> Effect Unit
 
 -- These imports are just so we don't get warnings
 foreign import code_change :: forall a. a -> a -> a -> a
@@ -50,16 +52,20 @@ nativeName (Via (NativeModuleName m) name) = unsafeCoerce $ tuple3 (atom "via") 
 registerExternalMapping :: forall state externalMsg msg. ServerName state msg -> (externalMsg -> Maybe msg) -> Effect Unit
 registerExternalMapping name = registerExternalMappingImpl (nativeName name)
 
+-- | Adds a monitor
+monitor :: forall state name toMonitor externalMsg msg. ServerName state msg -> toMonitor -> (externalMsg -> msg) -> Effect Unit
+monitor name = monitorImpl (nativeName name)
+
 
 -- | Starts a typed gen-server proxy with the supplied ServerName, with the state being the result of the supplied effect
 -- |
 -- | ```purescript
 -- | serverName :: ServerName State Unit
 -- | serverName = ServerName "some_uuid"
--- | 
+-- |
 -- | startLink :: Effect StartLinkResult
 -- | startLink = Gen.startLink serverName init defaultHandleInfo
--- | 
+-- |
 -- | init :: Effect State
 -- | init = pure {}
 -- | ```
@@ -80,7 +86,7 @@ defaultHandleInfo msg state = pure $ CastNoReply state
 -- | Defines a "pure" "call" that performs an interaction on the state held by the gen server, but with no other side effects
 -- | Directly returns the result of the callback provided
 -- | ```purescript
--- | 
+-- |
 -- | doSomething :: Effect Unit
 -- | doSomething = Gen.call serverName \state -> CallReply unit (modifyState state)
 -- | ```
@@ -91,7 +97,7 @@ call name fn = callImpl (nativeName name) fn
 -- | Defines an effectful call that performs an interaction on the state held by the gen server, and perhaps side-effects
 -- | Directly returns the result of the callback provided
 -- | ```purescript
--- | 
+-- |
 -- | doSomething :: Effect Unit
 -- | doSomething = Gen.doCall serverName \state -> pure $ CallReply unit (modifyState state)
 -- | ```
