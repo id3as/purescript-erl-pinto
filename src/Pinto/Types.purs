@@ -1,8 +1,7 @@
 module Pinto.Types where
 
+import Data.Either (Either)
 import Effect (Effect)
-import Erl.Atom (Atom)
-import Erl.Data.Tuple (Tuple2)
 import Erl.ModuleName (NativeModuleName)
 import Erl.Process.Raw (Pid)
 import Foreign (Foreign)
@@ -19,8 +18,8 @@ data ServerName state msg = Local String
 type SupervisorName = ServerName Unit Unit
 
 -- | The result of invoking gen_server:start_link
-type StartLinkResult = (Tuple2 Atom Pid)
-  
+type StartLinkResult = Either Foreign Pid
+
 -- | The result of supervisor:start_child
 data StartChildResult = AlreadyStarted Pid | Started Pid
 
