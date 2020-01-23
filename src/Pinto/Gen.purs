@@ -1,4 +1,4 @@
--- | Module roughly representing interactions with the 'gen_server' 
+-- | Module roughly representing interactions with the 'gen_server'
 -- | See also 'gen_server' in the OTP docs
 module Pinto.Gen ( startLink
                  , CallResult(..)
@@ -9,25 +9,26 @@ module Pinto.Gen ( startLink
                  , doCast
                  , defaultHandleInfo
                  , registerExternalMapping
-                 ) 
+                 )
   where
 
 import Prelude
 
+import Data.Either (Either(..))
+import Data.Maybe (Maybe)
 import Effect (Effect)
 import Erl.Atom (atom)
-import Pinto (ServerName(..), StartLinkResult)
-import Data.Maybe (Maybe)
 import Erl.Data.Tuple (tuple2, tuple3)
 import Erl.ModuleName (NativeModuleName(..))
 import Foreign (Foreign)
+import Pinto (ServerName(..), StartLinkResult)
 import Unsafe.Coerce (unsafeCoerce)
 
 foreign import callImpl :: forall response state name. name -> (state -> (CallResult response state)) -> Effect response
 foreign import doCallImpl :: forall response state name. name -> (state -> Effect (CallResult response state)) -> Effect response
 foreign import castImpl :: forall state name. name -> (state -> (CastResult state)) -> Effect Unit
 foreign import doCastImpl :: forall state name. name -> (state -> Effect (CastResult state)) -> Effect Unit
-foreign import startLinkImpl :: forall name state msg. name -> Effect state -> (msg -> state -> Effect (CastResult state)) -> Effect StartLinkResult
+foreign import startLinkImpl :: forall a b name state msg. (a -> Either a b) -> (b -> Either a b) ->name -> Effect state -> (msg -> state -> Effect (CastResult state)) -> Effect StartLinkResult
 foreign import registerExternalMappingImpl :: forall externalMsg msg name. name -> (externalMsg -> Maybe msg) -> Effect Unit
 
 -- These imports are just so we don't get warnings
@@ -56,18 +57,20 @@ registerExternalMapping name = registerExternalMappingImpl (nativeName name)
 -- | ```purescript
 -- | serverName :: ServerName State Unit
 -- | serverName = ServerName "some_uuid"
--- | 
+-- |
 -- | startLink :: Effect StartLinkResult
 -- | startLink = Gen.startLink serverName init defaultHandleInfo
--- | 
+-- |
 -- | init :: Effect State
 -- | init = pure {}
 -- | ```
 -- | See also: gen_server:start_link in the OTP docs (roughly)
 startLink :: forall state msg. ServerName state msg -> Effect state -> (msg -> state -> Effect (CastResult state)) -> Effect StartLinkResult
-startLink (Local name) = startLinkImpl $ tuple2 (atom "local") (atom name)
-startLink (Global name) = startLinkImpl $ tuple2 (atom "global") (atom name)
-startLink (Via (NativeModuleName m) name) = startLinkImpl $ tuple3 (atom "via") m name
+startLink (Local name) = startLink_ $ tuple2 (atom "local") (atom name)
+startLink (Global name) = startLink_ $ tuple2 (atom "global") (atom name)
+startLink (Via (NativeModuleName m) name) = startLink_ $ tuple3 (atom "via") m name
+
+startLink_ = startLinkImpl Left Right
 
 data CallResult response state = CallReply response state | CallReplyHibernate response state | CallStop response state
 data CastResult state = CastNoReply state | CastNoReplyHibernate state | CastStop state
@@ -80,7 +83,7 @@ defaultHandleInfo msg state = pure $ CastNoReply state
 -- | Defines a "pure" "call" that performs an interaction on the state held by the gen server, but with no other side effects
 -- | Directly returns the result of the callback provided
 -- | ```purescript
--- | 
+-- |
 -- | doSomething :: Effect Unit
 -- | doSomething = Gen.call serverName \state -> CallReply unit (modifyState state)
 -- | ```
@@ -91,7 +94,7 @@ call name fn = callImpl (nativeName name) fn
 -- | Defines an effectful call that performs an interaction on the state held by the gen server, and perhaps side-effects
 -- | Directly returns the result of the callback provided
 -- | ```purescript
--- | 
+-- |
 -- | doSomething :: Effect Unit
 -- | doSomething = Gen.doCall serverName \state -> pure $ CallReply unit (modifyState state)
 -- | ```
