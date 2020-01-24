@@ -21,9 +21,8 @@ import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Data.Tuple (tuple2, tuple3)
 import Erl.ModuleName (NativeModuleName(..))
-import Foreign (Foreign)
+import Foreign (Foreign, unsafeToForeign)
 import Pinto (ServerName(..), StartLinkResult)
-import Unsafe.Coerce (unsafeCoerce)
 
 foreign import callImpl :: forall response state name. name -> (state -> (CallResult response state)) -> Effect response
 foreign import doCallImpl :: forall response state name. name -> (state -> Effect (CallResult response state)) -> Effect response
@@ -43,9 +42,9 @@ foreign import terminate :: forall a. a -> a -> a
 foreign import start_from_spec :: forall a. a -> a
 
 nativeName :: forall state msg. ServerName state msg -> Foreign
-nativeName (Local name) = unsafeCoerce $ (atom name)
-nativeName (Global name) = unsafeCoerce $ tuple2 (atom "global") (atom name)
-nativeName (Via (NativeModuleName m) name) = unsafeCoerce $ tuple3 (atom "via") m name
+nativeName (Local name) = unsafeToForeign $ name
+nativeName (Global name) = unsafeToForeign $ tuple2 (atom "global") name
+nativeName (Via (NativeModuleName m) name) = unsafeToForeign $ tuple3 (atom "via") m name
 
 
 -- | Adds a (presumably) native Erlang function into the gen server to map external messages into types that this
@@ -72,8 +71,8 @@ monitor name = monitorImpl (nativeName name)
 -- | ```
 -- | See also: gen_server:start_link in the OTP docs (roughly)
 startLink :: forall state msg. ServerName state msg -> Effect state -> (msg -> state -> Effect (CastResult state)) -> Effect StartLinkResult
-startLink (Local name) = startLink_ $ tuple2 (atom "local") (atom name)
-startLink (Global name) = startLink_ $ tuple2 (atom "global") (atom name)
+startLink (Local name) = startLink_ $ tuple2 (atom "local") name
+startLink (Global name) = startLink_ $ tuple2 (atom "global") name
 startLink (Via (NativeModuleName m) name) = startLink_ $ tuple3 (atom "via") m name
 
 startLink_ = startLinkImpl Left Right

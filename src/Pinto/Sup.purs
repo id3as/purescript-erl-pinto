@@ -82,22 +82,22 @@ foreign import start_from_spec :: forall a. a -> a
 -- | This is effectful to allow for reading of config/etc
 -- | See also: supervisor:start_child in the OTP docs
 startLink :: SupervisorName -> Effect SupervisorSpec -> Effect Pinto.StartLinkResult
-startLink (Local name) = startLink_ $ tuple2 (atom "local") (atom name)
-startLink (Global name) = startLink_ $ tuple2 (atom "global") (atom name)
+startLink (Local name) = startLink_ $ tuple2 (atom "local") name
+startLink (Global name) = startLink_ $ tuple2 (atom "global") name
 startLink (Via (NativeModuleName m) name) = startLink_ $ tuple3 (atom "via") m name
 
 -- | Dynamically starts a child with the supplied name and args as specified with the child template
 -- | See also: supervisor:start_child in the OTP docs
 startSimpleChild :: forall args. Pinto.ChildTemplate args -> SupervisorName -> args -> Effect Pinto.StartChildResult
-startSimpleChild _ (Local name) args = startChildImpl Pinto.AlreadyStarted Pinto.Started (atom name) args
-startSimpleChild _ (Global name) args = startChildImpl Pinto.AlreadyStarted Pinto.Started (tuple2 (atom "global") (atom name)) args
+startSimpleChild _ (Local name) args = startChildImpl Pinto.AlreadyStarted Pinto.Started name args
+startSimpleChild _ (Global name) args = startChildImpl Pinto.AlreadyStarted Pinto.Started (tuple2 (atom "global") name) args
 startSimpleChild _ (Via (NativeModuleName m) name) args = startChildImpl Pinto.AlreadyStarted Pinto.Started (tuple3 (atom "via") m name) args
 
 -- | Dynamically starts a child with the supplied spec
 -- | See also: supervisor:start_child in the OTP docs
 startSpeccedChild :: SupervisorName -> SupervisorChildSpec  -> Effect Pinto.StartChildResult
-startSpeccedChild (Local name) spec = startChildImpl Pinto.AlreadyStarted Pinto.Started (atom name) spec
-startSpeccedChild (Global name) spec = startChildImpl Pinto.AlreadyStarted Pinto.Started (tuple2 (atom "global") (atom name)) spec
+startSpeccedChild (Local name) spec = startChildImpl Pinto.AlreadyStarted Pinto.Started name spec
+startSpeccedChild (Global name) spec = startChildImpl Pinto.AlreadyStarted Pinto.Started (tuple2 (atom "global") name) spec
 startSpeccedChild (Via (NativeModuleName m) name) spec = startChildImpl Pinto.AlreadyStarted Pinto.Started (tuple3 (atom "via") m name) spec
 
 -- | See also supervisor:strategy()

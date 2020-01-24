@@ -2,6 +2,7 @@ module Pinto.Types where
 
 import Data.Either (Either)
 import Effect (Effect)
+import Erl.Atom (Atom)
 import Erl.ModuleName (NativeModuleName)
 import Erl.Process.Raw (Pid)
 import Foreign (Foreign)
@@ -11,8 +12,8 @@ import Prelude (Unit)
 -- | will be using internally and the 'msg' type that will be received in the handleInfo calls
 -- | this will be supplied to every call to the gen server API in order
 -- | to enforce type safety across calls
-data ServerName state msg = Local String
-                          | Global String
+data ServerName state msg = Local Atom
+                          | Global Atom
                           | Via NativeModuleName Foreign
 
 type SupervisorName = ServerName Unit Unit
