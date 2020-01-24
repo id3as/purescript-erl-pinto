@@ -9,6 +9,7 @@ module Pinto.Gen ( startLink
                  , doCast
                  , defaultHandleInfo
                  , registerExternalMapping
+                 , monitor
                  )
   where
 
@@ -30,6 +31,7 @@ foreign import castImpl :: forall state name. name -> (state -> (CastResult stat
 foreign import doCastImpl :: forall state name. name -> (state -> Effect (CastResult state)) -> Effect Unit
 foreign import startLinkImpl :: forall a b name state msg. (a -> Either a b) -> (b -> Either a b) ->name -> Effect state -> (msg -> state -> Effect (CastResult state)) -> Effect StartLinkResult
 foreign import registerExternalMappingImpl :: forall externalMsg msg name. name -> (externalMsg -> Maybe msg) -> Effect Unit
+foreign import monitorImpl :: forall externalMsg msg name toMonitor. name -> toMonitor -> (externalMsg -> msg) -> Effect Unit
 
 -- These imports are just so we don't get warnings
 foreign import code_change :: forall a. a -> a -> a -> a
@@ -50,6 +52,10 @@ nativeName (Via (NativeModuleName m) name) = unsafeCoerce $ tuple3 (atom "via") 
 -- | gen server actually understands
 registerExternalMapping :: forall state externalMsg msg. ServerName state msg -> (externalMsg -> Maybe msg) -> Effect Unit
 registerExternalMapping name = registerExternalMappingImpl (nativeName name)
+
+-- | Adds a monitor
+monitor :: forall state name toMonitor externalMsg msg. ServerName state msg -> toMonitor -> (externalMsg -> msg) -> Effect Unit
+monitor name = monitorImpl (nativeName name)
 
 
 -- | Starts a typed gen-server proxy with the supplied ServerName, with the state being the result of the supplied effect

@@ -28,13 +28,16 @@
 
 %% Pinto specific APIs
 -export([
-         registerExternalMappingImpl/2
+         registerExternalMappingImpl/2,
+         monitorImpl/3
         ]).
 
--record(state_impl, {
-          state :: term(),
-          handle_info :: fun(),
-          mappings :: list(fun())
+-record(state_impl,
+        {
+         state :: term(),
+         handle_info :: fun(),
+         mappings :: list(fun()),
+         monitors = #{} :: maps:map(pid(), {reference(), fun()})
          }).
 
 doCallImpl(Name, Fn) -> fun() ->
@@ -75,6 +78,13 @@ registerExternalMappingImpl(Name, Mapper) ->
     gen_server:cast(Name, { register_mapping, Mapper })
   end.
 
+%% Similar approach to registerExternalMappingImpl - given a state monad, we could probably
+%% make this better and return a monitor ref to enable demonitor calls
+monitorImpl(Name, ToMonitor, Mapper) ->
+  fun() ->
+      gen_server:cast(Name, { monitor, ToMonitor, Mapper })
+  end.
+
 init([Effect, HandleInfo]) ->
   {ok, #state_impl { state = Effect()
                    , handle_info = HandleInfo
@@ -110,7 +120,47 @@ handle_cast({wrapped_pure_cast, Fn}, StateImpl = #state_impl { state = State }) 
   end;
 
 handle_cast({register_mapping, Mapping}, StateImpl = #state_impl { mappings = Mappings }) ->
-  { noreply, StateImpl#state_impl { mappings = [ Mapping | Mappings ] }}.
+  { noreply, StateImpl#state_impl { mappings = [ Mapping | Mappings ] }};
+
+handle_cast({ monitor, ToMonitor, Mapper }, StateImpl = #state_impl { monitors = Monitors }) ->
+
+  Pid = case ToMonitor of
+          {via, Module, Name} ->
+            Module:whereis_name(Name);
+          {global, Name} ->
+            global:whereis_name(Name);
+          Name when is_atom(Name) ->
+            whereis(Name)
+        end,
+
+  case Pid of
+    undefined ->
+      %% DOWN
+      Ref = make_ref(),
+      Monitors2 = maps:put(Ref, {ToMonitor, Mapper}, Monitors),
+
+      handle_info({'DOWN', Ref, process, undefined, noproc}, StateImpl#state_impl{ monitors = Monitors2 });
+    _ ->
+      MRef = erlang:monitor(process, Pid),
+      Monitors2 = maps:put(MRef, {ToMonitor, Mapper}, Monitors),
+
+      {noreply, StateImpl#state_impl{ monitors = Monitors2 }}
+  end.
+
+handle_info({'DOWN', MRef, _Type, _Object, Info}, StateImpl = #state_impl { state = State, handle_info = HandleInfo, monitors = Monitors }) ->
+
+  case maps:find(MRef, Monitors) of
+    error ->
+      {noreply, StateImpl};
+
+    {ok, {_ToMonitor, Fun}} ->
+      MappedMsg = Fun(Info),
+      case ((HandleInfo(MappedMsg))(State))() of
+        { castNoReply, NewState } -> {noreply, StateImpl#state_impl { state = NewState}};
+        { castNoReplyHibernate, NewState } -> {noreply, StateImpl#state_impl { state = NewState }, hibernate};
+        { castStop, NewState } -> {stop, normal, StateImpl#state_impl { state = NewState }}
+      end
+  end;
 
 handle_info(Msg, StateImpl = #state_impl { state = State, handle_info = HandleInfo, mappings = Mappings }) ->
   MappedMsg = try_map(Msg, Mappings),

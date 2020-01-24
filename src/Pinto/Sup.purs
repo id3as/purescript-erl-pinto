@@ -213,7 +213,7 @@ childId id spec = (spec { id = id })
 -- | Configures the template for the children started by this supervisor
 -- | See also the OTP docs for supervisor specs
 childStartTemplate :: forall args. Pinto.ChildTemplate args -> SupervisorChildSpec -> SupervisorChildSpec
-childStartTemplate (Pinto.ChildTemplate startFn) spec = (spec { startFn = (unsafeCoerce startFn) })
+childStartTemplate (Pinto.ChildTemplate startFn) spec = (spec { startFn = (unsafeCoerce (\args -> eitherToOk <$> startFn args)) })
 
 -- | Sets the 'restart' value of a child spec
 -- | See also the OTP docs for supervisor specs
@@ -223,14 +223,13 @@ childRestart restart spec = (spec { restart = restart })
 -- | Sets the callback and args for starting the child
 childStart :: forall args. (args -> Effect Pinto.StartLinkResult) -> args -> SupervisorChildSpec -> SupervisorChildSpec
 childStart startFn startArgs spec =
-  let
-    eitherToOk :: forall a b c. Either a b -> Tuple2 Atom c
-    eitherToOk (Left err) = tuple2 (atom "error") (unsafeCoerce err)
-    eitherToOk (Right pid) = tuple2 (atom "ok") (unsafeCoerce pid)
-  in
   (spec { startFn  =  unsafeCoerce $  (\args -> eitherToOk <$> startFn args)
         , startArgs = (unsafeCoerce startArgs)
         })
+
+eitherToOk :: forall a b c. Either a b -> Tuple2 Atom c
+eitherToOk (Left err) = tuple2 (atom "error") (unsafeCoerce err)
+eitherToOk (Right pid) = tuple2 (atom "ok") (unsafeCoerce pid)
 
 -- | Internal function to support the buildSupervisor hierarchy
 reify :: SupervisorSpec -> ReifiedSupervisorSpec
