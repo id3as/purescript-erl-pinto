@@ -125,6 +125,8 @@ handle_cast({register_mapping, Mapping}, StateImpl = #state_impl { mappings = Ma
 handle_cast({ monitor, ToMonitor, Mapper }, StateImpl = #state_impl { monitors = Monitors }) ->
 
   Pid = case ToMonitor of
+          P when is_pid(P) ->
+            P;
           {via, Module, Name} ->
             Module:whereis_name(Name);
           {global, Name} ->

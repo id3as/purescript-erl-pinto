@@ -9,7 +9,8 @@ module Pinto.Gen ( startLink
                  , doCast
                  , defaultHandleInfo
                  , registerExternalMapping
-                 , monitor
+                 , monitorName
+                 , monitorPid
                  )
   where
 
@@ -21,6 +22,7 @@ import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Data.Tuple (tuple2, tuple3)
 import Erl.ModuleName (NativeModuleName(..))
+import Erl.Process.Raw (Pid)
 import Foreign (Foreign, unsafeToForeign)
 import Pinto (ServerName(..), StartLinkResult)
 
@@ -53,8 +55,11 @@ registerExternalMapping :: forall state externalMsg msg. ServerName state msg ->
 registerExternalMapping name = registerExternalMappingImpl (nativeName name)
 
 -- | Adds a monitor
-monitor :: forall state name toMonitor externalMsg msg. ServerName state msg -> toMonitor -> (externalMsg -> msg) -> Effect Unit
-monitor name = monitorImpl (nativeName name)
+monitorName :: forall state name otherState otherName externalMsg msg. ServerName state msg -> ServerName otherState otherName -> (externalMsg -> msg) -> Effect Unit
+monitorName name = monitorImpl (nativeName name)
+
+monitorPid :: forall state name externalMsg msg. ServerName state msg -> Pid -> (externalMsg -> msg) -> Effect Unit
+monitorPid name = monitorImpl (nativeName name)
 
 
 -- | Starts a typed gen-server proxy with the supplied ServerName, with the state being the result of the supplied effect
