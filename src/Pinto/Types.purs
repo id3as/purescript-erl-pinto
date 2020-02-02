@@ -1,4 +1,10 @@
-module Pinto.Types where
+module Pinto.Types
+       ( ServerName(..)
+       , SupervisorName
+       , StartLinkResult(..)
+       , ChildTemplate(..)
+       )
+       where
 
 import Data.Either (Either)
 import Effect (Effect)
@@ -18,11 +24,8 @@ data ServerName state msg = Local Atom
 
 type SupervisorName = ServerName Unit Unit
 
--- | The result of invoking gen_server:start_link
+-- | The result of invoking gen_server:start_link or supervisor:start_child
 type StartLinkResult = Either Foreign Pid
-
--- | The result of supervisor:start_child
-data StartChildResult = AlreadyStarted Pid | Started Pid
 
 -- | The type used to link startSimpleChild and startTemplate together
 data ChildTemplate args = ChildTemplate (args -> Effect StartLinkResult)

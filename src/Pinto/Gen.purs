@@ -30,7 +30,7 @@ foreign import callImpl :: forall response state name. name -> (state -> (CallRe
 foreign import doCallImpl :: forall response state name. name -> (state -> Effect (CallResult response state)) -> Effect response
 foreign import castImpl :: forall state name. name -> (state -> (CastResult state)) -> Effect Unit
 foreign import doCastImpl :: forall state name. name -> (state -> Effect (CastResult state)) -> Effect Unit
-foreign import startLinkImpl :: forall a b name state msg. (a -> Either a b) -> (b -> Either a b) ->name -> Effect state -> (msg -> state -> Effect (CastResult state)) -> Effect StartLinkResult
+foreign import startLinkImpl :: forall a b name state msg. (a -> Either a b) -> (b -> Either a b) -> name -> Effect state -> (msg -> state -> Effect (CastResult state)) -> Effect StartLinkResult
 foreign import registerExternalMappingImpl :: forall externalMsg msg name. name -> (externalMsg -> Maybe msg) -> Effect Unit
 foreign import monitorImpl :: forall externalMsg msg name toMonitor. name -> toMonitor -> (externalMsg -> msg) -> Effect Unit
 
@@ -55,10 +55,10 @@ registerExternalMapping :: forall state externalMsg msg. ServerName state msg ->
 registerExternalMapping name = registerExternalMappingImpl (nativeName name)
 
 -- | Adds a monitor
-monitorName :: forall state name otherState otherName externalMsg msg. ServerName state msg -> ServerName otherState otherName -> (externalMsg -> msg) -> Effect Unit
+monitorName :: forall state otherState otherName externalMsg msg. ServerName state msg -> ServerName otherState otherName -> (externalMsg -> msg) -> Effect Unit
 monitorName name = monitorImpl (nativeName name)
 
-monitorPid :: forall state name externalMsg msg. ServerName state msg -> Pid -> (externalMsg -> msg) -> Effect Unit
+monitorPid :: forall state externalMsg msg. ServerName state msg -> Pid -> (externalMsg -> msg) -> Effect Unit
 monitorPid name = monitorImpl (nativeName name)
 
 
@@ -80,6 +80,7 @@ startLink (Local name) = startLink_ $ tuple2 (atom "local") name
 startLink (Global name) = startLink_ $ tuple2 (atom "global") name
 startLink (Via (NativeModuleName m) name) = startLink_ $ tuple3 (atom "via") m name
 
+startLink_ :: forall name state msg. name -> Effect state -> (msg -> state -> Effect (CastResult state)) -> Effect StartLinkResult
 startLink_ = startLinkImpl Left Right
 
 data CallResult response state = CallReply response state | CallReplyHibernate response state | CallStop response state

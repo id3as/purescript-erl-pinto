@@ -20,11 +20,12 @@ startLinkImpl(Left, Right, Name, Effect) ->
       end
   end.
 
-startChildImpl(AlreadyStarted, Started, Name, Args) ->
+
+startChildImpl(Left, Right, Name, Args) ->
   fun() ->
     case supervisor:start_child(Name, [Args]) of
-      {error, {already_started, Pid}} -> AlreadyStarted(Pid);
-      { ok, Pid } -> Started(Pid)
+      {ok, Pid}  -> Right(Pid);
+      {error, E} -> Left(E)
     end
   end.
 
