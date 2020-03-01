@@ -2,11 +2,15 @@ module Pinto.Types
        ( ServerName(..)
        , SupervisorName
        , StartLinkResult(..)
+       , StartChildResult(..)
        , ChildTemplate(..)
+       , class StartOk
+       , startOk
+       , startOkAS
        )
        where
 
-import Data.Either (Either)
+import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Erl.Atom (Atom)
 import Erl.ModuleName (NativeModuleName)
@@ -24,8 +28,42 @@ data ServerName state msg = Local Atom
 
 type SupervisorName = ServerName Unit Unit
 
--- | The result of invoking gen_server:start_link or supervisor:start_child
-type StartLinkResult = Either Foreign Pid
+-- | The result of invoking gen_server:start_link
+data StartLinkResult
+  = Ok Pid
+  | Ignore
+  | AlreadyStarted Pid
+  | Failed Foreign
+
+-- | The result of invoking gen_server:start_link
+data StartChildResult
+  = ChildStarted Pid
+  | ChildStartedWithInfo Pid Foreign
+  | ChildAlreadyStarted Pid
+  | ChildAlreadyPresent
+  | ChildFailed Foreign
 
 -- | The type used to link startSimpleChild and startTemplate together
 data ChildTemplate args = ChildTemplate (args -> Effect StartLinkResult)
+
+class StartOk a where
+  startOk :: a -> Maybe Pid
+  startOkAS :: a -> Maybe Pid
+
+instance startLinkResultOk :: StartOk StartLinkResult where
+  startOk (Ok p) = Just p
+  startOk _ = Nothing
+
+  startOkAS (Ok p) = Just p
+  startOkAS (AlreadyStarted p) = Just p
+  startOkAS _ = Nothing
+
+instance startChildResultOk :: StartOk StartChildResult where
+  startOk (ChildStarted p) = Just p
+  startOk (ChildStartedWithInfo p _) = Just p
+  startOk _ = Nothing
+
+  startOkAS (ChildStarted p) = Just p
+  startOkAS (ChildStartedWithInfo p _) = Just p
+  startOkAS (ChildAlreadyStarted p) = Just p
+  startOkAS _ = Nothing

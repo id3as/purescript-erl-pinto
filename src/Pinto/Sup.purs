@@ -49,6 +49,7 @@ module Pinto.Sup ( startSimpleChild
                  , reifySupervisorFlags
                  , reifySupervisorChildren
                  , reifySupervisorChild
+                 , slrToForeign
   ) where
 
 import Prelude
@@ -59,6 +60,7 @@ import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
 import Erl.Data.Tuple (Tuple2, Tuple3, tuple2, tuple3)
 import Erl.ModuleName (NativeModuleName(..))
+import Foreign (Foreign)
 import Pinto as Pinto
 import Pinto.Types (ChildTemplate(..), ServerName(..), SupervisorName)
 import Unsafe.Coerce (unsafeCoerce)
@@ -66,8 +68,15 @@ import Unsafe.Coerce (unsafeCoerce)
 foreign import data BoxedStartFn :: Type
 foreign import data BoxedStartArgs :: Type
 
-foreign import startLinkImpl :: forall a b name state. (a -> Either a b) -> (b -> Either a b) -> name -> Effect state  -> Effect Pinto.StartLinkResult
-foreign import startChildImpl :: forall a b name args. (a -> Either a b) -> (b -> Either a b) -> name -> args -> Effect Pinto.StartLinkResult
+foreign import startLinkImpl :: forall name state. name -> Effect state  -> Effect Pinto.StartLinkResult
+foreign import startChildImpl :: forall name args. name -> args -> Effect Pinto.StartChildResult
+
+foreign import foreignToSlr :: Foreign  -> Pinto.StartLinkResult
+foreign import foreignToScr :: Foreign  -> Pinto.StartChildResult
+
+foreign import slrToForeign :: Pinto.StartLinkResult -> Foreign
+foreign import scrToForeign :: Pinto.StartChildResult -> Foreign
+
 
 -- These imports are just so we don't get warnings
 foreign import init :: forall a. a -> a
@@ -77,23 +86,23 @@ foreign import start_from_spec :: forall a. a -> a
 -- | This is effectful to allow for reading of config/etc
 -- | See also: supervisor:start_child in the OTP docs
 startLink :: SupervisorName -> Effect SupervisorSpec -> Effect Pinto.StartLinkResult
-startLink (Local name) = startLink_ $ tuple2 (atom "local") name
-startLink (Global name) = startLink_ $ tuple2 (atom "global") name
-startLink (Via (NativeModuleName m) name) = startLink_ $ tuple3 (atom "via") m name
+startLink (Local name) = startLinkImpl $ tuple2 (atom "local") name
+startLink (Global name) = startLinkImpl $ tuple2 (atom "global") name
+startLink (Via (NativeModuleName m) name) = startLinkImpl $ tuple3 (atom "via") m name
 
 -- | Dynamically starts a child with the supplied name and args as specified with the child template
 -- | See also: supervisor:start_child in the OTP docs
-startSimpleChild :: forall args. Pinto.ChildTemplate args -> SupervisorName -> args -> Effect Pinto.StartLinkResult
-startSimpleChild _ (Local name) args = startChild_ name args
-startSimpleChild _ (Global name) args = startChild_ (tuple2 (atom "global") name) args
-startSimpleChild _ (Via (NativeModuleName m) name) args = startChild_ (tuple3 (atom "via") m name) args
+startSimpleChild :: forall args. Pinto.ChildTemplate args -> SupervisorName -> args -> Effect Pinto.StartChildResult
+startSimpleChild _ (Local name) args = startChildImpl name args
+startSimpleChild _ (Global name) args = startChildImpl (tuple2 (atom "global") name) args
+startSimpleChild _ (Via (NativeModuleName m) name) args = startChildImpl (tuple3 (atom "via") m name) args
 
 -- | Dynamically starts a child with the supplied spec
 -- | See also: supervisor:start_child in the OTP docs
-startSpeccedChild :: SupervisorName -> SupervisorChildSpec  -> Effect Pinto.StartLinkResult
-startSpeccedChild (Local name) spec = startChild_ name spec
-startSpeccedChild (Global name) spec = startChild_ (tuple2 (atom "global") name) spec
-startSpeccedChild (Via (NativeModuleName m) name) spec = startChild_ (tuple3 (atom "via") m name) spec
+startSpeccedChild :: SupervisorName -> SupervisorChildSpec  -> Effect Pinto.StartChildResult
+startSpeccedChild (Local name) spec = startChildImpl name spec
+startSpeccedChild (Global name) spec = startChildImpl (tuple2 (atom "global") name) spec
+startSpeccedChild (Via (NativeModuleName m) name) spec = startChildImpl (tuple3 (atom "via") m name) spec
 
 -- | See also supervisor:strategy()
 -- | Maps to simple_one_for_one | one_for_one .. etc
@@ -208,7 +217,7 @@ childId id spec = (spec { id = id })
 -- | Configures the template for the children started by this supervisor
 -- | See also the OTP docs for supervisor specs
 childStartTemplate :: forall args. Pinto.ChildTemplate args -> SupervisorChildSpec -> SupervisorChildSpec
-childStartTemplate (ChildTemplate startFn) spec = (spec { startFn = (unsafeCoerce (\args -> eitherToOk <$> startFn args)) })
+childStartTemplate (ChildTemplate startFn) spec = (spec { startFn = (unsafeCoerce (\args -> slrToForeign <$> startFn args)) })
 
 -- | Sets the 'restart' value of a child spec
 -- | See also the OTP docs for supervisor specs
@@ -218,7 +227,7 @@ childRestart restart spec = (spec { restart = restart })
 -- | Sets the callback and args for starting the child
 childStart :: forall args. (args -> Effect Pinto.StartLinkResult) -> args -> SupervisorChildSpec -> SupervisorChildSpec
 childStart startFn startArgs spec =
-  (spec { startFn  =  unsafeCoerce $  (\args -> eitherToOk <$> startFn args)
+  (spec { startFn  =  unsafeCoerce $  (\args -> slrToForeign <$> startFn args)
         , startArgs = (unsafeCoerce startArgs)
         })
 
@@ -268,13 +277,3 @@ reifySupervisorChild spec =
                           Infinity -> unsafeCoerce $ atom "infinity"
                           Timeout value -> unsafeCoerce $ value
   }
-
-
---------------------------------------------------------------------------------
--- startImpl helpers
---------------------------------------------------------------------------------
-startLink_ :: forall name state. name -> Effect state  -> Effect Pinto.StartLinkResult
-startLink_ = startLinkImpl Left Right
-
-startChild_ :: forall name args. name -> args -> Effect Pinto.StartLinkResult
-startChild_ = startChildImpl Left Right
