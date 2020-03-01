@@ -16,7 +16,6 @@ module Pinto.Gen ( startLink
 
 import Prelude
 
-import Data.Either (Either(..))
 import Data.Maybe (Maybe)
 import Effect (Effect)
 import Erl.Atom (atom)
@@ -25,12 +24,13 @@ import Erl.ModuleName (NativeModuleName(..))
 import Erl.Process.Raw (Pid)
 import Foreign (Foreign, unsafeToForeign)
 import Pinto (ServerName(..), StartLinkResult)
+import Pinto.Sup (foreignToSlr)
 
 foreign import callImpl :: forall response state name. name -> (state -> (CallResult response state)) -> Effect response
 foreign import doCallImpl :: forall response state name. name -> (state -> Effect (CallResult response state)) -> Effect response
 foreign import castImpl :: forall state name. name -> (state -> (CastResult state)) -> Effect Unit
 foreign import doCastImpl :: forall state name. name -> (state -> Effect (CastResult state)) -> Effect Unit
-foreign import startLinkImpl :: forall a b name state msg. (a -> Either a b) -> (b -> Either a b) -> name -> Effect state -> (msg -> state -> Effect (CastResult state)) -> Effect StartLinkResult
+foreign import startLinkImpl :: forall name state msg. name -> Effect state -> (msg -> state -> Effect (CastResult state)) -> Effect Foreign
 foreign import registerExternalMappingImpl :: forall externalMsg msg name. name -> (externalMsg -> Maybe msg) -> Effect Unit
 foreign import monitorImpl :: forall externalMsg msg name toMonitor. name -> toMonitor -> (externalMsg -> msg) -> Effect Unit
 
@@ -76,12 +76,10 @@ monitorPid name = monitorImpl (nativeName name)
 -- | ```
 -- | See also: gen_server:start_link in the OTP docs (roughly)
 startLink :: forall state msg. ServerName state msg -> Effect state -> (msg -> state -> Effect (CastResult state)) -> Effect StartLinkResult
-startLink (Local name) = startLink_ $ tuple2 (atom "local") name
-startLink (Global name) = startLink_ $ tuple2 (atom "global") name
-startLink (Via (NativeModuleName m) name) = startLink_ $ tuple3 (atom "via") m name
+startLink (Local name) eInit msgFn = foreignToSlr <$> startLinkImpl (tuple2 (atom "local") name) eInit msgFn
+startLink (Global name) eInit msgFn  = foreignToSlr <$> startLinkImpl (tuple2 (atom "global") name) eInit msgFn
+startLink (Via (NativeModuleName m) name) eInit msgFn = foreignToSlr <$> startLinkImpl (tuple3 (atom "via") m name) eInit msgFn
 
-startLink_ :: forall name state msg. name -> Effect state -> (msg -> state -> Effect (CastResult state)) -> Effect StartLinkResult
-startLink_ = startLinkImpl Left Right
 
 data CallResult response state = CallReply response state | CallReplyHibernate response state | CallStop response state
 data CastResult state = CastNoReply state | CastNoReplyHibernate state | CastStop state

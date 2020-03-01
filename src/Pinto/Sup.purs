@@ -50,11 +50,11 @@ module Pinto.Sup ( startSimpleChild
                  , reifySupervisorChildren
                  , reifySupervisorChild
                  , slrToForeign
+                 , foreignToSlr
   ) where
 
 import Prelude
 
-import Data.Either (Either(..))
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
@@ -230,10 +230,6 @@ childStart startFn startArgs spec =
   (spec { startFn  =  unsafeCoerce $  (\args -> slrToForeign <$> startFn args)
         , startArgs = (unsafeCoerce startArgs)
         })
-
-eitherToOk :: forall a b c. Either a b -> Tuple2 Atom c
-eitherToOk (Left err) = tuple2 (atom "error") (unsafeCoerce err)
-eitherToOk (Right pid) = tuple2 (atom "ok") (unsafeCoerce pid)
 
 -- | Internal function to support the buildSupervisor hierarchy
 reify :: SupervisorSpec -> ReifiedSupervisorSpec
