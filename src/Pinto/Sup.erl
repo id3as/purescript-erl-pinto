@@ -22,12 +22,12 @@ startLinkImpl(Name, Effect) ->
   end.
 
 foreignToSlr({ok, Pid})  -> {ok, Pid};
-foreignToSlr(ignore) -> {ingore};
+foreignToSlr(ignore) -> {ignore};
 foreignToSlr({error, {already_started, Pid}}) -> {alreadyStarted, Pid};
 foreignToSlr({error, E}) -> {failed, E}.
 
 slrToForeign({ok, Pid})  -> {ok, Pid};
-slrToForeign({ignore}) -> ingore;
+slrToForeign({ignore}) -> ignore;
 slrToForeign({alreadyStarted, Pid}) -> {error, {already_started, Pid}};
 slrToForeign({failed, E}) -> {error, E}.
 
