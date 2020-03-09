@@ -29,6 +29,7 @@
 %% Pinto specific APIs
 -export([
          registerExternalMappingImpl/2,
+         registerTerminateImpl/2,
          monitorImpl/3
         ]).
 
@@ -37,7 +38,8 @@
          state :: term(),
          handle_info :: fun(),
          mappings :: list(fun()),
-         monitors = #{} :: maps:map(pid(), {reference(), fun()})
+         monitors = #{} :: maps:map(pid(), {reference(), fun()}),
+         terminate_handler :: undefined | fun()
          }).
 
 doCallImpl(Name, Fn) -> fun() ->
@@ -73,6 +75,11 @@ start_from_spec(_Spec = #{ startFn := Fn }, Args) ->
 registerExternalMappingImpl(Name, Mapper) ->
   fun() ->
     gen_server:cast(Name, { register_mapping, Mapper })
+  end.
+
+registerTerminateImpl(Name, TerminateHandler) ->
+  fun() ->
+    gen_server:cast(Name, { register_terminate, TerminateHandler })
   end.
 
 %% Similar approach to registerExternalMappingImpl - given a state monad, we could probably
@@ -118,6 +125,9 @@ handle_cast({wrapped_pure_cast, Fn}, StateImpl = #state_impl { state = State }) 
 
 handle_cast({register_mapping, Mapping}, StateImpl = #state_impl { mappings = Mappings }) ->
   { noreply, StateImpl#state_impl { mappings = [ Mapping | Mappings ] }};
+
+handle_cast({register_terminate, TerminateHandler}, StateImpl = #state_impl { }) ->
+  { noreply, StateImpl#state_impl { terminate_handler = TerminateHandler }};
 
 handle_cast({ monitor, ToMonitor, Mapper }, StateImpl = #state_impl { monitors = Monitors }) ->
 
@@ -169,8 +179,12 @@ handle_info(Msg, StateImpl = #state_impl { state = State, handle_info = HandleIn
     { castStop, NewState } -> {stop, normal, StateImpl#state_impl { state = NewState }}
   end.
 
-terminate(_Reason, _State) ->
-  ok.
+terminate(_Reason, _StateImpl = #state_impl { terminate_handler = undefined} ) ->
+  ok;
+
+terminate(Reason, _StateImpl = #state_impl { terminate_handler = TerminateHandler
+                                           , state = State } ) ->
+  ((TerminateHandler(Reason))(State))().
 
 code_change(_OldVsn, State, _Extra) ->
   {ok, State}.

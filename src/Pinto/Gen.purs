@@ -9,6 +9,7 @@ module Pinto.Gen ( startLink
                  , doCast
                  , defaultHandleInfo
                  , registerExternalMapping
+                 , registerTerminate
                  , monitorName
                  , monitorPid
                  )
@@ -32,6 +33,7 @@ foreign import castImpl :: forall state name. name -> (state -> (CastResult stat
 foreign import doCastImpl :: forall state name. name -> (state -> Effect (CastResult state)) -> Effect Unit
 foreign import startLinkImpl :: forall name state msg. name -> Effect state -> (msg -> state -> Effect (CastResult state)) -> Effect Foreign
 foreign import registerExternalMappingImpl :: forall externalMsg msg name. name -> (externalMsg -> Maybe msg) -> Effect Unit
+foreign import registerTerminateImpl :: forall state name. name -> (Foreign -> state -> Effect Unit) -> Effect Unit
 foreign import monitorImpl :: forall externalMsg msg name toMonitor. name -> toMonitor -> (externalMsg -> msg) -> Effect Unit
 
 -- These imports are just so we don't get warnings
@@ -53,6 +55,10 @@ nativeName (Via (NativeModuleName m) name) = unsafeToForeign $ tuple3 (atom "via
 -- | gen server actually understands
 registerExternalMapping :: forall state externalMsg msg. ServerName state msg -> (externalMsg -> Maybe msg) -> Effect Unit
 registerExternalMapping name = registerExternalMappingImpl (nativeName name)
+
+-- | Adds a terminate handler
+registerTerminate :: forall state externalMsg msg. ServerName state msg -> (Foreign -> state -> Effect Unit) -> Effect Unit
+registerTerminate name = registerTerminateImpl (nativeName name)
 
 -- | Adds a monitor
 monitorName :: forall state otherState otherName externalMsg msg. ServerName state msg -> ServerName otherState otherName -> (externalMsg -> msg) -> Effect Unit
