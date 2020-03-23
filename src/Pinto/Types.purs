@@ -1,5 +1,6 @@
 module Pinto.Types
        ( ServerName(..)
+       , GlobalName
        , SupervisorName
        , StartLinkResult(..)
        , StartChildResult(..)
@@ -18,12 +19,15 @@ import Erl.Process.Raw (Pid)
 import Foreign (Foreign)
 import Prelude (Unit)
 
+
+foreign import data GlobalName :: Type
+
 -- | Defines the server name for a gen server, along with the 'state' that the gen server
 -- | will be using internally and the 'msg' type that will be received in the handleInfo calls
 -- | this will be supplied to every call to the gen server API in order
 -- | to enforce type safety across calls
 data ServerName state msg = Local Atom
-                          | Global Atom
+                          | Global GlobalName
                           | Via NativeModuleName Foreign
 
 type SupervisorName = ServerName Unit Unit
