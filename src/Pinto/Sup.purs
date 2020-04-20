@@ -32,7 +32,7 @@ module Pinto.Sup ( startSimpleChild
                  , ReifiedSupervisorSpec
                  , ReifiedSupervisorFlags
                  , ReifiedSupervisorChild
-                 , ReifiedhildShutdown
+                 , ReifiedChildShutdown
                  , buildSupervisor
                  , buildChild
                  , supervisorStrategy
@@ -60,7 +60,7 @@ import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
 import Erl.Data.Tuple (Tuple2, Tuple3, tuple2, tuple3)
 import Erl.ModuleName (NativeModuleName(..))
-import Foreign (Foreign)
+import Foreign (Foreign, unsafeToForeign)
 import Pinto as Pinto
 import Pinto.Types (ChildTemplate(..), ServerName(..), SupervisorName)
 import Unsafe.Coerce (unsafeCoerce)
@@ -109,7 +109,10 @@ startSpeccedChild (Via (NativeModuleName m) name) spec = startChildImpl (tuple3 
 data SupervisorStrategy = SimpleOneForOne | OneForOne | OneForAll | RestForOne
 
 -- | Maps to supervisor | worker
-data SupervisorChildType = Supervisor | Worker
+data SupervisorChildType = Supervisor
+                         | Worker
+                         | NativeSupervisor NativeModuleName Atom (List Foreign)
+                         | NativeWorker NativeModuleName Atom (List Foreign)
 
 -- | Maps to transient | permanent | temporary
 data SupervisorChildRestart = Transient | Permanent | Temporary
@@ -150,14 +153,14 @@ type ReifiedSupervisorFlags = Tuple3 Atom Int Int
 -- | This type is not used directly, but is here to support the buildSupervisor hierarchy
 type ReifiedSupervisorChild =
   { id :: Atom
-  , start :: Tuple3 Atom Atom (List SupervisorChildSpec)
+  , start :: Tuple3 Atom Atom (List Foreign)
   , restart :: Atom
-  , shutdown :: ReifiedhildShutdown
+  , shutdown :: ReifiedChildShutdown
   , type :: Atom
   }
 
 -- | This type is not used directly, but is here to support the buildSupervisor hierarchy
-foreign import data ReifiedhildShutdown :: Type -- Can be { Int or Atom, unsafeCoerce it is )
+foreign import data ReifiedChildShutdown :: Type -- Can be { Int or Atom, unsafeCoerce it is )
 
 -- | Creates a supervisor with default options and no children
 buildSupervisor :: SupervisorSpec
@@ -257,19 +260,22 @@ reifySupervisorChild :: SupervisorChildSpec -> ReifiedSupervisorChild
 reifySupervisorChild spec =
   {
     id : (atom spec.id)
-  , start : (case spec.type_ of
-                 Supervisor -> tuple3 (atom "pinto_sup@foreign") (atom "start_from_spec") (spec : nil)
-                 Worker -> tuple3 (atom "pinto_gen@foreign") (atom "start_from_spec") (spec : nil)
-            )
-  , restart : (case spec.restart of
-                        Transient -> (atom "transient")
-                        Permanent -> (atom "permanent")
-                        Temporary -> (atom "temporary"))
-  , type : (case spec.type_ of
-                    Worker -> (atom "worker")
-                    Supervisor -> (atom "supervisor"))
+  , start : case spec.type_ of
+              Supervisor -> tuple3 (atom "pinto_sup@foreign") (atom "start_from_spec") (unsafeToForeign spec : nil)
+              Worker -> tuple3 (atom "pinto_gen@foreign") (atom "start_from_spec") (unsafeToForeign spec : nil)
+              NativeSupervisor (NativeModuleName moduleName) startFn args -> tuple3 moduleName startFn args
+              NativeWorker (NativeModuleName moduleName) startFn args -> tuple3 moduleName startFn args
+  , restart : case spec.restart of
+                Transient -> (atom "transient")
+                Permanent -> (atom "permanent")
+                Temporary -> (atom "temporary")
+  , type : case spec.type_ of
+             Supervisor -> (atom "supervisor")
+             Worker -> (atom "worker")
+             NativeSupervisor _ _ _ -> (atom "supervisor")
+             NativeWorker _ _ _ -> (atom "worker")
   , shutdown : case spec.shutdown of
-                          Brutal -> unsafeCoerce $ atom "brutal"
-                          Infinity -> unsafeCoerce $ atom "infinity"
-                          Timeout value -> unsafeCoerce $ value
+                 Brutal -> unsafeCoerce $ atom "brutal"
+                 Infinity -> unsafeCoerce $ atom "infinity"
+                 Timeout value -> unsafeCoerce $ value
   }
