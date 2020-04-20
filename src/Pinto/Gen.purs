@@ -57,7 +57,7 @@ registerExternalMapping :: forall state externalMsg msg. ServerName state msg ->
 registerExternalMapping name = registerExternalMappingImpl (nativeName name)
 
 -- | Adds a terminate handler
-registerTerminate :: forall state externalMsg msg. ServerName state msg -> (Foreign -> state -> Effect Unit) -> Effect Unit
+registerTerminate :: forall state msg. ServerName state msg -> (Foreign -> state -> Effect Unit) -> Effect Unit
 registerTerminate name = registerTerminateImpl (nativeName name)
 
 -- | Adds a monitor
