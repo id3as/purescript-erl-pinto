@@ -9,6 +9,7 @@ module Pinto.Gen ( startLink
                  , doCast
                  , defaultHandleInfo
                  , registerExternalMapping
+                 , TerminateReason(..)
                  , registerTerminate
                  , monitorName
                  , monitorPid
@@ -33,7 +34,7 @@ foreign import castImpl :: forall state name. name -> (state -> (CastResult stat
 foreign import doCastImpl :: forall state name. name -> (state -> Effect (CastResult state)) -> Effect Unit
 foreign import startLinkImpl :: forall name state msg. name -> Effect state -> (msg -> state -> Effect (CastResult state)) -> Effect Foreign
 foreign import registerExternalMappingImpl :: forall externalMsg msg name. name -> (externalMsg -> Maybe msg) -> Effect Unit
-foreign import registerTerminateImpl :: forall state name. name -> (Foreign -> state -> Effect Unit) -> Effect Unit
+foreign import registerTerminateImpl :: forall state name. name -> (TerminateReason -> state -> Effect Unit) -> Effect Unit
 foreign import monitorImpl :: forall externalMsg msg name toMonitor. name -> toMonitor -> (externalMsg -> msg) -> Effect Unit
 
 -- These imports are just so we don't get warnings
@@ -50,6 +51,12 @@ nativeName (Local name) = unsafeToForeign $ name
 nativeName (Global name) = unsafeToForeign $ tuple2 (atom "global") name
 nativeName (Via (NativeModuleName m) name) = unsafeToForeign $ tuple3 (atom "via") m name
 
+data TerminateReason
+  = Normal
+  | Shutdown
+  | ShutdownWithCustom Foreign
+  | Custom Foreign
+
 
 -- | Adds a (presumably) native Erlang function into the gen server to map external messages into types that this
 -- | gen server actually understands
@@ -57,7 +64,7 @@ registerExternalMapping :: forall state externalMsg msg. ServerName state msg ->
 registerExternalMapping name = registerExternalMappingImpl (nativeName name)
 
 -- | Adds a terminate handler
-registerTerminate :: forall state msg. ServerName state msg -> (Foreign -> state -> Effect Unit) -> Effect Unit
+registerTerminate :: forall state msg. ServerName state msg -> (TerminateReason -> state -> Effect Unit) -> Effect Unit
 registerTerminate name = registerTerminateImpl (nativeName name)
 
 -- | Adds a monitor

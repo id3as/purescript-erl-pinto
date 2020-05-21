@@ -184,10 +184,19 @@ terminate(_Reason, _StateImpl = #state_impl { terminate_handler = undefined} ) -
 
 terminate(Reason, _StateImpl = #state_impl { terminate_handler = TerminateHandler
                                            , state = State } ) ->
-  ((TerminateHandler(Reason))(State))().
+  ((TerminateHandler(map_shutdown_reason(Reason)))(State))().
 
 code_change(_OldVsn, State, _Extra) ->
   {ok, State}.
+
+map_shutdown_reason(normal) ->
+  {normal};
+map_shutdown_reason(shutdown) ->
+  {shutdown};
+map_shutdown_reason({shutdown, Term}) ->
+  {shutdownWithCustom, Term};
+map_shutdown_reason(Term) ->
+  {custom, Term}.
 
 try_map(Msg, []) -> Msg;
 try_map(Msg, [ Head | Tail ]) ->
