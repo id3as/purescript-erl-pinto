@@ -4,6 +4,7 @@
          start_from_spec/1,
          startLinkImpl/4,
          startChildImpl/4,
+         startSpeccedChildImpl/4,
          init/1
         ]).
 
@@ -23,6 +24,14 @@ startLinkImpl(Left, Right, Name, Effect) ->
 startChildImpl(AlreadyStarted, Started, Name, Args) ->
   fun() ->
     case supervisor:start_child(Name, [Args]) of
+      {error, {already_started, Pid}} -> AlreadyStarted(Pid);
+      { ok, Pid } -> Started(Pid)
+    end
+  end.
+
+startSpeccedChildImpl(AlreadyStarted, Started, Name, Args) ->
+  fun() ->
+    case supervisor:start_child(Name, Args) of
       {error, {already_started, Pid}} -> AlreadyStarted(Pid);
       { ok, Pid } -> Started(Pid)
     end

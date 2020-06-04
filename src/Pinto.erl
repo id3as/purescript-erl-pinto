@@ -1,6 +1,7 @@
 -module(pinto@foreign).
 
 -export([ isRegisteredImpl/1
+        , node/0
         ]).
 
 isRegisteredImpl(ServerName) ->
@@ -13,4 +14,9 @@ isRegisteredImpl(ServerName) ->
         {local, Name} ->
           whereis(Name)
       end =/= undefined
+  end.
+
+node() ->
+  fun() ->
+      atom_to_binary(erlang:node(), utf8)
   end.

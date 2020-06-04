@@ -70,6 +70,7 @@ foreign import data BoxedStartArgs :: Type
 
 foreign import startLinkImpl :: forall a b name state msg. (a -> Either a b) -> (b -> Either a b) ->name -> Effect state  -> Effect Pinto.StartLinkResult
 foreign import startChildImpl :: forall name args. (Pid -> Pinto.StartChildResult) -> (Pid -> Pinto.StartChildResult) -> name -> args -> Effect Pinto.StartChildResult
+foreign import startSpeccedChildImpl :: forall name args. (Pid -> Pinto.StartChildResult) -> (Pid -> Pinto.StartChildResult) -> name -> args -> Effect Pinto.StartChildResult
 
 startLink_ = startLinkImpl Left Right
 
@@ -96,9 +97,9 @@ startSimpleChild _ (Via (NativeModuleName m) name) args = startChildImpl Pinto.A
 -- | Dynamically starts a child with the supplied spec
 -- | See also: supervisor:start_child in the OTP docs
 startSpeccedChild :: SupervisorName -> SupervisorChildSpec  -> Effect Pinto.StartChildResult
-startSpeccedChild (Local name) spec = startChildImpl Pinto.AlreadyStarted Pinto.Started name spec
-startSpeccedChild (Global name) spec = startChildImpl Pinto.AlreadyStarted Pinto.Started (tuple2 (atom "global") name) spec
-startSpeccedChild (Via (NativeModuleName m) name) spec = startChildImpl Pinto.AlreadyStarted Pinto.Started (tuple3 (atom "via") m name) spec
+startSpeccedChild (Local name) spec = startSpeccedChildImpl Pinto.AlreadyStarted Pinto.Started name $ reifySupervisorChild spec
+startSpeccedChild (Global name) spec = startSpeccedChildImpl Pinto.AlreadyStarted Pinto.Started (tuple2 (atom "global") name) $ reifySupervisorChild spec
+startSpeccedChild (Via (NativeModuleName m) name) spec = startSpeccedChildImpl Pinto.AlreadyStarted Pinto.Started (tuple3 (atom "via") m name) $ reifySupervisorChild spec
 
 -- | See also supervisor:strategy()
 -- | Maps to simple_one_for_one | one_for_one .. etc

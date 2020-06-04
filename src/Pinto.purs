@@ -1,5 +1,6 @@
 module Pinto ( isRegistered
              , module Pinto.Types
+             , node
              )
 where
 
@@ -14,6 +15,7 @@ import Pinto.Types (ServerName(..), SupervisorName, StartChildResult(..), StartL
 
 
 foreign import isRegisteredImpl :: forall a b. Foreign -> Effect Boolean
+foreign import node :: Effect String
 
 
 isRegistered :: forall a b. ServerName a b -> Effect Boolean
