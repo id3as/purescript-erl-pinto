@@ -20,6 +20,8 @@
 -- | ```
 module Pinto.Sup ( startSimpleChild
                  , startSpeccedChild
+                 , terminateChild
+                 , deleteChild
                  , startLink
                  , BoxedStartFn
                  , BoxedStartArgs
@@ -72,6 +74,9 @@ foreign import startLinkImpl :: forall a b name state msg. (a -> Either a b) -> 
 foreign import startChildImpl :: forall name args. (Pid -> Pinto.StartChildResult) -> (Pid -> Pinto.StartChildResult) -> name -> args -> Effect Pinto.StartChildResult
 foreign import startSpeccedChildImpl :: forall name args. (Pid -> Pinto.StartChildResult) -> (Pid -> Pinto.StartChildResult) -> name -> args -> Effect Pinto.StartChildResult
 
+foreign import terminateChildImpl :: forall name args. name -> args -> Effect Unit
+foreign import deleteChildImpl :: forall name args. name -> args -> Effect Unit
+
 startLink_ = startLinkImpl Left Right
 
 
@@ -100,6 +105,16 @@ startSpeccedChild :: SupervisorName -> SupervisorChildSpec  -> Effect Pinto.Star
 startSpeccedChild (Local name) spec = startSpeccedChildImpl Pinto.AlreadyStarted Pinto.Started name $ reifySupervisorChild spec
 startSpeccedChild (Global name) spec = startSpeccedChildImpl Pinto.AlreadyStarted Pinto.Started (tuple2 (atom "global") name) $ reifySupervisorChild spec
 startSpeccedChild (Via (NativeModuleName m) name) spec = startSpeccedChildImpl Pinto.AlreadyStarted Pinto.Started (tuple3 (atom "via") m name) $ reifySupervisorChild spec
+
+terminateChild :: SupervisorName -> String  -> Effect Unit
+terminateChild (Local name) child = terminateChildImpl name child
+terminateChild (Global name) child = terminateChildImpl (tuple2 (atom "global") name) child
+terminateChild (Via (NativeModuleName m) name) child = terminateChildImpl (tuple3 (atom "via") m name) child
+
+deleteChild :: SupervisorName -> String  -> Effect Unit
+deleteChild (Local name) child = deleteChildImpl name child
+deleteChild (Global name) child = deleteChildImpl (tuple2 (atom "global") name) child
+deleteChild (Via (NativeModuleName m) name) child = deleteChildImpl (tuple3 (atom "via") m name) child
 
 -- | See also supervisor:strategy()
 -- | Maps to simple_one_for_one | one_for_one .. etc

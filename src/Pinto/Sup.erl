@@ -5,6 +5,8 @@
          startLinkImpl/4,
          startChildImpl/4,
          startSpeccedChildImpl/4,
+         terminateChildImpl/2,
+         deleteChildImpl/2,
          init/1
         ]).
 
@@ -33,8 +35,21 @@ startSpeccedChildImpl(AlreadyStarted, Started, Name, Args) ->
   fun() ->
     case supervisor:start_child(Name, Args) of
       {error, {already_started, Pid}} -> AlreadyStarted(Pid);
-      { ok, Pid } -> Started(Pid)
+      {error, {already_started, Pid},  _Child} -> AlreadyStarted(Pid);
+      { ok, Pid } -> Started(Pid);
+      Other ->
+        io:format(user, "What on earth ~p", [ Other ])
     end
+  end.
+
+terminateChildImpl(Name, Args) ->
+  fun() ->
+    supervisor:terminate_child(Name, Args)
+  end.
+
+deleteChildImpl(Name, Args) ->
+  fun() ->
+    supervisor:delete_child(Name, Args)
   end.
 
 init([Effect]) ->
