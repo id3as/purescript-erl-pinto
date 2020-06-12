@@ -93,10 +93,8 @@ startLink (Local name) eInit msgFn = foreignToSlr <$> startLinkImpl (tuple2 (ato
 startLink (Global name) eInit msgFn  = foreignToSlr <$> startLinkImpl (tuple2 (atom "global") name) eInit msgFn
 startLink (Via (NativeModuleName m) name) eInit msgFn = foreignToSlr <$> startLinkImpl (tuple3 (atom "via") m name) eInit msgFn
 
-
 data CallResult response state = CallReply response state | CallReplyHibernate response state | CallStop response state
-data CastResult state = CastNoReply state | CastNoReplyHibernate state | CastStop state
-
+data CastResult state = CastNoReply state | CastNoReplyHibernate state | CastStop state | CastStopReason TerminateReason state
 
 -- | A default implementation of handleInfo that just ignores any messages received
 defaultHandleInfo :: forall state msg. msg -> state -> Effect (CastResult state)
