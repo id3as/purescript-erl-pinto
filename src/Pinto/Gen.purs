@@ -1,6 +1,7 @@
 -- | Module roughly representing interactions with the 'gen_server'
 -- | See also 'gen_server' in the OTP docs
 module Pinto.Gen ( startLink
+                 , stop
                  , CallResult(..)
                  , CastResult(..)
                  , call
@@ -32,6 +33,7 @@ foreign import callImpl :: forall response state name. name -> (state -> (CallRe
 foreign import doCallImpl :: forall response state name. name -> (state -> Effect (CallResult response state)) -> Effect response
 foreign import castImpl :: forall state name. name -> (state -> (CastResult state)) -> Effect Unit
 foreign import doCastImpl :: forall state name. name -> (state -> Effect (CastResult state)) -> Effect Unit
+foreign import stopImpl :: forall state name. name -> Effect Unit
 foreign import startLinkImpl :: forall name state msg. name -> Effect state -> (msg -> state -> Effect (CastResult state)) -> Effect Foreign
 foreign import registerExternalMappingImpl :: forall externalMsg msg name. name -> (externalMsg -> Maybe msg) -> Effect Unit
 foreign import registerTerminateImpl :: forall state name. name -> (TerminateReason -> state -> Effect Unit) -> Effect Unit
@@ -139,3 +141,6 @@ cast name fn = castImpl (nativeName name) fn
 -- | See also handle_cast and gen_server:cast in the OTP docs
 doCast :: forall state msg. ServerName state msg -> (state -> Effect (CastResult state)) -> Effect Unit
 doCast name fn = doCastImpl (nativeName name) fn
+
+stop :: forall state msg. ServerName state msg -> Effect Unit
+stop name = stopImpl name
