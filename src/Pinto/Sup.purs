@@ -218,7 +218,7 @@ buildChild =
   , startFn : emptyStartFn
   , startArgs: emptyStartArgs
   , shutdown : Timeout 5000
-  , restart : Transient
+  , restart : Permanent
   }
 
 -- | Sets the 'child_type' of a child spec
