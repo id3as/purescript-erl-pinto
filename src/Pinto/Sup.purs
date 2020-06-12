@@ -20,6 +20,8 @@
 -- | ```
 module Pinto.Sup ( startSimpleChild
                  , startSpeccedChild
+                 , terminateChild
+                 , deleteChild
                  , startLink
                  , BoxedStartFn
                  , BoxedStartArgs
@@ -60,6 +62,7 @@ import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
 import Erl.Data.Tuple (Tuple2, Tuple3, tuple2, tuple3)
 import Erl.ModuleName (NativeModuleName(..))
+import Erl.Process.Raw (Pid)
 import Foreign (Foreign, unsafeToForeign)
 import Pinto as Pinto
 import Pinto.Types (ChildTemplate(..), ServerName(..), SupervisorName)
@@ -68,8 +71,13 @@ import Unsafe.Coerce (unsafeCoerce)
 foreign import data BoxedStartFn :: Type
 foreign import data BoxedStartArgs :: Type
 
-foreign import startLinkImpl :: forall name state. name -> Effect state  -> Effect Pinto.StartLinkResult
+foreign import startLinkImpl :: forall name state. name -> Effect state -> Effect Pinto.StartLinkResult
 foreign import startChildImpl :: forall name args. name -> args -> Effect Pinto.StartChildResult
+foreign import startSpeccedChildImpl :: forall name args. (Pid -> Pinto.StartChildResult) -> (Pid -> Pinto.StartChildResult) -> name -> args -> Effect Pinto.StartChildResult
+
+
+foreign import terminateChildImpl :: forall name args. name -> args -> Effect Unit
+foreign import deleteChildImpl :: forall name args. name -> args -> Effect Unit
 
 foreign import foreignToSlr :: Foreign  -> Pinto.StartLinkResult
 foreign import foreignToScr :: Foreign  -> Pinto.StartChildResult
@@ -100,9 +108,20 @@ startSimpleChild _ (Via (NativeModuleName m) name) args = startChildImpl (tuple3
 -- | Dynamically starts a child with the supplied spec
 -- | See also: supervisor:start_child in the OTP docs
 startSpeccedChild :: SupervisorName -> SupervisorChildSpec  -> Effect Pinto.StartChildResult
-startSpeccedChild (Local name) spec = startChildImpl name spec
-startSpeccedChild (Global name) spec = startChildImpl (tuple2 (atom "global") name) spec
-startSpeccedChild (Via (NativeModuleName m) name) spec = startChildImpl (tuple3 (atom "via") m name) spec
+
+startSpeccedChild (Local name) spec = startSpeccedChildImpl Pinto.ChildAlreadyStarted Pinto.ChildStarted name $ reifySupervisorChild spec
+startSpeccedChild (Global name) spec = startSpeccedChildImpl Pinto.ChildAlreadyStarted Pinto.ChildStarted (tuple2 (atom "global") name) $ reifySupervisorChild spec
+startSpeccedChild (Via (NativeModuleName m) name) spec = startSpeccedChildImpl Pinto.ChildAlreadyStarted Pinto.ChildStarted (tuple3 (atom "via") m name) $ reifySupervisorChild spec
+
+terminateChild :: SupervisorName -> String  -> Effect Unit
+terminateChild (Local name) child = terminateChildImpl name child
+terminateChild (Global name) child = terminateChildImpl (tuple2 (atom "global") name) child
+terminateChild (Via (NativeModuleName m) name) child = terminateChildImpl (tuple3 (atom "via") m name) child
+
+deleteChild :: SupervisorName -> String  -> Effect Unit
+deleteChild (Local name) child = deleteChildImpl name child
+deleteChild (Global name) child = deleteChildImpl (tuple2 (atom "global") name) child
+deleteChild (Via (NativeModuleName m) name) child = deleteChildImpl (tuple3 (atom "via") m name) child
 
 -- | See also supervisor:strategy()
 -- | Maps to simple_one_for_one | one_for_one .. etc

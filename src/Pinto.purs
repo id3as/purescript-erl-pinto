@@ -3,6 +3,7 @@ module Pinto ( isRegistered
              , ok'
              , okAlreadyStarted
              , okAlreadyStarted'
+             , node
              , module PintoTypeExports
              )
 where
@@ -16,10 +17,12 @@ import Erl.Data.Tuple (tuple2, tuple3)
 import Erl.ModuleName (NativeModuleName(..))
 import Erl.Process.Raw (Pid)
 import Foreign (Foreign, unsafeToForeign)
+
 import Partial.Unsafe (unsafePartial)
 import Pinto.Types (ChildTemplate(..), ServerName(..), StartLinkResult(..), StartChildResult(..), SupervisorName) as PintoTypeExports
 import Pinto.Types (class StartOk, ServerName(..), startOk, startOkAS)
 
+foreign import node :: Effect String
 foreign import isRegisteredImpl :: Foreign -> Effect Boolean
 foreign import alreadyStartedImpl :: Foreign -> Effect Pid
 

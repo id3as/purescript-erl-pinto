@@ -2,6 +2,7 @@
 
 -export([ isRegisteredImpl/1
         , alreadyStartedImpl/1
+        , node/0
         ]).
 
 isRegisteredImpl(ServerName) ->
@@ -22,4 +23,9 @@ alreadyStartedImpl(Left) ->
       %% deliberately partialfunction - we want to crash otherwise
       {already_started, Pid} -> Pid
     end
+  end.
+
+node() ->
+  fun() ->
+      atom_to_binary(erlang:node(), utf8)
   end.
