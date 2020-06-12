@@ -114,9 +114,9 @@ startSpeccedChild (Global name) spec = startSpeccedChildImpl Pinto.ChildAlreadyS
 startSpeccedChild (Via (NativeModuleName m) name) spec = startSpeccedChildImpl Pinto.ChildAlreadyStarted Pinto.ChildStarted (tuple3 (atom "via") m name) $ reifySupervisorChild spec
 
 terminateChild :: SupervisorName -> String  -> Effect Unit
-terminateChild (Local name) child = terminateChildImpl name child
-terminateChild (Global name) child = terminateChildImpl (tuple2 (atom "global") name) child
-terminateChild (Via (NativeModuleName m) name) child = terminateChildImpl (tuple3 (atom "via") m name) child
+terminateChild (Local name) child = terminateChildImpl name (atom child)
+terminateChild (Global name) child = terminateChildImpl (tuple2 (atom "global") name) (atom child)
+terminateChild (Via (NativeModuleName m) name) child = terminateChildImpl (tuple3 (atom "via") m name) (atom child)
 
 deleteChild :: SupervisorName -> String  -> Effect Unit
 deleteChild (Local name) child = deleteChildImpl name child
