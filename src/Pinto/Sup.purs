@@ -95,37 +95,31 @@ foreign import start_from_spec :: forall a. a -> a
 -- | This is effectful to allow for reading of config/etc
 -- | See also: supervisor:start_child in the OTP docs
 startLink :: SupervisorName -> Effect SupervisorSpec -> Effect Pinto.StartLinkResult
-startLink (Local name) = startLinkImpl $ tuple2 (atom "local") name
-startLink (Global name) = startLinkImpl $ tuple2 (atom "global") name
-startLink (Via (NativeModuleName m) name) = startLinkImpl $ tuple3 (atom "via") m name
+startLink name = startLinkImpl $ nativeName name
 
 -- | Dynamically starts a child with the supplied name and args as specified with the child template
 -- | See also: supervisor:start_child in the OTP docs
 startSimpleChild :: forall args. Pinto.ChildTemplate args -> SupervisorName -> args -> Effect Pinto.StartChildResult
-startSimpleChild _ (Local name) args = startChildImpl name args
-startSimpleChild _ (Global name) args = startChildImpl (tuple2 (atom "global") name) args
-startSimpleChild _ (Via (NativeModuleName m) name) args = startChildImpl (tuple3 (atom "via") m name) args
+startSimpleChild _ name args = startChildImpl (nativeName name) args
 
 -- | Dynamically starts a child with the supplied spec
 -- | See also: supervisor:start_child in the OTP docs
 startSpeccedChild :: SupervisorName -> SupervisorChildSpec  -> Effect Pinto.StartChildResult
-
-startSpeccedChild (Local name) spec = startSpeccedChildImpl Pinto.ChildAlreadyStarted Pinto.ChildStarted name $ reifySupervisorChild spec
-startSpeccedChild (Global name) spec = startSpeccedChildImpl Pinto.ChildAlreadyStarted Pinto.ChildStarted (tuple2 (atom "global") name) $ reifySupervisorChild spec
-startSpeccedChild (Via (NativeModuleName m) name) spec = startSpeccedChildImpl Pinto.ChildAlreadyStarted Pinto.ChildStarted (tuple3 (atom "via") m name) $ reifySupervisorChild spec
+startSpeccedChild name spec = startSpeccedChildImpl Pinto.ChildAlreadyStarted Pinto.ChildStarted (nativeName name) $ reifySupervisorChild spec
 
 terminateChild :: SupervisorName -> String  -> Effect Unit
-terminateChild (Local name) child = terminateChildImpl name (atom child)
-terminateChild (Global name) child = terminateChildImpl (tuple2 (atom "global") name) (atom child)
-terminateChild (Via (NativeModuleName m) name) child = terminateChildImpl (tuple3 (atom "via") m name) (atom child)
+terminateChild name child = terminateChildImpl (nativeName name) (atom child)
 
 deleteChild :: SupervisorName -> String  -> Effect Unit
-deleteChild (Local name) child = deleteChildImpl name child
-deleteChild (Global name) child = deleteChildImpl (tuple2 (atom "global") name) child
-deleteChild (Via (NativeModuleName m) name) child = deleteChildImpl (tuple3 (atom "via") m name) child
+deleteChild name child = deleteChildImpl (nativeName name) child
 
-stop :: forall state msg. ServerName state msg -> Effect Unit
-stop name = stopImpl name
+stop :: SupervisorName -> Effect Unit
+stop name = stopImpl (nativeName name)
+
+nativeName :: SupervisorName -> Foreign
+nativeName (Local name) = unsafeToForeign $ name
+nativeName (Global name) = unsafeToForeign $ tuple2 (atom "global") name
+nativeName (Via (NativeModuleName m) name) = unsafeToForeign $ tuple3 (atom "via") m name
 
 -- | See also supervisor:strategy()
 -- | Maps to simple_one_for_one | one_for_one .. etc

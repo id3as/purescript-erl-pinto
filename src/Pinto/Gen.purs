@@ -143,4 +143,4 @@ doCast :: forall state msg. ServerName state msg -> (state -> Effect (CastResult
 doCast name fn = doCastImpl (nativeName name) fn
 
 stop :: forall state msg. ServerName state msg -> Effect Unit
-stop name = stopImpl name
+stop name = stopImpl (nativeName name)
