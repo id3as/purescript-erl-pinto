@@ -5,6 +5,7 @@
          startLinkImpl/2,
          startChildImpl/2,
          startSpeccedChildImpl/4,
+         stopImpl/1,
          terminateChildImpl/2,
          deleteChildImpl/2,
          foreignToSlr/1,
@@ -36,6 +37,10 @@ startChildImpl(Name, Args) ->
   fun() ->
       foreignToScr(supervisor:start_child(Name, [Args]))
   end.
+
+stopImpl(Name) -> fun() ->
+                      gen:stop(Name)
+                  end.
 
 foreignToScr({ok, Pid}) -> {childStarted, Pid};
 foreignToScr({ok, Pid, Info}) -> {childStartedWithInfo, Pid, Info};

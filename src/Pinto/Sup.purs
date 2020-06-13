@@ -22,6 +22,7 @@ module Pinto.Sup ( startSimpleChild
                  , startSpeccedChild
                  , terminateChild
                  , deleteChild
+                 , stop
                  , startLink
                  , BoxedStartFn
                  , BoxedStartArgs
@@ -74,7 +75,7 @@ foreign import data BoxedStartArgs :: Type
 foreign import startLinkImpl :: forall name state. name -> Effect state -> Effect Pinto.StartLinkResult
 foreign import startChildImpl :: forall name args. name -> args -> Effect Pinto.StartChildResult
 foreign import startSpeccedChildImpl :: forall name args. (Pid -> Pinto.StartChildResult) -> (Pid -> Pinto.StartChildResult) -> name -> args -> Effect Pinto.StartChildResult
-
+foreign import stopImpl :: forall state name. name -> Effect Unit
 
 foreign import terminateChildImpl :: forall name args. name -> args -> Effect Unit
 foreign import deleteChildImpl :: forall name args. name -> args -> Effect Unit
@@ -122,6 +123,9 @@ deleteChild :: SupervisorName -> String  -> Effect Unit
 deleteChild (Local name) child = deleteChildImpl name child
 deleteChild (Global name) child = deleteChildImpl (tuple2 (atom "global") name) child
 deleteChild (Via (NativeModuleName m) name) child = deleteChildImpl (tuple3 (atom "via") m name) child
+
+stop :: forall state msg. ServerName state msg -> Effect Unit
+stop name = stopImpl name
 
 -- | See also supervisor:strategy()
 -- | Maps to simple_one_for_one | one_for_one .. etc
