@@ -95,7 +95,9 @@ foreign import start_from_spec :: forall a. a -> a
 -- | This is effectful to allow for reading of config/etc
 -- | See also: supervisor:start_child in the OTP docs
 startLink :: SupervisorName -> Effect SupervisorSpec -> Effect Pinto.StartLinkResult
-startLink name = startLinkImpl $ nativeName name
+startLink (Local name) = startLinkImpl $ tuple2 (atom "local") name
+startLink (Global name) = startLinkImpl $ tuple2 (atom "global") name
+startLink (Via (NativeModuleName m) name) = startLinkImpl $ tuple3 (atom "via") m name
 
 -- | Dynamically starts a child with the supplied name and args as specified with the child template
 -- | See also: supervisor:start_child in the OTP docs
