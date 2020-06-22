@@ -2,6 +2,7 @@
 
 -export([ startRouter/3
         , stopRouter/1
+        , stopRouterFromCallback/0
         ]).
 
 %% RegisterListener is of type Effect msg (so is effectively a function with no args)
@@ -29,6 +30,13 @@ startRouter(RegisterListener, DeregisterListener, Callback) ->
                    MonitorRef = monitor(process, Recipient),
                    Fun(Handle, MonitorRef)
                end)
+  end.
+
+stopRouterFromCallback() ->
+  Self = self(),
+  fun() ->
+      Self ! stop,
+      ok
   end.
 
 stopRouter(Ref) ->

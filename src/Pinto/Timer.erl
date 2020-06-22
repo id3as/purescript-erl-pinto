@@ -1,8 +1,8 @@
 -module(pinto_timer@foreign).
 
 -export([ cancel_/1,
-          sendEvery_/3,
-          sendAfter_/3 ]).
+          sendEvery_/2,
+          sendAfter_/2 ]).
 
 cancel_(Ref) ->
   fun() ->
@@ -10,15 +10,15 @@ cancel_(Ref) ->
   end.
 
 %% Sod it, simple
-sendEvery_(Wrapper, Milliseconds, Msg) ->
+sendEvery_(Milliseconds, Msg) ->
   fun() ->
     { ok, Ref } = timer:send_interval(Milliseconds, Msg),
-    Wrapper(Ref)
+    Ref
   end.
 
 %% Ditto
-sendAfter_(Wrapper, Milliseconds, Msg) ->
+sendAfter_(Milliseconds, Msg) ->
   fun() ->
     { ok, Ref } = timer:send_after(Milliseconds, Msg),
-    Wrapper(Ref)
+    Ref
   end.

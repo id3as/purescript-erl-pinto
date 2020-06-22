@@ -1,5 +1,7 @@
 -- | This module provides a means of using the timer functionality in core Erlang
--- | This is specifically for use within the context of gen-servers and will not work otherwise
+-- | It'll work anywhere, it's up to you to route the messages sensibly once  you have  them in the callback
+-- | Tip: See 'emitter' in Gen
+
 module Pinto.Timer 
   ( sendEvery,
     sendAfter,
@@ -11,25 +13,30 @@ import Prelude
 
 import Effect (Effect)
 import Erl.Process.Raw (Pid)
-import Pinto (ServerName)
+import Pinto.MessageRouting as MR
 
-newtype TimerRef = TimerRef Pid
+type TimerRef = MR.RouterRef
 
-foreign import sendEvery_ :: forall msg.  (Pid -> TimerRef) -> Int -> msg -> Effect TimerRef
-foreign import sendAfter_ :: forall msg.  (Pid -> TimerRef) -> Int -> msg -> Effect TimerRef
+foreign import sendEvery_ :: forall msg. Int -> msg -> Effect Pid
+foreign import sendAfter_ :: forall msg. Int -> msg -> Effect Pid
 foreign import cancel_ :: Pid -> Effect Unit
 
--- | Sends the supplied message back to the recipient every N milliseconds
+-- | invokes the callback every 'N' milliseconds
 -- | See also timer:send_every in the OTP docs
-sendEvery :: forall state msg. ServerName state msg -> Int -> msg -> Effect TimerRef
-sendEvery _ = sendEvery_ TimerRef
+sendEvery :: forall msg. Int -> msg -> (msg -> Effect Unit) -> Effect TimerRef
+sendEvery x msg cb = do
+  MR.startRouter (sendEvery_ x msg) cancel_ cb
 
--- | Sends the supplied message back to the recipient after N milliseconds
+-- | invokes the callback after 'N' milliseconds
 -- | See also timer:send_after in the OTP docs
-sendAfter :: forall state msg. ServerName state msg -> Int -> msg -> Effect TimerRef
-sendAfter _ = sendAfter_ TimerRef
+sendAfter :: forall msg.  Int -> msg -> (msg -> Effect Unit) -> Effect TimerRef
+sendAfter x msg cb = do
+  MR.startRouter (sendAfter_ x msg) cancel_ (\msg2 -> do 
+                                                          _ <- MR.stopRouterFromCallback
+                                                          _ <- cb msg2
+                                                          pure unit)
 
 -- | Cancels a timer started by either sendEvery or sendAfter
 -- | See also timer:cancel in the OTP docs
 cancel :: TimerRef -> Effect Unit
-cancel (TimerRef pid) = cancel_ pid
+cancel = MR.stopRouter 
