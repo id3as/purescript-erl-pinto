@@ -1,6 +1,7 @@
 -module(pinto@foreign).
 
 -export([ isRegisteredImpl/1
+        , alreadyStartedImpl/1
         , node/0
         ]).
 
@@ -14,6 +15,14 @@ isRegisteredImpl(ServerName) ->
         {local, Name} ->
           whereis(Name)
       end =/= undefined
+  end.
+
+alreadyStartedImpl(Left) ->
+  fun() ->
+    case Left of
+      %% deliberately partialfunction - we want to crash otherwise
+      {already_started, Pid} -> Pid
+    end
   end.
 
 node() ->

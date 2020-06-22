@@ -22,6 +22,7 @@ module Pinto.Sup ( startSimpleChild
                  , startSpeccedChild
                  , terminateChild
                  , deleteChild
+                 , stop
                  , startLink
                  , BoxedStartFn
                  , BoxedStartArgs
@@ -34,7 +35,7 @@ module Pinto.Sup ( startSimpleChild
                  , ReifiedSupervisorSpec
                  , ReifiedSupervisorFlags
                  , ReifiedSupervisorChild
-                 , ReifiedhildShutdown
+                 , ReifiedChildShutdown
                  , buildSupervisor
                  , buildChild
                  , supervisorStrategy
@@ -51,33 +52,39 @@ module Pinto.Sup ( startSimpleChild
                  , reifySupervisorFlags
                  , reifySupervisorChildren
                  , reifySupervisorChild
+                 , slrToForeign
+                 , foreignToSlr
   ) where
 
 import Prelude
 
-import Data.Bifunctor (lmap, rmap)
-import Data.Either (Either(..))
 import Effect (Effect)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
 import Erl.Data.Tuple (Tuple2, Tuple3, tuple2, tuple3)
 import Erl.ModuleName (NativeModuleName(..))
 import Erl.Process.Raw (Pid)
+import Foreign (Foreign, unsafeToForeign)
 import Pinto as Pinto
-import Pinto.Types (ServerName(..), SupervisorName)
+import Pinto.Types (ChildTemplate(..), ServerName(..), SupervisorName)
 import Unsafe.Coerce (unsafeCoerce)
 
 foreign import data BoxedStartFn :: Type
 foreign import data BoxedStartArgs :: Type
 
-foreign import startLinkImpl :: forall a b name state msg. (a -> Either a b) -> (b -> Either a b) ->name -> Effect state  -> Effect Pinto.StartLinkResult
-foreign import startChildImpl :: forall name args. (Pid -> Pinto.StartChildResult) -> (Pid -> Pinto.StartChildResult) -> name -> args -> Effect Pinto.StartChildResult
+foreign import startLinkImpl :: forall name state. name -> Effect state -> Effect Pinto.StartLinkResult
+foreign import startChildImpl :: forall name args. name -> args -> Effect Pinto.StartChildResult
 foreign import startSpeccedChildImpl :: forall name args. (Pid -> Pinto.StartChildResult) -> (Pid -> Pinto.StartChildResult) -> name -> args -> Effect Pinto.StartChildResult
+foreign import stopImpl :: forall state name. name -> Effect Unit
 
 foreign import terminateChildImpl :: forall name args. name -> args -> Effect Unit
 foreign import deleteChildImpl :: forall name args. name -> args -> Effect Unit
 
-startLink_ = startLinkImpl Left Right
+foreign import foreignToSlr :: Foreign  -> Pinto.StartLinkResult
+foreign import foreignToScr :: Foreign  -> Pinto.StartChildResult
+
+foreign import slrToForeign :: Pinto.StartLinkResult -> Foreign
+foreign import scrToForeign :: Pinto.StartChildResult -> Foreign
 
 
 -- These imports are just so we don't get warnings
@@ -88,40 +95,43 @@ foreign import start_from_spec :: forall a. a -> a
 -- | This is effectful to allow for reading of config/etc
 -- | See also: supervisor:start_child in the OTP docs
 startLink :: SupervisorName -> Effect SupervisorSpec -> Effect Pinto.StartLinkResult
-startLink (Local name) = startLink_ $ tuple2 (atom "local") name
-startLink (Global name) = startLink_ $ tuple2 (atom "global") name
-startLink (Via (NativeModuleName m) name) = startLink_ $ tuple3 (atom "via") m name
+startLink (Local name) = startLinkImpl $ tuple2 (atom "local") name
+startLink (Global name) = startLinkImpl $ tuple2 (atom "global") name
+startLink (Via (NativeModuleName m) name) = startLinkImpl $ tuple3 (atom "via") m name
 
 -- | Dynamically starts a child with the supplied name and args as specified with the child template
 -- | See also: supervisor:start_child in the OTP docs
 startSimpleChild :: forall args. Pinto.ChildTemplate args -> SupervisorName -> args -> Effect Pinto.StartChildResult
-startSimpleChild _ (Local name) args = startChildImpl Pinto.AlreadyStarted Pinto.Started name args
-startSimpleChild _ (Global name) args = startChildImpl Pinto.AlreadyStarted Pinto.Started (tuple2 (atom "global") name) args
-startSimpleChild _ (Via (NativeModuleName m) name) args = startChildImpl Pinto.AlreadyStarted Pinto.Started (tuple3 (atom "via") m name) args
+startSimpleChild _ name args = startChildImpl (nativeName name) args
 
 -- | Dynamically starts a child with the supplied spec
 -- | See also: supervisor:start_child in the OTP docs
 startSpeccedChild :: SupervisorName -> SupervisorChildSpec  -> Effect Pinto.StartChildResult
-startSpeccedChild (Local name) spec = startSpeccedChildImpl Pinto.AlreadyStarted Pinto.Started name $ reifySupervisorChild spec
-startSpeccedChild (Global name) spec = startSpeccedChildImpl Pinto.AlreadyStarted Pinto.Started (tuple2 (atom "global") name) $ reifySupervisorChild spec
-startSpeccedChild (Via (NativeModuleName m) name) spec = startSpeccedChildImpl Pinto.AlreadyStarted Pinto.Started (tuple3 (atom "via") m name) $ reifySupervisorChild spec
+startSpeccedChild name spec = startSpeccedChildImpl Pinto.ChildAlreadyStarted Pinto.ChildStarted (nativeName name) $ reifySupervisorChild spec
 
 terminateChild :: SupervisorName -> String  -> Effect Unit
-terminateChild (Local name) child = terminateChildImpl name child
-terminateChild (Global name) child = terminateChildImpl (tuple2 (atom "global") name) child
-terminateChild (Via (NativeModuleName m) name) child = terminateChildImpl (tuple3 (atom "via") m name) child
+terminateChild name child = terminateChildImpl (nativeName name) (atom child)
 
 deleteChild :: SupervisorName -> String  -> Effect Unit
-deleteChild (Local name) child = deleteChildImpl name child
-deleteChild (Global name) child = deleteChildImpl (tuple2 (atom "global") name) child
-deleteChild (Via (NativeModuleName m) name) child = deleteChildImpl (tuple3 (atom "via") m name) child
+deleteChild name child = deleteChildImpl (nativeName name) child
+
+stop :: SupervisorName -> Effect Unit
+stop name = stopImpl (nativeName name)
+
+nativeName :: SupervisorName -> Foreign
+nativeName (Local name) = unsafeToForeign $ name
+nativeName (Global name) = unsafeToForeign $ tuple2 (atom "global") name
+nativeName (Via (NativeModuleName m) name) = unsafeToForeign $ tuple3 (atom "via") m name
 
 -- | See also supervisor:strategy()
 -- | Maps to simple_one_for_one | one_for_one .. etc
 data SupervisorStrategy = SimpleOneForOne | OneForOne | OneForAll | RestForOne
 
 -- | Maps to supervisor | worker
-data SupervisorChildType = Supervisor | Worker
+data SupervisorChildType = Supervisor
+                         | Worker
+                         | NativeSupervisor NativeModuleName Atom (List Foreign)
+                         | NativeWorker NativeModuleName Atom (List Foreign)
 
 -- | Maps to transient | permanent | temporary
 data SupervisorChildRestart = Transient | Permanent | Temporary
@@ -162,14 +172,14 @@ type ReifiedSupervisorFlags = Tuple3 Atom Int Int
 -- | This type is not used directly, but is here to support the buildSupervisor hierarchy
 type ReifiedSupervisorChild =
   { id :: Atom
-  , start :: Tuple3 Atom Atom (List SupervisorChildSpec)
+  , start :: Tuple3 Atom Atom (List Foreign)
   , restart :: Atom
-  , shutdown :: ReifiedhildShutdown
+  , shutdown :: ReifiedChildShutdown
   , type :: Atom
   }
 
 -- | This type is not used directly, but is here to support the buildSupervisor hierarchy
-foreign import data ReifiedhildShutdown :: Type -- Can be { Int or Atom, unsafeCoerce it is )
+foreign import data ReifiedChildShutdown :: Type -- Can be { Int or Atom, unsafeCoerce it is )
 
 -- | Creates a supervisor with default options and no children
 buildSupervisor :: SupervisorSpec
@@ -208,7 +218,7 @@ buildChild =
   , startFn : emptyStartFn
   , startArgs: emptyStartArgs
   , shutdown : Timeout 5000
-  , restart : Transient
+  , restart : Permanent
   }
 
 -- | Sets the 'child_type' of a child spec
@@ -229,7 +239,7 @@ childId id spec = (spec { id = id })
 -- | Configures the template for the children started by this supervisor
 -- | See also the OTP docs for supervisor specs
 childStartTemplate :: forall args. Pinto.ChildTemplate args -> SupervisorChildSpec -> SupervisorChildSpec
-childStartTemplate (Pinto.ChildTemplate startFn) spec = (spec { startFn = (unsafeCoerce (\args -> eitherToOk <$> startFn args)) })
+childStartTemplate (ChildTemplate startFn) spec = (spec { startFn = (unsafeCoerce (\args -> slrToForeign <$> startFn args)) })
 
 -- | Sets the 'restart' value of a child spec
 -- | See also the OTP docs for supervisor specs
@@ -239,13 +249,9 @@ childRestart restart spec = (spec { restart = restart })
 -- | Sets the callback and args for starting the child
 childStart :: forall args. (args -> Effect Pinto.StartLinkResult) -> args -> SupervisorChildSpec -> SupervisorChildSpec
 childStart startFn startArgs spec =
-  (spec { startFn  =  unsafeCoerce $  (\args -> eitherToOk <$> startFn args)
+  (spec { startFn  =  unsafeCoerce $  (\args -> slrToForeign <$> startFn args)
         , startArgs = (unsafeCoerce startArgs)
         })
-
-eitherToOk :: forall a b c. Either a b -> Tuple2 Atom c
-eitherToOk (Left err) = tuple2 (atom "error") (unsafeCoerce err)
-eitherToOk (Right pid) = tuple2 (atom "ok") (unsafeCoerce pid)
 
 -- | Internal function to support the buildSupervisor hierarchy
 reify :: SupervisorSpec -> ReifiedSupervisorSpec
@@ -273,19 +279,22 @@ reifySupervisorChild :: SupervisorChildSpec -> ReifiedSupervisorChild
 reifySupervisorChild spec =
   {
     id : (atom spec.id)
-  , start : (case spec.type_ of
-                 Supervisor -> tuple3 (atom "pinto_sup@foreign") (atom "start_from_spec") (spec : nil)
-                 Worker -> tuple3 (atom "pinto_gen@foreign") (atom "start_from_spec") (spec : nil)
-            )
-  , restart : (case spec.restart of
-                        Transient -> (atom "transient")
-                        Permanent -> (atom "permanent")
-                        Temporary -> (atom "temporary"))
-  , type : (case spec.type_ of
-                    Worker -> (atom "worker")
-                    Supervisor -> (atom "supervisor"))
+  , start : case spec.type_ of
+              Supervisor -> tuple3 (atom "pinto_sup@foreign") (atom "start_from_spec") (unsafeToForeign spec : nil)
+              Worker -> tuple3 (atom "pinto_gen@foreign") (atom "start_from_spec") (unsafeToForeign spec : nil)
+              NativeSupervisor (NativeModuleName moduleName) startFn args -> tuple3 moduleName startFn args
+              NativeWorker (NativeModuleName moduleName) startFn args -> tuple3 moduleName startFn args
+  , restart : case spec.restart of
+                Transient -> (atom "transient")
+                Permanent -> (atom "permanent")
+                Temporary -> (atom "temporary")
+  , type : case spec.type_ of
+             Supervisor -> (atom "supervisor")
+             Worker -> (atom "worker")
+             NativeSupervisor _ _ _ -> (atom "supervisor")
+             NativeWorker _ _ _ -> (atom "worker")
   , shutdown : case spec.shutdown of
-                          Brutal -> unsafeCoerce $ atom "brutal"
-                          Infinity -> unsafeCoerce $ atom "infinity"
-                          Timeout value -> unsafeCoerce $ value
+                 Brutal -> unsafeCoerce $ atom "brutal"
+                 Infinity -> unsafeCoerce $ atom "infinity"
+                 Timeout value -> unsafeCoerce $ value
   }

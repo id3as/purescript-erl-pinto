@@ -1,6 +1,7 @@
 -- | Module roughly representing interactions with the 'gen_server'
 -- | See also 'gen_server' in the OTP docs
 module Pinto.Gen ( startLink
+                 , stop
                  , CallResult(..)
                  , CastResult(..)
                  , call
@@ -9,6 +10,8 @@ module Pinto.Gen ( startLink
                  , doCast
                  , defaultHandleInfo
                  , registerExternalMapping
+                 , TerminateReason(..)
+                 , registerTerminate
                  , monitorName
                  , monitorPid
                  , emitter
@@ -17,7 +20,6 @@ module Pinto.Gen ( startLink
 
 import Prelude
 
-import Data.Either (Either(..))
 import Data.Maybe (Maybe)
 import Effect (Effect)
 import Erl.Atom (atom)
@@ -26,14 +28,17 @@ import Erl.ModuleName (NativeModuleName(..))
 import Erl.Process.Raw (Pid)
 import Foreign (Foreign, unsafeToForeign)
 import Pinto (ServerName(..), StartLinkResult)
+import Pinto.Sup (foreignToSlr)
 
 foreign import callImpl :: forall response state name. name -> (state -> (CallResult response state)) -> Effect response
 foreign import doCallImpl :: forall response state name. name -> (state -> Effect (CallResult response state)) -> Effect response
 foreign import castImpl :: forall state name. name -> (state -> (CastResult state)) -> Effect Unit
 foreign import doCastImpl :: forall state name. name -> (state -> Effect (CastResult state)) -> Effect Unit
-foreign import startLinkImpl :: forall a b name state msg. (a -> Either a b) -> (b -> Either a b) ->name -> Effect state -> (msg -> state -> Effect (CastResult state)) -> Effect StartLinkResult
+foreign import stopImpl :: forall state name. name -> Effect Unit
+foreign import startLinkImpl :: forall name state msg. name -> Effect state -> (msg -> state -> Effect (CastResult state)) -> Effect Foreign
 foreign import registerExternalMappingImpl :: forall externalMsg msg name. name -> (externalMsg -> Maybe msg) -> Effect Unit
 foreign import emitterImpl :: forall externalMsg msg serverName. serverName -> (externalMsg -> msg) -> (externalMsg -> Effect Unit)
+foreign import registerTerminateImpl :: forall state name. name -> (TerminateReason -> state -> Effect Unit) -> Effect Unit
 foreign import monitorImpl :: forall externalMsg msg name toMonitor. name -> toMonitor -> (externalMsg -> msg) -> Effect Unit
 
 -- These imports are just so we don't get warnings
@@ -50,6 +55,12 @@ nativeName (Local name) = unsafeToForeign $ name
 nativeName (Global name) = unsafeToForeign $ tuple2 (atom "global") name
 nativeName (Via (NativeModuleName m) name) = unsafeToForeign $ tuple3 (atom "via") m name
 
+data TerminateReason
+  = Normal
+  | Shutdown
+  | ShutdownWithCustom Foreign
+  | Custom Foreign
+
 
 -- | Adds a (presumably) native Erlang function into the gen server to map external messages into types that this
 -- | gen server actually understands
@@ -61,11 +72,15 @@ registerExternalMapping name = registerExternalMappingImpl (nativeName name)
 emitter :: forall state externalMsg msg. ServerName state msg -> (externalMsg -> msg) -> (externalMsg -> Effect Unit)
 emitter serverName mapper = emitterImpl (nativeName serverName) mapper
 
+-- | Adds a terminate handler
+registerTerminate :: forall state msg. ServerName state msg -> (TerminateReason -> state -> Effect Unit) -> Effect Unit
+registerTerminate name = registerTerminateImpl (nativeName name)
+
 -- | Adds a monitor
-monitorName :: forall state name otherState otherName externalMsg msg. ServerName state msg -> ServerName otherState otherName -> (externalMsg -> msg) -> Effect Unit
+monitorName :: forall state otherState otherName externalMsg msg. ServerName state msg -> ServerName otherState otherName -> (externalMsg -> msg) -> Effect Unit
 monitorName name = monitorImpl (nativeName name)
 
-monitorPid :: forall state name externalMsg msg. ServerName state msg -> Pid -> (externalMsg -> msg) -> Effect Unit
+monitorPid :: forall state externalMsg msg. ServerName state msg -> Pid -> (externalMsg -> msg) -> Effect Unit
 monitorPid name = monitorImpl (nativeName name)
 
 
@@ -83,15 +98,12 @@ monitorPid name = monitorImpl (nativeName name)
 -- | ```
 -- | See also: gen_server:start_link in the OTP docs (roughly)
 startLink :: forall state msg. ServerName state msg -> Effect state -> (msg -> state -> Effect (CastResult state)) -> Effect StartLinkResult
-startLink (Local name) = startLink_ $ tuple2 (atom "local") name
-startLink (Global name) = startLink_ $ tuple2 (atom "global") name
-startLink (Via (NativeModuleName m) name) = startLink_ $ tuple3 (atom "via") m name
-
-startLink_ = startLinkImpl Left Right
+startLink (Local name) eInit msgFn = foreignToSlr <$> startLinkImpl (tuple2 (atom "local") name) eInit msgFn
+startLink (Global name) eInit msgFn  = foreignToSlr <$> startLinkImpl (tuple2 (atom "global") name) eInit msgFn
+startLink (Via (NativeModuleName m) name) eInit msgFn = foreignToSlr <$> startLinkImpl (tuple3 (atom "via") m name) eInit msgFn
 
 data CallResult response state = CallReply response state | CallReplyHibernate response state | CallStop response state
-data CastResult state = CastNoReply state | CastNoReplyHibernate state | CastStop state
-
+data CastResult state = CastNoReply state | CastNoReplyHibernate state | CastStop state | CastStopReason TerminateReason state
 
 -- | A default implementation of handleInfo that just ignores any messages received
 defaultHandleInfo :: forall state msg. msg -> state -> Effect (CastResult state)
@@ -136,3 +148,6 @@ cast name fn = castImpl (nativeName name) fn
 -- | See also handle_cast and gen_server:cast in the OTP docs
 doCast :: forall state msg. ServerName state msg -> (state -> Effect (CastResult state)) -> Effect Unit
 doCast name fn = doCastImpl (nativeName name) fn
+
+stop :: forall state msg. ServerName state msg -> Effect Unit
+stop name = stopImpl (nativeName name)

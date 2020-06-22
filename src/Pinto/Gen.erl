@@ -4,7 +4,8 @@
 
 % FFI
 -export([
-         startLinkImpl/5,
+         startLinkImpl/3,
+         stopImpl/1,
          callImpl/2,
          doCallImpl/2,
          castImpl/2,
@@ -30,6 +31,7 @@
 -export([
          registerExternalMappingImpl/2,
          emitterImpl/2,
+         registerTerminateImpl/2,
          monitorImpl/3
         ]).
 
@@ -38,7 +40,8 @@
          state :: term(),
          handle_info :: fun(),
          mappings :: list(fun()),
-         monitors = #{} :: maps:map(pid(), {reference(), fun()})
+         monitors = #{} :: maps:map(pid(), {reference(), fun()}),
+         terminate_handler :: undefined | fun()
          }).
 
 doCallImpl(Name, Fn) -> fun() ->
@@ -57,12 +60,13 @@ castImpl(Name, Fn) -> fun() ->
                           gen_server:cast(Name, { wrapped_pure_cast, Fn })
                       end.
 
-startLinkImpl(Left, Right, Name, Effect, HandleInfo) ->
+stopImpl(Name) -> fun() ->
+                      gen_server:stop(Name)
+                  end.
+
+startLinkImpl(Name, Effect, HandleInfo) ->
   fun() ->
-      case gen_server:start_link(Name, ?MODULE, [Effect, HandleInfo], []) of
-        {ok, Pid}  -> Right(Pid);
-        {error, E} -> Left(E)
-      end
+      gen_server:start_link(Name, ?MODULE, [Effect, HandleInfo], [])
   end.
 
 start_from_spec(_Spec = #{ startFn := Fn, startArgs := Args }) ->
@@ -87,6 +91,11 @@ emitterImpl(Name, Mapper) ->
       end
   end.
 
+registerTerminateImpl(Name, TerminateHandler) ->
+  fun() ->
+    gen_server:cast(Name, { register_terminate, TerminateHandler })
+  end.
+
 %% Similar approach to registerExternalMappingImpl - given a state monad, we could probably
 %% make this better and return a monitor ref to enable demonitor calls
 monitorImpl(Name, ToMonitor, Mapper) ->
@@ -101,35 +110,22 @@ init([Effect, HandleInfo]) ->
                    }}.
 
 handle_call({wrapped_effectful_call, Fn}, _From, StateImpl = #state_impl { state = State } ) ->
-  case (Fn(State))() of
-    { callReply, Result, NewState } -> {reply, Result, StateImpl#state_impl { state = NewState}};
-    { callReplyHibernate, Result, NewState } -> {reply, Result, StateImpl#state_impl { state = NewState }, hibernate};
-    { callStop, Result, NewState } -> {stop, normal, Result, StateImpl#state_impl { state = NewState }}
-  end;
+  dispatch_call_response((Fn(State))(), StateImpl);
 
 handle_call({wrapped_pure_call, Fn}, _From, StateImpl = #state_impl { state = State }) ->
-  case Fn(State) of
-    { callReply, Result, NewState } -> {reply, Result, StateImpl#state_impl { state = NewState}};
-    { callReplyHibernate, Result, NewState } -> {reply, Result, StateImpl#state_impl { state = NewState }, hibernate};
-    { callStop, Result, NewState } -> {stop, normal, Result, StateImpl#state_impl { state = NewState }}
-  end.
+  dispatch_call_response(Fn(State), StateImpl).
 
 handle_cast({wrapped_effectful_cast, Fn}, StateImpl = #state_impl { state = State }) ->
-  case (Fn(State))() of
-    { castNoReply, NewState } -> {noreply, StateImpl#state_impl { state = NewState}};
-    { castNoReplyHibernate, NewState } -> {noreply, StateImpl#state_impl { state = NewState }, hibernate};
-    { castStop, NewState } -> {stop, normal, StateImpl#state_impl { state = NewState }}
-  end;
+  dispatch_cast_response((Fn(State))(), StateImpl);
 
 handle_cast({wrapped_pure_cast, Fn}, StateImpl = #state_impl { state = State }) ->
-  case Fn(State) of
-    { castNoReply, NewState } -> {noreply, StateImpl#state_impl { state = NewState}};
-    { castNoReplyHibernate, NewState } -> {noreply, StateImpl#state_impl { state = NewState }, hibernate};
-    { castStop, NewState } -> {stop, normal, StateImpl#state_impl { state = NewState }}
-  end;
+  dispatch_cast_response(Fn(State), StateImpl);
 
 handle_cast({register_mapping, Mapping}, StateImpl = #state_impl { mappings = Mappings }) ->
   { noreply, StateImpl#state_impl { mappings = [ Mapping | Mappings ] }};
+
+handle_cast({register_terminate, TerminateHandler}, StateImpl = #state_impl { }) ->
+  { noreply, StateImpl#state_impl { terminate_handler = TerminateHandler }};
 
 handle_cast({ monitor, ToMonitor, Mapper }, StateImpl = #state_impl { monitors = Monitors }) ->
   Pid = where_is_name(ToMonitor),
@@ -155,26 +151,55 @@ handle_info({'DOWN', MRef, _Type, _Object, Info}, StateImpl = #state_impl { stat
 
     {ok, {_ToMonitor, Fun}} ->
       MappedMsg = Fun(Info),
-      case ((HandleInfo(MappedMsg))(State))() of
-        { castNoReply, NewState } -> {noreply, StateImpl#state_impl { state = NewState}};
-        { castNoReplyHibernate, NewState } -> {noreply, StateImpl#state_impl { state = NewState }, hibernate};
-        { castStop, NewState } -> {stop, normal, StateImpl#state_impl { state = NewState }}
-      end
+      dispatch_cast_response(((HandleInfo(MappedMsg))(State))(), StateImpl)
   end;
 
 handle_info(Msg, StateImpl = #state_impl { state = State, handle_info = HandleInfo, mappings = Mappings }) ->
   MappedMsg = try_map(Msg, Mappings),
-  case ((HandleInfo(MappedMsg))(State))() of
-    { castNoReply, NewState } -> {noreply, StateImpl#state_impl { state = NewState}};
-    { castNoReplyHibernate, NewState } -> {noreply, StateImpl#state_impl { state = NewState }, hibernate};
-    { castStop, NewState } -> {stop, normal, StateImpl#state_impl { state = NewState }}
-  end.
+  dispatch_cast_response(((HandleInfo(MappedMsg))(State))(), StateImpl).
 
-terminate(_Reason, _State) ->
-  ok.
+terminate(_Reason, _StateImpl = #state_impl { terminate_handler = undefined} ) ->
+  ok;
+
+terminate(Reason, _StateImpl = #state_impl { terminate_handler = TerminateHandler
+                                           , state = State } ) ->
+  ((TerminateHandler(map_shutdown_reason_to_purs(Reason)))(State))().
 
 code_change(_OldVsn, State, _Extra) ->
   {ok, State}.
+
+dispatch_call_response(Response, StateImpl) ->
+  case Response of
+    { callReply, Result, NewState } -> {reply, Result, StateImpl#state_impl { state = NewState}};
+    { callReplyHibernate, Result, NewState } -> {reply, Result, StateImpl#state_impl { state = NewState }, hibernate};
+    { callStop, Result, NewState } -> {stop, normal, Result, StateImpl#state_impl { state = NewState }}
+  end.
+
+dispatch_cast_response(Response, StateImpl) ->
+  case Response of
+    { castNoReply, NewState } -> {noreply, StateImpl#state_impl { state = NewState}};
+    { castNoReplyHibernate, NewState } -> {noreply, StateImpl#state_impl { state = NewState }, hibernate};
+    { castStop, NewState } -> {stop, normal, StateImpl#state_impl { state = NewState }};
+    { castStopReason, Reason, NewState} -> {stop, map_shutdown_reason_to_erl(Reason), StateImpl#state_impl { state = NewState }}
+  end.
+
+map_shutdown_reason_to_purs(normal) ->
+  {normal};
+map_shutdown_reason_to_purs(shutdown) ->
+  {shutdown};
+map_shutdown_reason_to_purs({shutdown, Term}) ->
+  {shutdownWithCustom, Term};
+map_shutdown_reason_to_purs(Term) ->
+  {custom, Term}.
+
+map_shutdown_reason_to_erl({normal}) ->
+  normal;
+map_shutdown_reason_to_erl({shutdown}) ->
+  shutdown;
+map_shutdown_reason_to_erl({shutdownWithCustom, Term}) ->
+  {shutdown, Term};
+map_shutdown_reason_to_erl({custom, Term}) ->
+  Term.
 
 try_map(Msg, []) -> Msg;
 try_map(Msg, [ Head | Tail ]) ->
