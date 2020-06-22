@@ -83,11 +83,14 @@ registerExternalMappingImpl(Name, Mapper) ->
     gen_server:cast(Name, { register_mapping, Mapper })
   end.
 
+%% An emitter is a function that given a message returns an Effect Unit
+%% And this function returns a function of (Msg -> Effect Unit)
+%% So given a message we need to return an Effect Unit which is.. another function
 emitterImpl(Name, Mapper) ->
-  fun() ->
-      Pid  = where_is_name(Name),
-      fun(Msg) ->
-          Pid ! Mapper(Msg)
+  Pid  = where_is_name(Name),
+  fun(Msg) ->
+      fun() ->
+        Pid ! Mapper(Msg)
       end
   end.
 
