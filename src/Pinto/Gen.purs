@@ -9,7 +9,6 @@ module Pinto.Gen ( startLink
                  , cast
                  , doCast
                  , defaultHandleInfo
-                 , registerExternalMapping
                  , TerminateReason(..)
                  , registerTerminate
                  , monitorName
@@ -36,8 +35,7 @@ foreign import castImpl :: forall state name. name -> (state -> (CastResult stat
 foreign import doCastImpl :: forall state name. name -> (state -> Effect (CastResult state)) -> Effect Unit
 foreign import stopImpl :: forall state name. name -> Effect Unit
 foreign import startLinkImpl :: forall name state msg. name -> Effect state -> (msg -> state -> Effect (CastResult state)) -> Effect Foreign
-foreign import registerExternalMappingImpl :: forall externalMsg msg name. name -> (externalMsg -> Maybe msg) -> Effect Unit
-foreign import emitterImpl :: forall externalMsg msg serverName. serverName -> (externalMsg -> msg) -> (externalMsg -> Effect Unit)
+foreign import emitterImpl :: forall msg serverName. serverName -> Effect (msg -> Effect Unit)
 foreign import registerTerminateImpl :: forall state name. name -> (TerminateReason -> state -> Effect Unit) -> Effect Unit
 foreign import monitorImpl :: forall externalMsg msg name toMonitor. name -> toMonitor -> (externalMsg -> msg) -> Effect Unit
 
@@ -62,15 +60,10 @@ data TerminateReason
   | Custom Foreign
 
 
--- | Adds a (presumably) native Erlang function into the gen server to map external messages into types that this
--- | gen server actually understands
--- | This is typically useful when interacting with legacy code that just sends you messages and you don't want
--- | the overhead of spinning up an interpreter process with an emitter
-registerExternalMapping :: forall state externalMsg msg. ServerName state msg -> (externalMsg -> Maybe msg) -> Effect Unit
-registerExternalMapping name = registerExternalMappingImpl (nativeName name)
-
-emitter :: forall state externalMsg msg. ServerName state msg -> (externalMsg -> msg) -> (externalMsg -> Effect Unit)
-emitter serverName mapper = emitterImpl (nativeName serverName) mapper
+-- | Gets the emitter for this gen server
+-- | this  is an  effectful function into which messages of the right type can be passed into handle_info
+emitter :: forall state msg. ServerName state msg -> Effect (msg -> Effect Unit)
+emitter serverName = emitterImpl (nativeName serverName)
 
 -- | Adds a terminate handler
 registerTerminate :: forall state msg. ServerName state msg -> (TerminateReason -> state -> Effect Unit) -> Effect Unit

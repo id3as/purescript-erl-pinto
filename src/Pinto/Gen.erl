@@ -29,8 +29,7 @@
 
 %% Pinto specific APIs
 -export([
-         registerExternalMappingImpl/2,
-         emitterImpl/2,
+         emitterImpl/1,
          registerTerminateImpl/2,
          monitorImpl/3
         ]).
@@ -39,7 +38,6 @@
         {
          state :: term(),
          handle_info :: fun(),
-         mappings :: list(fun()),
          monitors = #{} :: maps:map(pid(), {reference(), fun()}),
          terminate_handler :: undefined | fun()
          }).
@@ -75,23 +73,19 @@ start_from_spec(_Spec = #{ startFn := Fn, startArgs := Args }) ->
 start_from_spec(_Spec = #{ startFn := Fn }, Args) ->
   (Fn(Args))().
 
-%% This is wrong, ideally we'd just be using the current context
-%% of the call to work out where we were and just manipulating the state
-%% I think we can do this if we use a state monad...
-registerExternalMappingImpl(Name, Mapper) ->
-  fun() ->
-    gen_server:cast(Name, { register_mapping, Mapper })
-  end.
-
 %% An emitter is a function that given a message returns an Effect Unit
 %% And this function returns a function of (Msg -> Effect Unit)
 %% So given a message we need to return an Effect Unit which is.. another function
-emitterImpl(Name, Mapper) ->
-  Pid  = where_is_name(Name),
-  fun(Msg) ->
-      fun() ->
-        Pid ! Mapper(Msg)
-      end
+%% and the function to get the emitter in the first place is effectful (where_is_name)
+%% so that's another effect, anyway - think about this v carefully before you edit
+emitterImpl(Name) ->
+  fun() ->
+    Pid  = where_is_name(Name),
+    fun(Msg) ->
+        fun() ->
+          Pid ! Msg
+        end
+    end
   end.
 
 registerTerminateImpl(Name, TerminateHandler) ->
@@ -109,7 +103,6 @@ monitorImpl(Name, ToMonitor, Mapper) ->
 init([Effect, HandleInfo]) ->
   {ok, #state_impl { state = Effect()
                    , handle_info = HandleInfo
-                   , mappings = []
                    }}.
 
 handle_call({wrapped_effectful_call, Fn}, _From, StateImpl = #state_impl { state = State } ) ->
@@ -123,9 +116,6 @@ handle_cast({wrapped_effectful_cast, Fn}, StateImpl = #state_impl { state = Stat
 
 handle_cast({wrapped_pure_cast, Fn}, StateImpl = #state_impl { state = State }) ->
   dispatch_cast_response(Fn(State), StateImpl);
-
-handle_cast({register_mapping, Mapping}, StateImpl = #state_impl { mappings = Mappings }) ->
-  { noreply, StateImpl#state_impl { mappings = [ Mapping | Mappings ] }};
 
 handle_cast({register_terminate, TerminateHandler}, StateImpl = #state_impl { }) ->
   { noreply, StateImpl#state_impl { terminate_handler = TerminateHandler }};
@@ -157,9 +147,8 @@ handle_info({'DOWN', MRef, _Type, _Object, Info}, StateImpl = #state_impl { stat
       dispatch_cast_response(((HandleInfo(MappedMsg))(State))(), StateImpl)
   end;
 
-handle_info(Msg, StateImpl = #state_impl { state = State, handle_info = HandleInfo, mappings = Mappings }) ->
-  MappedMsg = try_map(Msg, Mappings),
-  dispatch_cast_response(((HandleInfo(MappedMsg))(State))(), StateImpl).
+handle_info(Msg, StateImpl = #state_impl { state = State, handle_info = HandleInfo}) ->
+  dispatch_cast_response(((HandleInfo(Msg))(State))(), StateImpl).
 
 terminate(_Reason, _StateImpl = #state_impl { terminate_handler = undefined} ) ->
   ok;
