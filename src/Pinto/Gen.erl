@@ -29,6 +29,7 @@
 %% Pinto specific APIs
 -export([
          registerExternalMappingImpl/2,
+         emitterImpl/2,
          monitorImpl/3
         ]).
 
@@ -78,6 +79,14 @@ registerExternalMappingImpl(Name, Mapper) ->
     gen_server:cast(Name, { register_mapping, Mapper })
   end.
 
+emitterImpl(Name, Mapper) ->
+  fun() ->
+      Pid  = where_is_name(Name),
+      fun(Msg) ->
+          Pid ! Mapper(Msg)
+      end
+  end.
+
 %% Similar approach to registerExternalMappingImpl - given a state monad, we could probably
 %% make this better and return a monitor ref to enable demonitor calls
 monitorImpl(Name, ToMonitor, Mapper) ->
@@ -123,18 +132,7 @@ handle_cast({register_mapping, Mapping}, StateImpl = #state_impl { mappings = Ma
   { noreply, StateImpl#state_impl { mappings = [ Mapping | Mappings ] }};
 
 handle_cast({ monitor, ToMonitor, Mapper }, StateImpl = #state_impl { monitors = Monitors }) ->
-
-  Pid = case ToMonitor of
-          P when is_pid(P) ->
-            P;
-          {via, Module, Name} ->
-            Module:whereis_name(Name);
-          {global, Name} ->
-            global:whereis_name(Name);
-          Name when is_atom(Name) ->
-            whereis(Name)
-        end,
-
+  Pid = where_is_name(ToMonitor),
   case Pid of
     undefined ->
       %% DOWN
@@ -184,3 +182,17 @@ try_map(Msg, [ Head | Tail ]) ->
     {just, Mapped} -> Mapped;
     {nothing} -> try_map(Msg, Tail)
   end.
+
+
+where_is_name(GenName)  ->
+  case GenName of
+    P when is_pid(P) ->
+      P;
+    {via, Module, Name} ->
+      Module:whereis_name(Name);
+    {global, Name} ->
+      global:whereis_name(Name);
+    Name when is_atom(Name) ->
+      whereis(Name)
+  end.
+

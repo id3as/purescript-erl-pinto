@@ -11,6 +11,7 @@ module Pinto.Gen ( startLink
                  , registerExternalMapping
                  , monitorName
                  , monitorPid
+                 , emitter
                  )
   where
 
@@ -32,6 +33,7 @@ foreign import castImpl :: forall state name. name -> (state -> (CastResult stat
 foreign import doCastImpl :: forall state name. name -> (state -> Effect (CastResult state)) -> Effect Unit
 foreign import startLinkImpl :: forall a b name state msg. (a -> Either a b) -> (b -> Either a b) ->name -> Effect state -> (msg -> state -> Effect (CastResult state)) -> Effect StartLinkResult
 foreign import registerExternalMappingImpl :: forall externalMsg msg name. name -> (externalMsg -> Maybe msg) -> Effect Unit
+foreign import emitterImpl :: forall externalMsg msg serverName. serverName -> (externalMsg -> msg) -> (externalMsg -> Effect Unit)
 foreign import monitorImpl :: forall externalMsg msg name toMonitor. name -> toMonitor -> (externalMsg -> msg) -> Effect Unit
 
 -- These imports are just so we don't get warnings
@@ -51,8 +53,13 @@ nativeName (Via (NativeModuleName m) name) = unsafeToForeign $ tuple3 (atom "via
 
 -- | Adds a (presumably) native Erlang function into the gen server to map external messages into types that this
 -- | gen server actually understands
+-- | This is typically useful when interacting with legacy code that just sends you messages and you don't want
+-- | the overhead of spinning up an interpreter process with an emitter
 registerExternalMapping :: forall state externalMsg msg. ServerName state msg -> (externalMsg -> Maybe msg) -> Effect Unit
 registerExternalMapping name = registerExternalMappingImpl (nativeName name)
+
+emitter :: forall state externalMsg msg. ServerName state msg -> (externalMsg -> msg) -> (externalMsg -> Effect Unit)
+emitter serverName mapper = emitterImpl (nativeName serverName) mapper
 
 -- | Adds a monitor
 monitorName :: forall state name otherState otherName externalMsg msg. ServerName state msg -> ServerName otherState otherName -> (externalMsg -> msg) -> Effect Unit
