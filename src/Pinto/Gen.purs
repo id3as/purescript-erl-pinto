@@ -72,7 +72,7 @@ whereIs :: forall state msg. ServerName state msg -> Effect (Maybe Pid)
 whereIs serverName = whereIsImpl (nativeName serverName) Just Nothing
 
 -- | Short cut for monitoring a gen server via Pinto.Monitor
-monitor :: forall state msg. ServerName state msg -> (Monitor.MonitorMsg -> Effect Unit) -> Effect Unit -> Effect (Maybe MR.RouterRef)
+monitor :: forall state msg. ServerName state msg -> (Monitor.MonitorMsg -> Effect Unit) -> Effect Unit -> Effect (Maybe (MR.RouterRef Monitor.MonitorRef))
 monitor name cb alreadyDown = do
   maybePid <- whereIs name
   case maybePid of

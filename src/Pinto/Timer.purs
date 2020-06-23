@@ -15,7 +15,7 @@ import Effect (Effect)
 import Erl.Process.Raw (Pid)
 import Pinto.MessageRouting as MR
 
-type TimerRef = MR.RouterRef
+type TimerRef = MR.RouterRef Pid
 
 foreign import sendEvery_ :: forall msg. Int -> msg -> Effect Pid
 foreign import sendAfter_ :: forall msg. Int -> msg -> Effect Pid

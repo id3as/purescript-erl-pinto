@@ -1,6 +1,7 @@
 -module(pinto_messageRouting@foreign).
 
--export([ startRouter/3
+-export([ startRouterImpl/4
+        , maybeStartRouterImpl/4
         , stopRouter/1
         , stopRouterFromCallback/0
         ]).
@@ -8,7 +9,7 @@
 %% RegisterListener is of type Effect msg (so is effectively a function with no args)
 %% DeregisterListener is of type (msg -> Effect Unit) and takes this  value and gives us an Effect
 %% with which we will need to invoke manually here
-startRouter(RegisterListener, DeregisterListener, Callback) ->
+startRouterImpl(Ref, RegisterListener, DeregisterListener, Callback) ->
   Recipient = self(),
   Fun = fun Fun(Handle, MonitorRef) ->
               receive
@@ -25,11 +26,50 @@ startRouter(RegisterListener, DeregisterListener, Callback) ->
               end
            end,
   fun() ->
-    spawn_link(fun() ->
+    Pid = spawn_link(fun() ->
                    Handle = RegisterListener(),
+                   Recipient ! { start_result, Handle },
                    MonitorRef = monitor(process, Recipient),
                    Fun(Handle, MonitorRef)
-               end)
+               end),
+    receive
+      { start_result, Result } ->
+        (Ref(Result))(Pid)
+    end
+  end.
+
+maybeStartRouterImpl(Ref, RegisterListener, DeregisterListener, Callback) ->
+  Recipient = self(),
+  Fun = fun Fun(Handle, MonitorRef) ->
+              receive
+                stop ->
+                  (DeregisterListener(Handle))(),
+                  demonitor(MonitorRef),
+                  exit(normal);
+                {'DOWN', MonitorRef, _, _, _} ->
+                  (DeregisterListener(Handle))(),
+                  exit(normal);
+                Msg ->
+                  (Callback(Msg))(),
+                  Fun(Handle, MonitorRef)
+              end
+           end,
+  fun() ->
+    Pid = spawn_link(fun() ->
+                   MaybeHandle = RegisterListener(),
+                   case MaybeHandle of
+                     {just, Handle} ->
+                       Recipient ! { start_result, Handle },
+                       MonitorRef = monitor(process, Recipient),
+                       {just, Fun(Handle, MonitorRef)};
+                     {nothing} ->
+                       {nothing}
+                   end
+               end),
+    receive
+      { start_result, Result } ->
+        (Ref(Result))(Pid)
+    end
   end.
 
 stopRouterFromCallback() ->

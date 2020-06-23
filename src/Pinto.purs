@@ -4,6 +4,7 @@ module Pinto ( isRegistered
              , okAlreadyStarted
              , okAlreadyStarted'
              , node
+             , self
              , module PintoTypeExports
              )
 where
@@ -23,6 +24,7 @@ import Pinto.Types (ChildTemplate(..), ServerName(..), StartLinkResult(..), Star
 import Pinto.Types (class StartOk, ServerName(..), startOk, startOkAS)
 
 foreign import node :: Effect String
+foreign import self :: Effect Pid
 foreign import isRegisteredImpl :: Foreign -> Effect Boolean
 foreign import alreadyStartedImpl :: Foreign -> Effect Pid
 
