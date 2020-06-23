@@ -14,6 +14,8 @@ module Pinto.Gen ( startLink
                  , whereIs
                  , emitter
                  , monitor
+                 , trapExit
+                 , ExitMessage(..)
                  )
   where
 
@@ -27,9 +29,11 @@ import Erl.ModuleName (NativeModuleName(..))
 import Erl.Process.Raw (Pid)
 import Foreign (Foreign, unsafeToForeign)
 import Pinto (ServerName(..), StartLinkResult)
-import Pinto.Sup (foreignToSlr)
-import Pinto.Monitor as Monitor
 import Pinto.MessageRouting as MR
+import Pinto.Monitor as Monitor
+import Pinto.Sup (foreignToSlr)
+
+data ExitMessage = Exit Pid Foreign
 
 foreign import callImpl :: forall response state name. name -> (state -> (CallResult response state)) -> Effect response
 foreign import doCallImpl :: forall response state name. name -> (state -> Effect (CallResult response state)) -> Effect response
@@ -40,6 +44,7 @@ foreign import startLinkImpl :: forall name state msg. name -> Effect state -> (
 foreign import emitterImpl :: forall msg serverName. serverName -> Effect (msg -> Effect Unit)
 foreign import registerTerminateImpl :: forall state name. name -> (TerminateReason -> state -> Effect Unit) -> Effect Unit
 foreign import whereIsImpl :: forall name. name -> (Pid -> Maybe Pid) -> (Maybe Pid) -> Effect (Maybe Pid)
+foreign import trapExitImpl :: forall name msg. name -> (ExitMessage ->  msg) -> Effect Unit
 
 -- These imports are just so we don't get warnings
 foreign import code_change :: forall a. a -> a -> a -> a
@@ -70,6 +75,10 @@ emitter serverName = emitterImpl (nativeName serverName)
 -- | Gets the pid of this gen server (if running)
 whereIs :: forall state msg. ServerName state msg -> Effect (Maybe Pid)
 whereIs serverName = whereIsImpl (nativeName serverName) Just Nothing
+
+-- | sets trap_exit = true and provides the message to return into handle_info when it gets triggered
+trapExit :: forall state msg. ServerName state msg -> (ExitMessage -> msg) -> Effect Unit
+trapExit serverName = trapExitImpl (nativeName serverName)
 
 -- | Short cut for monitoring a gen server via Pinto.Monitor
 monitor :: forall state msg. ServerName state msg -> (Monitor.MonitorMsg -> Effect Unit) -> Effect Unit -> Effect (Maybe (MR.RouterRef Monitor.MonitorRef))

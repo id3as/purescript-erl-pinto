@@ -31,14 +31,16 @@
 -export([
          emitterImpl/1,
          registerTerminateImpl/2,
-         whereIsImpl/3
+         whereIsImpl/3,
+         trapExitImpl/2
         ]).
 
 -record(state_impl,
         {
          state :: term(),
          handle_info :: fun(),
-         terminate_handler :: undefined | fun()
+         terminate_handler :: undefined | fun(),
+         trap_exit :: term()
          }).
 
 doCallImpl(Name, Fn) -> fun() ->
@@ -101,6 +103,11 @@ registerTerminateImpl(Name, TerminateHandler) ->
     gen_server:cast(Name, { register_terminate, TerminateHandler })
   end.
 
+trapExitImpl(Name, Msg) ->
+  fun() ->
+    gen_server:cast(Name, { trap_exit, Msg })
+  end.
+
 init([Effect, HandleInfo]) ->
   {ok, #state_impl { state = Effect()
                    , handle_info = HandleInfo
@@ -119,7 +126,14 @@ handle_cast({wrapped_pure_cast, Fn}, StateImpl = #state_impl { state = State }) 
   dispatch_cast_response(Fn(State), StateImpl);
 
 handle_cast({register_terminate, TerminateHandler}, StateImpl = #state_impl { }) ->
-  { noreply, StateImpl#state_impl { terminate_handler = TerminateHandler }}.
+  { noreply, StateImpl#state_impl { terminate_handler = TerminateHandler }};
+
+handle_cast({trap_exit, TrapExitMsg}, StateImpl = #state_impl { }) ->
+  process_flag(trap_exit, true),
+  { noreply, StateImpl#state_impl { trap_exit = TrapExitMsg }}.
+
+handle_info({'EXIT', FromPid, Reason}, StateImpl = #state_impl { trap_exit = TrapExitMsg, handle_info = HandleInfo, state = State }) ->
+  dispatch_cast_response(((HandleInfo(TrapExitMsg({exit, FromPid,  Reason})))(State))(), StateImpl);
 
 handle_info(Msg, StateImpl = #state_impl { state = State, handle_info = HandleInfo}) ->
   dispatch_cast_response(((HandleInfo(Msg))(State))(), StateImpl).
