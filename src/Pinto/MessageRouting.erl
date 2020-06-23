@@ -16,7 +16,7 @@ startRouter(RegisterListener, DeregisterListener, Callback) ->
                   (DeregisterListener(Handle))(),
                   demonitor(MonitorRef),
                   exit(normal);
-                {'DOWN', _, _, _, _} ->
+                {'DOWN', MonitorRef, _, _, _} ->
                   (DeregisterListener(Handle))(),
                   exit(normal);
                 Msg ->

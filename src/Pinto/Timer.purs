@@ -32,8 +32,8 @@ sendEvery x msg cb = do
 sendAfter :: forall msg.  Int -> msg -> (msg -> Effect Unit) -> Effect TimerRef
 sendAfter x msg cb = do
   MR.startRouter (sendAfter_ x msg) cancel_ (\msg2 -> do 
-                                                          _ <- MR.stopRouterFromCallback
                                                           _ <- cb msg2
+                                                          _ <- MR.stopRouterFromCallback
                                                           pure unit)
 
 -- | Cancels a timer started by either sendEvery or sendAfter

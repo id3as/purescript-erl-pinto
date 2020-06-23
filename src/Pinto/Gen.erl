@@ -31,14 +31,13 @@
 -export([
          emitterImpl/1,
          registerTerminateImpl/2,
-         monitorImpl/3
+         whereIsImpl/3
         ]).
 
 -record(state_impl,
         {
          state :: term(),
          handle_info :: fun(),
-         monitors = #{} :: maps:map(pid(), {reference(), fun()}),
          terminate_handler :: undefined | fun()
          }).
 
@@ -88,16 +87,18 @@ emitterImpl(Name) ->
     end
   end.
 
+
+whereIsImpl(Name, Just, Nothing) ->
+  fun() ->
+    case where_is_name(Name) of
+      undefined -> Nothing;
+      Pid -> Just(Pid)
+    end
+  end.
+
 registerTerminateImpl(Name, TerminateHandler) ->
   fun() ->
     gen_server:cast(Name, { register_terminate, TerminateHandler })
-  end.
-
-%% Similar approach to registerExternalMappingImpl - given a state monad, we could probably
-%% make this better and return a monitor ref to enable demonitor calls
-monitorImpl(Name, ToMonitor, Mapper) ->
-  fun() ->
-      gen_server:cast(Name, { monitor, ToMonitor, Mapper })
   end.
 
 init([Effect, HandleInfo]) ->
@@ -118,34 +119,7 @@ handle_cast({wrapped_pure_cast, Fn}, StateImpl = #state_impl { state = State }) 
   dispatch_cast_response(Fn(State), StateImpl);
 
 handle_cast({register_terminate, TerminateHandler}, StateImpl = #state_impl { }) ->
-  { noreply, StateImpl#state_impl { terminate_handler = TerminateHandler }};
-
-handle_cast({ monitor, ToMonitor, Mapper }, StateImpl = #state_impl { monitors = Monitors }) ->
-  Pid = where_is_name(ToMonitor),
-  case Pid of
-    undefined ->
-      %% DOWN
-      Ref = make_ref(),
-      Monitors2 = maps:put(Ref, {ToMonitor, Mapper}, Monitors),
-
-      handle_info({'DOWN', Ref, process, undefined, noproc}, StateImpl#state_impl{ monitors = Monitors2 });
-    _ ->
-      MRef = erlang:monitor(process, Pid),
-      Monitors2 = maps:put(MRef, {ToMonitor, Mapper}, Monitors),
-
-      {noreply, StateImpl#state_impl{ monitors = Monitors2 }}
-  end.
-
-handle_info({'DOWN', MRef, _Type, _Object, Info}, StateImpl = #state_impl { state = State, handle_info = HandleInfo, monitors = Monitors }) ->
-
-  case maps:find(MRef, Monitors) of
-    error ->
-      {noreply, StateImpl};
-
-    {ok, {_ToMonitor, Fun}} ->
-      MappedMsg = Fun(Info),
-      dispatch_cast_response(((HandleInfo(MappedMsg))(State))(), StateImpl)
-  end;
+  { noreply, StateImpl#state_impl { terminate_handler = TerminateHandler }}.
 
 handle_info(Msg, StateImpl = #state_impl { state = State, handle_info = HandleInfo}) ->
   dispatch_cast_response(((HandleInfo(Msg))(State))(), StateImpl).

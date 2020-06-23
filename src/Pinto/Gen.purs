@@ -11,15 +11,15 @@ module Pinto.Gen ( startLink
                  , defaultHandleInfo
                  , TerminateReason(..)
                  , registerTerminate
-                 , monitorName
-                 , monitorPid
+                 , whereIs
                  , emitter
+                 , monitor
                  )
   where
 
 import Prelude
 
-import Data.Maybe (Maybe)
+import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Data.Tuple (tuple2, tuple3)
@@ -28,16 +28,18 @@ import Erl.Process.Raw (Pid)
 import Foreign (Foreign, unsafeToForeign)
 import Pinto (ServerName(..), StartLinkResult)
 import Pinto.Sup (foreignToSlr)
+import Pinto.Monitor as Monitor
+import Pinto.MessageRouting as MR
 
 foreign import callImpl :: forall response state name. name -> (state -> (CallResult response state)) -> Effect response
 foreign import doCallImpl :: forall response state name. name -> (state -> Effect (CallResult response state)) -> Effect response
 foreign import castImpl :: forall state name. name -> (state -> (CastResult state)) -> Effect Unit
 foreign import doCastImpl :: forall state name. name -> (state -> Effect (CastResult state)) -> Effect Unit
-foreign import stopImpl :: forall state name. name -> Effect Unit
+foreign import stopImpl :: forall name. name -> Effect Unit
 foreign import startLinkImpl :: forall name state msg. name -> Effect state -> (msg -> state -> Effect (CastResult state)) -> Effect Foreign
 foreign import emitterImpl :: forall msg serverName. serverName -> Effect (msg -> Effect Unit)
 foreign import registerTerminateImpl :: forall state name. name -> (TerminateReason -> state -> Effect Unit) -> Effect Unit
-foreign import monitorImpl :: forall externalMsg msg name toMonitor. name -> toMonitor -> (externalMsg -> msg) -> Effect Unit
+foreign import whereIsImpl :: forall name. name -> (Pid -> Maybe Pid) -> (Maybe Pid) -> Effect (Maybe Pid)
 
 -- These imports are just so we don't get warnings
 foreign import code_change :: forall a. a -> a -> a -> a
@@ -65,17 +67,25 @@ data TerminateReason
 emitter :: forall state msg. ServerName state msg -> Effect (msg -> Effect Unit)
 emitter serverName = emitterImpl (nativeName serverName)
 
+-- | Gets the pid of this gen server (if running)
+whereIs :: forall state msg. ServerName state msg -> Effect (Maybe Pid)
+whereIs serverName = whereIsImpl (nativeName serverName) Just Nothing
+
+-- | Short cut for monitoring a gen server via Pinto.Monitor
+monitor :: forall state msg. ServerName state msg -> (Monitor.MonitorMsg -> Effect Unit) -> Effect Unit -> Effect (Maybe MR.RouterRef)
+monitor name cb alreadyDown = do
+  maybePid <- whereIs name
+  case maybePid of
+    Nothing -> do
+      _ <- alreadyDown
+      pure Nothing
+    Just pid -> 
+      Just <$> Monitor.monitor pid cb
+      
+
 -- | Adds a terminate handler
 registerTerminate :: forall state msg. ServerName state msg -> (TerminateReason -> state -> Effect Unit) -> Effect Unit
 registerTerminate name = registerTerminateImpl (nativeName name)
-
--- | Adds a monitor
-monitorName :: forall state otherState otherName externalMsg msg. ServerName state msg -> ServerName otherState otherName -> (externalMsg -> msg) -> Effect Unit
-monitorName name = monitorImpl (nativeName name)
-
-monitorPid :: forall state externalMsg msg. ServerName state msg -> Pid -> (externalMsg -> msg) -> Effect Unit
-monitorPid name = monitorImpl (nativeName name)
-
 
 -- | Starts a typed gen-server proxy with the supplied ServerName, with the state being the result of the supplied effect
 -- |
