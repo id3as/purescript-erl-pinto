@@ -61,14 +61,17 @@ maybeStartRouterImpl(Ref, RegisterListener, DeregisterListener, Callback) ->
                      {just, Handle} ->
                        Recipient ! { start_result, Handle },
                        MonitorRef = monitor(process, Recipient),
-                       {just, Fun(Handle, MonitorRef)};
+                       Fun(Handle, MonitorRef);
                      {nothing} ->
+                       Recipient ! { start_result, undefined },
                        {nothing}
                    end
                end),
     receive
+      { start_result, undefined } ->
+        {nothing};
       { start_result, Result } ->
-        (Ref(Result))(Pid)
+        {just, (Ref(Result))(Pid) }
     end
   end.
 
@@ -79,8 +82,8 @@ stopRouterFromCallback() ->
       ok
   end.
 
-stopRouter(Ref) ->
+stopRouter({_, _, Pid}) ->
   fun() ->
-      Ref ! stop,
+      Pid ! stop,
       ok
   end.
