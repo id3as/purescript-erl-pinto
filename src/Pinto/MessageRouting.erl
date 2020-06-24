@@ -63,8 +63,7 @@ maybeStartRouterImpl(Ref, RegisterListener, DeregisterListener, Callback) ->
                        MonitorRef = monitor(process, Recipient),
                        Fun(Handle, MonitorRef);
                      {nothing} ->
-                       Recipient ! { start_result, undefined },
-                       {nothing}
+                       Recipient ! { start_result, undefined }
                    end
                end),
     receive
