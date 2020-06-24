@@ -84,23 +84,23 @@ monitor name cb alreadyDown = do
     Nothing -> do
       _ <- alreadyDown
       pure Nothing
-    Just pid -> 
+    Just pid ->
       Just <$> Monitor.monitor pid cb
 
 -- | A typed record containing all the optional extras for configuring a genserver
-type StartLinkBuilder state msg = { 
+type StartLinkBuilder state msg = {
 
     -- | A callback to be invoked when the gen server receives an arbitrary message
     handleInfo :: msg -> state -> Effect (CastResult state)
 
     -- | A callback to be invoked when this gen server terminates
   , terminate :: Maybe  (TerminateReason -> state -> Effect Unit)
-  
+
     -- | When set to Nothing, exits will not be trapped (the default)
     -- | When there is a mapper provided for ExitMessage, trap_exits will be true
   , trapExit :: Maybe (ExitMessage -> msg)
   }
-      
+
 -- | Starts a typed gen-server proxy with the supplied ServerName, with the state being the result of the supplied effect
 -- | This sets up the most basic gen server without a terminate handler, handle_info handler or any means of trapping exits
 -- |
@@ -131,7 +131,7 @@ startLink name eInit = buildStartLink name eInit $ defaultStartLink
 -- |
 -- | init :: Effect State
 -- | init = pure {}
--- | 
+-- |
 -- | handleInfo :: Msg -> State -> Effect (CastResult State)
 -- | handleInfo msg state = pure $ CastNoReply state
 -- | ```

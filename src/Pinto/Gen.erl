@@ -191,4 +191,3 @@ where_is_name(GenName)  ->
     Name when is_atom(Name) ->
       whereis(Name)
   end.
-
