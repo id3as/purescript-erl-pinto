@@ -101,9 +101,9 @@ whereIsImpl(Name, Just, Nothing) ->
     end
   end.
 
-init([Effect, #{ handle_info := HandleInfo
+init([Effect, #{ handleInfo := HandleInfo
                , terminate := MaybeTerminate
-               , trap_exit  := MaybeTrapExit
+               , trapExit  := MaybeTrapExit
    }]) ->
   {ok, #state_impl { state = Effect()
                    , handle_info = HandleInfo
