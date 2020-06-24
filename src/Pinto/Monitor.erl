@@ -7,13 +7,11 @@
 
 startMonitor(Pid) ->
   fun() ->
-    io:format(user, "Starting monitor on ~p ~n", [Pid]),
     erlang:monitor(process, Pid)
   end.
 
 stopMonitor(Ref) ->
   fun() ->
-    io:format(user, "Stopping monitor ~n", []),
     erlang:demonitor(Ref)
   end.
 
