@@ -2,9 +2,10 @@
 
 -behaviour(gen_server).
 
+-include_lib("kernel/include/logger.hrl").
+
 % FFI
--export([
-         startLinkImpl/3,
+-export([startLinkImpl/3,
          stopImpl/1,
          callImpl/2,
          doCallImpl/2,
@@ -13,10 +14,9 @@
         ]).
 
 % Pinto supervision entry point
--export([
-         start_from_spec/1,
+-export([start_from_spec/1,
          start_from_spec/2
-]).
+        ]).
 
 % gen_server callbacks
 -export([init/1,
@@ -28,11 +28,9 @@
 
 
 %% Pinto specific APIs
--export([
-         emitterImpl/1,
-         registerTerminateImpl/2,
+-export([emitterImpl/1,
          whereIsImpl/3,
-         trapExitImpl/2
+         logWarning/2
         ]).
 
 -record(state_impl,
@@ -40,7 +38,7 @@
          state :: term(),
          handle_info :: fun(),
          terminate_handler :: undefined | fun(),
-         trap_exit :: term()
+         trap_exit :: undefined | fun()
          }).
 
 doCallImpl(Name, Fn) -> fun() ->
@@ -63,9 +61,15 @@ stopImpl(Name) -> fun() ->
                       gen_server:stop(Name)
                   end.
 
-startLinkImpl(Name, Effect, HandleInfo) ->
+
+logWarning(Message, Metadata) ->
   fun() ->
-      gen_server:start_link(Name, ?MODULE, [Effect, HandleInfo], [])
+      ?LOG_WARNING(Message,[], [Metadata])
+  end.
+
+startLinkImpl(Name, Effect, Opts) ->
+  fun() ->
+      gen_server:start_link(Name, ?MODULE, [Effect, Opts], [])
   end.
 
 start_from_spec(_Spec = #{ startFn := Fn, startArgs := Args }) ->
@@ -89,7 +93,6 @@ emitterImpl(Name) ->
     end
   end.
 
-
 whereIsImpl(Name, Just, Nothing) ->
   fun() ->
     case where_is_name(Name) of
@@ -98,19 +101,22 @@ whereIsImpl(Name, Just, Nothing) ->
     end
   end.
 
-registerTerminateImpl(Name, TerminateHandler) ->
-  fun() ->
-    gen_server:cast(Name, { register_terminate, TerminateHandler })
-  end.
-
-trapExitImpl(Name, Msg) ->
-  fun() ->
-    gen_server:cast(Name, { trap_exit, Msg })
-  end.
-
-init([Effect, HandleInfo]) ->
+init([Effect, #{ handle_info := HandleInfo
+               , terminate := MaybeTerminate
+               , trap_exit  := MaybeTrapExit
+   }]) ->
   {ok, #state_impl { state = Effect()
                    , handle_info = HandleInfo
+                   , terminate_handler = case MaybeTerminate of
+                                           {nothing} -> undefined;
+                                           {just, Terminate} -> Terminate
+                                         end
+                   , trap_exit = case MaybeTrapExit of
+                                   {nothing} -> undefined;
+                                   {just, TrapExit} ->
+                                     process_flag(trap_exit, true),
+                                     TrapExit
+                                 end
                    }}.
 
 handle_call({wrapped_effectful_call, Fn}, _From, StateImpl = #state_impl { state = State } ) ->
@@ -123,14 +129,7 @@ handle_cast({wrapped_effectful_cast, Fn}, StateImpl = #state_impl { state = Stat
   dispatch_cast_response((Fn(State))(), StateImpl);
 
 handle_cast({wrapped_pure_cast, Fn}, StateImpl = #state_impl { state = State }) ->
-  dispatch_cast_response(Fn(State), StateImpl);
-
-handle_cast({register_terminate, TerminateHandler}, StateImpl = #state_impl { }) ->
-  { noreply, StateImpl#state_impl { terminate_handler = TerminateHandler }};
-
-handle_cast({trap_exit, TrapExitMsg}, StateImpl = #state_impl { }) ->
-  process_flag(trap_exit, true),
-  { noreply, StateImpl#state_impl { trap_exit = TrapExitMsg }}.
+  dispatch_cast_response(Fn(State), StateImpl).
 
 handle_info({'EXIT', FromPid, Reason}, StateImpl = #state_impl { trap_exit = TrapExitMsg, handle_info = HandleInfo, state = State }) ->
   dispatch_cast_response(((HandleInfo(TrapExitMsg({exit, FromPid,  Reason})))(State))(), StateImpl);
@@ -180,14 +179,6 @@ map_shutdown_reason_to_erl({shutdownWithCustom, Term}) ->
   {shutdown, Term};
 map_shutdown_reason_to_erl({custom, Term}) ->
   Term.
-
-try_map(Msg, []) -> Msg;
-try_map(Msg, [ Head | Tail ]) ->
-  case Head(Msg) of
-    {just, Mapped} -> Mapped;
-    {nothing} -> try_map(Msg, Tail)
-  end.
-
 
 where_is_name(GenName)  ->
   case GenName of

@@ -1,6 +1,9 @@
 -- | Module roughly representing interactions with the 'gen_server'
 -- | See also 'gen_server' in the OTP docs
 module Pinto.Gen ( startLink
+                 , buildStartLink
+                 , StartLinkBuilder(..)
+                 , defaultStartLink
                  , stop
                  , CallResult(..)
                  , CastResult(..)
@@ -10,11 +13,9 @@ module Pinto.Gen ( startLink
                  , doCast
                  , defaultHandleInfo
                  , TerminateReason(..)
-                 , registerTerminate
                  , whereIs
                  , emitter
                  , monitor
-                 , trapExit
                  , ExitMessage(..)
                  )
   where
@@ -40,11 +41,10 @@ foreign import doCallImpl :: forall response state name. name -> (state -> Effec
 foreign import castImpl :: forall state name. name -> (state -> (CastResult state)) -> Effect Unit
 foreign import doCastImpl :: forall state name. name -> (state -> Effect (CastResult state)) -> Effect Unit
 foreign import stopImpl :: forall name. name -> Effect Unit
-foreign import startLinkImpl :: forall name state msg. name -> Effect state -> (msg -> state -> Effect (CastResult state)) -> Effect Foreign
+foreign import startLinkImpl :: forall name state msg. name -> Effect state -> StartLinkBuilder state msg -> Effect Foreign
 foreign import emitterImpl :: forall msg serverName. serverName -> Effect (msg -> Effect Unit)
-foreign import registerTerminateImpl :: forall state name. name -> (TerminateReason -> state -> Effect Unit) -> Effect Unit
 foreign import whereIsImpl :: forall name. name -> (Pid -> Maybe Pid) -> (Maybe Pid) -> Effect (Maybe Pid)
-foreign import trapExitImpl :: forall name msg. name -> (ExitMessage ->  msg) -> Effect Unit
+foreign import logWarning :: forall obj. String -> obj -> Effect Unit
 
 -- These imports are just so we don't get warnings
 foreign import code_change :: forall a. a -> a -> a -> a
@@ -76,10 +76,6 @@ emitter serverName = emitterImpl (nativeName serverName)
 whereIs :: forall state msg. ServerName state msg -> Effect (Maybe Pid)
 whereIs serverName = whereIsImpl (nativeName serverName) Just Nothing
 
--- | sets trap_exit = true and provides the message to return into handle_info when it gets triggered
-trapExit :: forall state msg. ServerName state msg -> (ExitMessage -> msg) -> Effect Unit
-trapExit serverName = trapExitImpl (nativeName serverName)
-
 -- | Short cut for monitoring a gen server via Pinto.Monitor
 monitor :: forall state msg. ServerName state msg -> (Monitor.MonitorMsg -> Effect Unit) -> Effect Unit -> Effect (Maybe (MR.RouterRef Monitor.MonitorRef))
 monitor name cb alreadyDown = do
@@ -90,36 +86,81 @@ monitor name cb alreadyDown = do
       pure Nothing
     Just pid -> 
       Just <$> Monitor.monitor pid cb
+
+-- | A typed record containing all the optional extras for configuring a genserver
+type StartLinkBuilder state msg = { 
+
+    -- | A callback to be invoked when the gen server receives an arbitrary message
+    handleInfo :: msg -> state -> Effect (CastResult state)
+
+    -- | A callback to be invoked when this gen server terminates
+  , terminate :: Maybe  (TerminateReason -> state -> Effect Unit)
+  
+    -- | When set to Nothing, exits will not be trapped (the default)
+    -- | When there is a mapper provided for ExitMessage, trap_exits will be true
+  , trapExit :: Maybe (ExitMessage -> msg)
+  }
       
-
--- | Adds a terminate handler
-registerTerminate :: forall state msg. ServerName state msg -> (TerminateReason -> state -> Effect Unit) -> Effect Unit
-registerTerminate name = registerTerminateImpl (nativeName name)
-
 -- | Starts a typed gen-server proxy with the supplied ServerName, with the state being the result of the supplied effect
+-- | This sets up the most basic gen server without a terminate handler, handle_info handler or any means of trapping exits
 -- |
 -- | ```purescript
 -- | serverName :: ServerName State Unit
 -- | serverName = ServerName "some_uuid"
 -- |
 -- | startLink :: Effect StartLinkResult
--- | startLink = Gen.startLink serverName init defaultHandleInfo
+-- | startLink = Gen.startLink serverName init
 -- |
 -- | init :: Effect State
 -- | init = pure {}
 -- | ```
 -- | See also: gen_server:start_link in the OTP docs (roughly)
-startLink :: forall state msg. ServerName state msg -> Effect state -> (msg -> state -> Effect (CastResult state)) -> Effect StartLinkResult
-startLink (Local name) eInit msgFn = foreignToSlr <$> startLinkImpl (tuple2 (atom "local") name) eInit msgFn
-startLink (Global name) eInit msgFn  = foreignToSlr <$> startLinkImpl (tuple2 (atom "global") name) eInit msgFn
-startLink (Via (NativeModuleName m) name) eInit msgFn = foreignToSlr <$> startLinkImpl (tuple3 (atom "via") m name) eInit msgFn
+startLink :: forall state msg. ServerName state msg -> Effect state -> Effect StartLinkResult
+startLink name eInit = buildStartLink name eInit $ defaultStartLink
+
+
+-- | Starts a typed gen-server proxy with the supplied ServerName, with the state being the result of the supplied effect
+-- | This takes in a builder of optional values which can be overriden (See: StartLinkBuilder)
+-- |
+-- | ```purescript
+-- | serverName :: ServerName State Msg
+-- | serverName = ServerName "some_uuid"
+-- |
+-- | startLink :: Effect StartLinkResult
+-- | startLink = Gen.startLink serverName init $ Gen.defaultStartLink { handleInfo: myHandleInfo }
+-- |
+-- | init :: Effect State
+-- | init = pure {}
+-- | 
+-- | handleInfo :: Msg -> State -> Effect (CastResult State)
+-- | handleInfo msg state = pure $ CastNoReply state
+-- | ```
+-- | See also: gen_server:start_link in the OTP docs (roughly)
+buildStartLink :: forall state msg. ServerName state msg -> Effect state -> StartLinkBuilder state msg-> Effect StartLinkResult
+buildStartLink (Local name) eInit builder = foreignToSlr <$> startLinkImpl (tuple2 (atom "local") name) eInit builder
+buildStartLink (Global name) eInit builder  = foreignToSlr <$> startLinkImpl (tuple2 (atom "global") name) eInit builder
+buildStartLink (Via (NativeModuleName m) name) eInit builder = foreignToSlr <$> startLinkImpl (tuple3 (atom "via") m name) eInit builder
+
+-- | Creates the default start link options for a gen server
+-- | These can be replaced  by modifying the record
+defaultStartLink :: forall state msg. StartLinkBuilder state msg
+defaultStartLink = {
+    handleInfo : defaultHandleInfo
+  , terminate : Nothing
+  , trapExit : Nothing
+    }
+
 
 data CallResult response state = CallReply response state | CallReplyHibernate response state | CallStop response state
 data CastResult state = CastNoReply state | CastNoReplyHibernate state | CastStop state | CastStopReason TerminateReason state
 
 -- | A default implementation of handleInfo that just ignores any messages received
+-- | A  warning will be printed if messages are received
 defaultHandleInfo :: forall state msg. msg -> state -> Effect (CastResult state)
-defaultHandleInfo msg state = pure $ CastNoReply state
+defaultHandleInfo msg state = do
+  logWarning "Gen server received message, consider looking at startLinkBuilder and supplying a handleInfo function" { msg, state }
+  pure $ CastNoReply state
+
 
 -- | Defines a "pure" "call" that performs an interaction on the state held by the gen server, but with no other side effects
 -- | Directly returns the result of the callback provided
