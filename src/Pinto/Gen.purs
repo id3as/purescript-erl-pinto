@@ -14,8 +14,8 @@ module Pinto.Gen ( startLink
                  , defaultHandleInfo
                  , TerminateReason(..)
                  , whereIs
-                 , emitter
                  , monitor
+                 , self
                  , ExitMessage(..)
                  )
   where
@@ -27,6 +27,7 @@ import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Data.Tuple (tuple2, tuple3)
 import Erl.ModuleName (NativeModuleName(..))
+import Erl.Process (Process(..), runProcess)
 import Erl.Process.Raw (Pid)
 import Foreign (Foreign, unsafeToForeign)
 import Pinto (ServerName(..), StartLinkResult)
@@ -42,8 +43,8 @@ foreign import castImpl :: forall state name. name -> (state -> (CastResult stat
 foreign import doCastImpl :: forall state name. name -> (state -> Effect (CastResult state)) -> Effect Unit
 foreign import stopImpl :: forall name. name -> Effect Unit
 foreign import startLinkImpl :: forall name state msg. name -> Effect state -> StartLinkBuilder state msg -> Effect Foreign
-foreign import emitterImpl :: forall msg serverName. serverName -> Effect (msg -> Effect Unit)
-foreign import whereIsImpl :: forall name. name -> (Pid -> Maybe Pid) -> (Maybe Pid) -> Effect (Maybe Pid)
+foreign import selfImpl :: forall msg serverName. serverName -> Effect (Process msg)
+foreign import whereIsImpl :: forall msg name. name -> (Process msg -> Maybe (Process msg)) -> (Maybe (Process msg)) -> Effect (Maybe (Process msg))
 foreign import logWarning :: forall obj. String -> obj -> Effect Unit
 
 -- These imports are just so we don't get warnings
@@ -66,26 +67,27 @@ data TerminateReason
   | ShutdownWithCustom Foreign
   | Custom Foreign
 
-
--- | Gets the emitter for this gen server
--- | this  is an  effectful function into which messages of the right type can be passed into handle_info
-emitter :: forall state msg. ServerName state msg -> Effect (msg -> Effect Unit)
-emitter serverName = emitterImpl (nativeName serverName)
+-- | Gets the pid for this gen server
+-- | This can only be called by the process itself because it is guaranteed to succeed and doesn't need
+-- | a Maybe around it, calls external to the process will fail an assertion to verify that you're not being naughty
+self :: forall state msg. ServerName state msg -> Effect (Process msg)
+self serverName = selfImpl (nativeName serverName)
 
 -- | Gets the pid of this gen server (if running)
-whereIs :: forall state msg. ServerName state msg -> Effect (Maybe Pid)
+-- | This is designed to be called from external agents and therefore might fail, hence the Maybe 
+whereIs :: forall state msg. ServerName state msg -> Effect (Maybe (Process msg))
 whereIs serverName = whereIsImpl (nativeName serverName) Just Nothing
 
 -- | Short cut for monitoring a gen server via Pinto.Monitor
 monitor :: forall state msg. ServerName state msg -> (Monitor.MonitorMsg -> Effect Unit) -> Effect Unit -> Effect (Maybe (MR.RouterRef Monitor.MonitorRef))
 monitor name cb alreadyDown = do
-  maybePid <- whereIs name
-  case maybePid of
+  maybeProcess <- whereIs name
+  case maybeProcess of
     Nothing -> do
       _ <- alreadyDown
       pure Nothing
-    Just pid ->
-      Just <$> Monitor.monitor pid cb
+    Just p ->
+      Just <$> Monitor.monitor (runProcess p) cb
 
 -- | A typed record containing all the optional extras for configuring a genserver
 type StartLinkBuilder state msg = {

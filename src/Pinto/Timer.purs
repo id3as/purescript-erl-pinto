@@ -6,37 +6,26 @@ module Pinto.Timer
   ( sendEvery,
     sendAfter,
     cancel,
-    TimerRef ) 
+    TimerRef
+  ) 
     where
 
 import Prelude
 
 import Effect (Effect)
-import Erl.Process.Raw (Pid)
-import Pinto.MessageRouting as MR
+import Erl.Process (Process)
 
-type TimerRef = MR.RouterRef Pid
-
-foreign import sendEvery_ :: forall msg. Int -> msg -> Effect Pid
-foreign import sendAfter_ :: forall msg. Int -> msg -> Effect Pid
-foreign import cancel_ :: Pid -> Effect Unit
+foreign import data TimerRef :: Type
 
 -- | invokes the callback every 'N' milliseconds
 -- | See also timer:send_every in the OTP docs
-sendEvery :: forall msg. Int -> msg -> (msg -> Effect Unit) -> Effect TimerRef
-sendEvery x msg cb = do
-  MR.startRouter (sendEvery_ x msg) cancel_ cb
+-- | Note: This uses the old Timer API
+foreign import sendEvery :: forall msg. Int -> msg -> Process msg -> Effect TimerRef
 
 -- | invokes the callback after 'N' milliseconds
--- | See also timer:send_after in the OTP docs
-sendAfter :: forall msg.  Int -> msg -> (msg -> Effect Unit) -> Effect TimerRef
-sendAfter x msg cb = do
-  MR.startRouter (sendAfter_ x msg) cancel_ (\msg2 -> do 
-                                                          _ <- cb msg2
-                                                          _ <- MR.stopRouterFromCallback
-                                                          pure unit)
+-- | See also erlang:send_after in the OTP docs
+-- | Note: This uses the new Timer API
+foreign import sendAfter :: forall msg.  Int -> msg -> Process msg -> Effect TimerRef
 
--- | Cancels a timer started by either sendEvery or sendAfter
--- | See also timer:cancel in the OTP docs
-cancel :: TimerRef -> Effect Unit
-cancel = MR.stopRouter 
+-- | Given a TimerRef, cancels the timer as per timer:cancel/erlang:cancel_timer in the OTP docs
+foreign import cancel :: TimerRef -> Effect Unit

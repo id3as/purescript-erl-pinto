@@ -28,7 +28,7 @@
 
 
 %% Pinto specific APIs
--export([emitterImpl/1,
+-export([selfImpl/1,
          whereIsImpl/3,
          logWarning/2
         ]).
@@ -78,18 +78,14 @@ start_from_spec(_Spec = #{ startFn := Fn, startArgs := Args }) ->
 start_from_spec(_Spec = #{ startFn := Fn }, Args) ->
   (Fn(Args))().
 
-%% An emitter is a function that given a message returns an Effect Unit
-%% And this function returns a function of (Msg -> Effect Unit)
-%% So given a message we need to return an Effect Unit which is.. another function
-%% and the function to get the emitter in the first place is effectful (where_is_name)
-%% so that's another effect, anyway - think about this v carefully before you edit
-emitterImpl(Name) ->
+selfImpl(Name) ->
   fun() ->
     Pid  = where_is_name(Name),
-    fun(Msg) ->
-        fun() ->
-          Pid ! Msg
-        end
+    Self = erlang:self(),
+    if
+      Self =:= Pid -> Self;
+      true ->
+        exit(Self, {error, <<"Gen.self was called from an external process, this is not allowed">>})
     end
   end.
 

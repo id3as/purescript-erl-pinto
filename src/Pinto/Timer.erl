@@ -1,24 +1,27 @@
 -module(pinto_timer@foreign).
 
--export([ cancel_/1,
-          sendEvery_/2,
-          sendAfter_/2 ]).
+-export([ cancel/1,
+          sendEvery/3,
+          sendAfter/3 ]).
 
-cancel_(Ref) ->
+cancel(WrappedRef) ->
   fun() ->
-    timer:cancel(Ref)
+      case WrappedRef of
+        { timer, Ref } ->
+          timer:cancel(Ref);
+        { erlang,  Ref } ->
+          erlang:cancel_timer(Ref)
+      end
   end.
 
-%% Sod it, simple
-sendEvery_(Milliseconds, Msg) ->
+sendEvery(Milliseconds,Msg, Target) ->
   fun() ->
-    { ok, Ref } = timer:send_interval(Milliseconds, Msg),
-    Ref
+    { ok, Ref } = timer:send_interval(Milliseconds, Target, Msg),
+    { timer, Ref }
   end.
 
-%% Ditto
-sendAfter_(Milliseconds, Msg) ->
+sendAfter(Milliseconds, Msg, Target) ->
   fun() ->
-    { ok, Ref } = timer:send_after(Milliseconds, Msg),
-    Ref
+    Ref = erlang:send_after(Milliseconds, Target, Msg),
+    { erlang, Ref }
   end.
