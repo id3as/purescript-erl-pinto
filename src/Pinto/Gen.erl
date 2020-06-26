@@ -1,65 +1,47 @@
 -module(pinto_gen@foreign).
 
--behaviour(gen_server).
-
 -include_lib("kernel/include/logger.hrl").
 
-% FFI
--export([startLinkImpl/3,
-         stopImpl/1,
-         callImpl/2,
-         doCallImpl/2,
-         castImpl/2,
-         doCastImpl/2
-        ]).
-
-% Pinto supervision entry point
--export([start_from_spec/1,
-         start_from_spec/2
-        ]).
-
-% gen_server callbacks
--export([init/1,
-         handle_call/3,
-         handle_cast/2,
-         handle_info/2,
-         terminate/2,
-         code_change/3]).
+-export([startLinkImpl/3
+       , stopImpl/1
+       , doCallImpl/2
+       , doCastImpl/2
+       , callReplyImpl/2
+       , callReplyHibernateImpl/2
+       , callStopImpl/3
+       , castNoReplyImpl/1
+       , castNoReplyHibernateImpl/1
+       , castStopImpl/2
+       , enableTrapExitImpl/0
+       , readTerminateReasonImpl/5
+       , start_from_spec/1
+       , start_from_spec/2
+     ]).
 
 
 %% Pinto specific APIs
--export([selfImpl/1,
-         whereIsImpl/3,
-         logWarning/2
+-export([whereIsImpl/3,
+         logWarning/2,
+         selfImpl/0
         ]).
 
--record(state_impl,
-        {
-         state :: term(),
-         handle_info :: fun(),
-         terminate_handler :: undefined | fun(),
-         trap_exit :: undefined | fun()
-         }).
+callReplyImpl(Resp, NewState) -> { reply, Resp, NewState }.
+callReplyHibernateImpl(Resp, NewState) -> { reply, Resp, NewState, hibernate }.
+callStopImpl(Reason, Resp, NewState) -> {stop, Reason, Resp, NewState }.
 
-doCallImpl(Name, Fn) -> fun() ->
-                            gen_server:call(Name, { wrapped_effectful_call, Fn })
-                        end.
+castNoReplyImpl(NewState) -> {noreply, NewState }.
+castNoReplyHibernateImpl(NewState) -> {noreply, NewState, hibernate }.
+castStopImpl(NewState, Reason) -> { stop, Reason, NewState }.
 
-callImpl(Name, Fn) -> fun() ->
-                          gen_server:call(Name, { wrapped_pure_call, Fn })
-                      end.
+doCallImpl(Name, Fn) -> fun() -> gen_server:call(Name, Fn) end.
+doCastImpl(Name, Fn) -> fun() -> gen_server:cast(Name, Fn) end.
+stopImpl(Name) -> fun() -> gen_server:stop(Name) end.
 
-doCastImpl(Name, Fn) -> fun() ->
-                            gen_server:cast(Name, { wrapped_effectful_cast, Fn })
-                        end.
 
-castImpl(Name, Fn) -> fun() ->
-                          gen_server:cast(Name, { wrapped_pure_cast, Fn })
-                      end.
-
-stopImpl(Name) -> fun() ->
-                      gen_server:stop(Name)
-                  end.
+selfImpl() ->
+  fun()  ->
+      self()
+  end.
 
 
 logWarning(Message, Metadata) ->
@@ -67,9 +49,9 @@ logWarning(Message, Metadata) ->
       ?LOG_WARNING(Message,[], [Metadata])
   end.
 
-startLinkImpl(Name, Effect, Opts) ->
+startLinkImpl(Name, Init, Opts) ->
   fun() ->
-      gen_server:start_link(Name, ?MODULE, [Effect, Opts], [])
+      gen_server:start_link(Name, 'pinto_gen@ps', [ #{ init => Init, opts => Opts  }], [])
   end.
 
 start_from_spec(_Spec = #{ startFn := Fn, startArgs := Args }) ->
@@ -77,17 +59,6 @@ start_from_spec(_Spec = #{ startFn := Fn, startArgs := Args }) ->
 
 start_from_spec(_Spec = #{ startFn := Fn }, Args) ->
   (Fn(Args))().
-
-selfImpl(Name) ->
-  fun() ->
-    Pid  = where_is_name(Name),
-    Self = erlang:self(),
-    if
-      Self =:= Pid -> Self;
-      true ->
-        exit(Self, {error, <<"Gen.self was called from an external process, this is not allowed">>})
-    end
-  end.
 
 whereIsImpl(Name, Just, Nothing) ->
   fun() ->
@@ -97,84 +68,18 @@ whereIsImpl(Name, Just, Nothing) ->
     end
   end.
 
-init([Effect, #{ handleInfo := HandleInfo
-               , terminate := MaybeTerminate
-               , trapExit  := MaybeTrapExit
-   }]) ->
-  {ok, #state_impl { state = Effect()
-                   , handle_info = HandleInfo
-                   , terminate_handler = case MaybeTerminate of
-                                           {nothing} -> undefined;
-                                           {just, Terminate} -> Terminate
-                                         end
-                   , trap_exit = case MaybeTrapExit of
-                                   {nothing} -> undefined;
-                                   {just, TrapExit} ->
-                                     process_flag(trap_exit, true),
-                                     TrapExit
-                                 end
-                   }}.
-
-handle_call({wrapped_effectful_call, Fn}, _From, StateImpl = #state_impl { state = State } ) ->
-  dispatch_call_response((Fn(State))(), StateImpl);
-
-handle_call({wrapped_pure_call, Fn}, _From, StateImpl = #state_impl { state = State }) ->
-  dispatch_call_response(Fn(State), StateImpl).
-
-handle_cast({wrapped_effectful_cast, Fn}, StateImpl = #state_impl { state = State }) ->
-  dispatch_cast_response((Fn(State))(), StateImpl);
-
-handle_cast({wrapped_pure_cast, Fn}, StateImpl = #state_impl { state = State }) ->
-  dispatch_cast_response(Fn(State), StateImpl).
-
-handle_info({'EXIT', FromPid, Reason}, StateImpl = #state_impl { trap_exit = TrapExitMsg, handle_info = HandleInfo, state = State }) ->
-  dispatch_cast_response(((HandleInfo(TrapExitMsg({exit, FromPid,  Reason})))(State))(), StateImpl);
-
-handle_info(Msg, StateImpl = #state_impl { state = State, handle_info = HandleInfo}) ->
-  dispatch_cast_response(((HandleInfo(Msg))(State))(), StateImpl).
-
-terminate(_Reason, _StateImpl = #state_impl { terminate_handler = undefined} ) ->
-  ok;
-
-terminate(Reason, _StateImpl = #state_impl { terminate_handler = TerminateHandler
-                                           , state = State } ) ->
-  ((TerminateHandler(map_shutdown_reason_to_purs(Reason)))(State))().
-
-code_change(_OldVsn, State, _Extra) ->
-  {ok, State}.
-
-dispatch_call_response(Response, StateImpl) ->
-  case Response of
-    { callReply, Result, NewState } -> {reply, Result, StateImpl#state_impl { state = NewState}};
-    { callReplyHibernate, Result, NewState } -> {reply, Result, StateImpl#state_impl { state = NewState }, hibernate};
-    { callStop, Result, NewState } -> {stop, normal, Result, StateImpl#state_impl { state = NewState }}
+enableTrapExitImpl() ->
+  fun() ->
+      erlang:process_flag(trap_exit, true)
   end.
 
-dispatch_cast_response(Response, StateImpl) ->
-  case Response of
-    { castNoReply, NewState } -> {noreply, StateImpl#state_impl { state = NewState}};
-    { castNoReplyHibernate, NewState } -> {noreply, StateImpl#state_impl { state = NewState }, hibernate};
-    { castStop, NewState } -> {stop, normal, StateImpl#state_impl { state = NewState }};
-    { castStopReason, Reason, NewState} -> {stop, map_shutdown_reason_to_erl(Reason), StateImpl#state_impl { state = NewState }}
+readTerminateReasonImpl(F, Normal, Shutdown, ShutdownWithCustom, Custom) ->
+  case F of
+    normal -> Normal;
+    shutdown -> Shutdown;
+    {shutdown, Custom} -> ShutdownWithCustom(Custom);
+    Other -> Custom(Other)
   end.
-
-map_shutdown_reason_to_purs(normal) ->
-  {normal};
-map_shutdown_reason_to_purs(shutdown) ->
-  {shutdown};
-map_shutdown_reason_to_purs({shutdown, Term}) ->
-  {shutdownWithCustom, Term};
-map_shutdown_reason_to_purs(Term) ->
-  {custom, Term}.
-
-map_shutdown_reason_to_erl({normal}) ->
-  normal;
-map_shutdown_reason_to_erl({shutdown}) ->
-  shutdown;
-map_shutdown_reason_to_erl({shutdownWithCustom, Term}) ->
-  {shutdown, Term};
-map_shutdown_reason_to_erl({custom, Term}) ->
-  Term.
 
 where_is_name(GenName)  ->
   case GenName of

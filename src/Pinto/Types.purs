@@ -5,6 +5,7 @@ module Pinto.Types
        , StartLinkResult(..)
        , StartChildResult(..)
        , ChildTemplate(..)
+       , TerminateReason(..)
        , class StartOk
        , startOk
        , startOkAS
@@ -38,6 +39,12 @@ data StartLinkResult
   | Ignore
   | AlreadyStarted Pid
   | Failed Foreign
+
+data TerminateReason
+  = Normal
+  | Shutdown
+  | ShutdownWithCustom Foreign
+  | Custom Foreign
 
 -- | The result of invoking gen_server:start_link
 data StartChildResult

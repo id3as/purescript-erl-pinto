@@ -20,7 +20,7 @@ import Erl.Process.Raw (Pid)
 import Foreign (Foreign, unsafeToForeign)
 
 import Partial.Unsafe (unsafePartial)
-import Pinto.Types (ChildTemplate(..), ServerName(..), StartLinkResult(..), StartChildResult(..), SupervisorName) as PintoTypeExports
+import Pinto.Types (ChildTemplate(..), ServerName(..), StartLinkResult(..), StartChildResult(..), SupervisorName, TerminateReason(..)) as PintoTypeExports
 import Pinto.Types (class StartOk, ServerName(..), startOk, startOkAS)
 
 foreign import node :: Effect String
