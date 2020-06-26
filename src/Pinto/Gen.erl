@@ -3,6 +3,7 @@
 -include_lib("kernel/include/logger.hrl").
 
 -export([startLinkImpl/3
+       , unpackArgsImpl/1
        , stopImpl/1
        , doCallImpl/2
        , doCastImpl/2
@@ -13,9 +14,11 @@
        , castNoReplyHibernateImpl/1
        , castStopImpl/2
        , enableTrapExitImpl/0
+       , mapInfoMessageImpl/3
        , readTerminateReasonImpl/5
        , start_from_spec/1
        , start_from_spec/2
+       , mapInfoMessageImpl/3
      ]).
 
 
@@ -37,6 +40,12 @@ doCallImpl(Name, Fn) -> fun() -> gen_server:call(Name, Fn) end.
 doCastImpl(Name, Fn) -> fun() -> gen_server:cast(Name, Fn) end.
 stopImpl(Name) -> fun() -> gen_server:stop(Name) end.
 
+mapInfoMessageImpl({just, Mapper}, Constructor, { 'EXIT', Pid,  Reason }) ->
+  Mapper((Constructor(Pid))(Reason));
+mapInfoMessageImpl(_, _, Other) ->  Other. %% Waves Hands
+
+
+
 
 selfImpl() ->
   fun()  ->
@@ -53,6 +62,8 @@ startLinkImpl(Name, Init, Opts) ->
   fun() ->
       gen_server:start_link(Name, 'pinto_gen@ps', [ #{ init => Init, opts => Opts  }], [])
   end.
+
+unpackArgsImpl([Args]) -> Args. %% shrug
 
 start_from_spec(_Spec = #{ startFn := Fn, startArgs := Args }) ->
   (Fn(Args))().
