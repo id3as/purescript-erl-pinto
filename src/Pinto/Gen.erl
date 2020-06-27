@@ -34,7 +34,7 @@ callStopImpl(Reason, Resp, NewState) -> {stop, Reason, Resp, NewState }.
 
 castNoReplyImpl(NewState) -> {noreply, NewState }.
 castNoReplyHibernateImpl(NewState) -> {noreply, NewState, hibernate }.
-castStopImpl(NewState, Reason) -> { stop, Reason, NewState }.
+castStopImpl(Reason, NewState) -> { stop, Reason, NewState }.
 
 doCallImpl(Name, Fn) -> fun() -> gen_server:call(Name, Fn) end.
 doCastImpl(Name, Fn) -> fun() -> gen_server:cast(Name, Fn) end.
