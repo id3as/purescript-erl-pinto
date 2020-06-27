@@ -14,10 +14,8 @@ module Pinto.Gen ( startLink
                  , whereIs
                  , monitor
                  , self
-                 , CoreState
+                 , GenContext
                  , StateImpl
-                 , InitStateImpl
-                 , GenInitT
                  , GenResultT
                  , ExitMessage(..)
                  , module Exports
@@ -31,56 +29,70 @@ module Pinto.Gen ( startLink
                  , handle_cast
                  , CallResultImpl
                  , CastResultImpl
+                 , Over
+                 , With
                  )
   where
 
 import Prelude
 
+import Control.Monad.State (State, StateT)
+import Control.Monad.State (lift) as Exports
+import Control.Monad.State (runStateT, execStateT, evalStateT, lift)
+import Control.Monad.State as State
 import Data.Maybe (Maybe(..))
+import Data.Tuple (uncurry)
 import Effect (Effect)
+import Effect.Uncurried (EffectFn1, EffectFn2, EffectFn3, mkEffectFn1, mkEffectFn2, mkEffectFn3)
+import Erl.Atom (Atom, atom)
 import Erl.Atom (atom)
 import Erl.Data.List ((:), nil)
 import Erl.Data.Tuple (tuple2, tuple3, Tuple2(..))
 import Erl.ModuleName (NativeModuleName(..))
 import Erl.Process (Process(..), runProcess)
-import Control.Monad.State ( runStateT, execStateT, evalStateT, lift)
-import Control.Monad.State as State
-import Control.Monad.State (lift) as Exports
 import Erl.Process.Raw (Pid)
-import Erl.Atom (Atom, atom)
-import Data.Tuple (uncurry)
-import Effect.Uncurried (EffectFn1, EffectFn2, EffectFn3, mkEffectFn1, mkEffectFn2, mkEffectFn3)
 import Foreign (Foreign, unsafeToForeign)
 import Pinto (ServerName(..), StartLinkResult, TerminateReason(..))
-import Control.Monad.State (State, StateT)
 import Pinto.MessageRouting as MR
 import Pinto.Monitor as Monitor
 import Pinto.Sup (foreignToSlr)
 import Unsafe.Coerce (unsafeCoerce)
 
+-- | The message receives by trapped exits (configured using trapExit)
 data ExitMessage = Exit Pid Foreign
 
--- | The type of any effectful callback into this gen server
-type GenResultT response state msg = StateT (StateImpl state msg) Effect response
 
-type GenInitT state msg = StateT (InitStateImpl state msg) Effect state
-
-
--- | The base state shared  across most handlers
-newtype CoreState state msg t = CoreState { handleInfo :: msg -> state -> HandleInfo state msg
+-- | The context of this gen server (everything except 'state' which tends to get passed into handlers
+newtype GenContext state msg = GenContext { handleInfo :: msg -> state -> HandleInfo state msg
                                           , terminate :: Maybe (TerminateReason -> state -> Effect Unit)
                                           , trapExit :: Maybe (ExitMessage -> msg)
                                           , pid :: Process msg
-                                           | t
                                           } 
 
-type InitStateImpl state msg = (CoreState state msg ())
-type StateImpl state msg = (CoreState state msg ( innerState :: state ))
+-- | Internal record used in the actual gen server itself
+type StateImpl state msg = { innerState :: state
+                           , context :: GenContext state msg }
 
-type Init state msg = GenInitT state msg
+-- | The type of any effectful callback into this gen server
+type GenResultT response state msg = StateT (GenContext state msg) Effect response
+
+-- | Type of the callback invoked during a gen_server:init
+type Init state msg = GenResultT state state msg
+
+--- | Type of the callback invoked during a gen_server:handle_info
 type HandleInfo state msg = GenResultT (CastResult state) state msg
+
+-- | Type of the callback invoked during a gen_server:handle_call
 type Call response state msg = GenResultT (CallResult response state) state msg
+
+-- | Type of the callback invoked during a gen_server:handle_cast
 type Cast state msg = GenResultT (CastResult state) state msg
+
+-- | Helper type for creating a function that operates in the context of a gen server and returns 'response' effectfully
+type With state msg response = StateT (GenContext state msg) Effect response
+
+-- | Helper type for creating a function that operates in the context of a gen server and operates over 'state' effectfully
+type Over state msg = StateT (GenContext state msg) Effect state
 
 foreign import enableTrapExitImpl :: Effect Unit
 foreign import doCallImpl :: forall name state msg response. name -> ((StateImpl state msg) -> Pid -> Effect (CallResultImpl response state msg)) -> Effect response
@@ -98,9 +110,9 @@ nativeName (Global name) = unsafeToForeign $ tuple2 (atom "global") name
 nativeName (Via (NativeModuleName m) name) = unsafeToForeign $ tuple3 (atom "via") m name
 
 -- | Gets the pid for this gen server
-self :: forall state msg t. StateT (CoreState state msg t) Effect (Process msg)
+self :: forall state msg. StateT (GenContext state msg) Effect (Process msg)
 self = do
-  CoreState { pid } <- State.get
+  GenContext { pid } <- State.get
   pure pid
 
 -- | Gets the pid of this gen server (if running)
@@ -208,8 +220,8 @@ init2 { init, opts: {  handleInfo, terminate, trapExit } } = do
   
   -- Note: We're discarding the state here, when it comes to registering callbacks/etc
   -- or injecting logging, we'll probably want to keep it so we can use it to populate our StateImpl
-  innerState <- evalStateT init $ (CoreState { handleInfo, terminate, trapExit, pid })
-  pure $ tuple2 (atom "ok") $ CoreState { innerState, handleInfo, terminate, trapExit, pid } 
+  innerState <- evalStateT init $ GenContext { handleInfo, terminate, trapExit, pid }
+  pure $ tuple2 (atom "ok") $ { innerState, context: GenContext { handleInfo, terminate, trapExit, pid }  }
 
 handle_call :: forall response state msg. EffectFn3 (StateImpl state msg -> Pid -> Effect (CallResultImpl response state msg))  Pid (StateImpl state msg) (CallResultImpl response state msg)
 handle_call = mkEffectFn3 \fn from state -> fn state from
@@ -218,14 +230,14 @@ handle_cast :: forall state msg. EffectFn2 (StateImpl state msg -> Effect (CastR
 handle_cast = mkEffectFn2 \fn state -> fn state
 
 handle_info :: forall state msg. EffectFn2 Foreign (StateImpl state msg) (CastResultImpl state msg)
-handle_info = mkEffectFn2 \msg state@(CoreState { innerState, handleInfo, trapExit}) ->
+handle_info = mkEffectFn2 \msg state@({ innerState, context: context@(GenContext {  handleInfo, trapExit })}) ->
     let
         mappedMsg = mapInfoMessageImpl trapExit Exit msg 
      in
-    uncurry dispatchCastResp <$> runStateT (handleInfo mappedMsg innerState) state
+    uncurry dispatchCastResp <$> runStateT (handleInfo mappedMsg innerState) context
 
 terminate :: forall state msg. EffectFn2 Foreign (StateImpl state msg) Atom
-terminate = mkEffectFn2 \reason (CoreState { terminate:  mt, innerState }) ->
+terminate = mkEffectFn2 \reason { context: GenContext { terminate:  mt }, innerState } ->
   case mt of
            Just t -> do
              _ <- t (readTerminateReason reason) innerState
@@ -282,8 +294,8 @@ readTerminateReason f =
 -- | ```
 -- | See also handle_call and gen_server:call in the OTP docs
 doCall :: forall response state msg. ServerName state msg -> (state -> Call response state msg) -> Effect response
-doCall name fn = doCallImpl (nativeName name) \genState@(CoreState { innerState }) from -> 
-  uncurry dispatchCallResp <$> runStateT (fn innerState) genState
+doCall name fn = doCallImpl (nativeName name) \genState@{ innerState, context } from -> 
+  uncurry dispatchCallResp <$> runStateT (fn innerState) context
 
 
 -- | Defines an effectful cast that performs an interaction on the state held by the gen server
@@ -293,33 +305,33 @@ doCall name fn = doCallImpl (nativeName name) \genState@(CoreState { innerState 
 -- | ```
 -- | See also handle_cast and gen_server:cast in the OTP docs
 doCast :: forall state msg. ServerName state msg -> (state -> Cast state msg) -> Effect Unit
-doCast name fn = doCastImpl (nativeName name) \genState@(CoreState { innerState }) -> 
-  uncurry dispatchCastResp <$> runStateT (fn innerState) genState
+doCast name fn = doCastImpl (nativeName name) \genState@{ innerState, context } -> 
+  uncurry dispatchCastResp <$> runStateT (fn innerState) context
 
 stop :: forall state msg. ServerName state msg -> Effect Unit
 stop name = stopImpl (nativeName name)
 
 
-dispatchCallResp :: forall  response state msg. CallResult response state -> StateImpl state msg ->  CallResultImpl response state msg
-dispatchCallResp resp (CoreState genState) =
+dispatchCallResp :: forall  response state msg. CallResult response state -> GenContext state msg ->  CallResultImpl response state msg
+dispatchCallResp resp context =
   case resp of
     CallReply resp newState ->
-      callReplyImpl resp $ CoreState genState { innerState = newState }
+      callReplyImpl resp $ { innerState: newState, context }
     CallReplyHibernate resp newState ->
-      callReplyHibernateImpl resp $ CoreState genState { innerState = newState }
+      callReplyHibernateImpl resp $ { innerState: newState, context }
     CallStop reason resp newState ->
-      callStopImpl (writeTerminateReason reason) resp $ CoreState genState { innerState = newState }
+      callStopImpl (writeTerminateReason reason) resp $ { innerState: newState, context }
 
-dispatchCastResp :: forall  state msg. CastResult state -> StateImpl state msg -> CastResultImpl state msg
-dispatchCastResp resp (CoreState genState) =
+dispatchCastResp :: forall  state msg. CastResult state -> GenContext state msg -> CastResultImpl state msg
+dispatchCastResp resp context  =
   case resp of
     CastNoReply newState ->
-      castNoReplyImpl $ CoreState genState { innerState = newState }
+      castNoReplyImpl $ { innerState: newState, context }
     CastNoReplyHibernate newState ->
-      castNoReplyHibernateImpl $  CoreState genState { innerState = newState }
+      castNoReplyHibernateImpl $ { innerState: newState, context }
     CastStop newState ->
-      castStopImpl (writeTerminateReason Normal) $ CoreState genState { innerState = newState }
+      castStopImpl (writeTerminateReason Normal) $ { innerState: newState, context }
     CastStopReason reason newState ->
-      castStopImpl (writeTerminateReason reason) $ CoreState genState { innerState =  newState }
+      castStopImpl (writeTerminateReason reason) $ { innerState: newState, context }
 
 
