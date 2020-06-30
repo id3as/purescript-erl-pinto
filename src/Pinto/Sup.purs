@@ -77,8 +77,8 @@ foreign import startChildImpl :: forall name args. name -> args -> Effect Pinto.
 foreign import startSpeccedChildImpl :: forall name args. (Pid -> Pinto.StartChildResult) -> (Pid -> Pinto.StartChildResult) -> name -> args -> Effect Pinto.StartChildResult
 foreign import stopImpl :: forall state name. name -> Effect Unit
 
-foreign import terminateChildImpl :: forall name args. name -> args -> Effect Unit
-foreign import deleteChildImpl :: forall name args. name -> args -> Effect Unit
+foreign import terminateChildImpl :: forall name args. name -> Atom -> Effect Unit
+foreign import deleteChildImpl :: forall name args. name -> Atom -> Effect Unit
 
 foreign import foreignToSlr :: Foreign  -> Pinto.StartLinkResult
 foreign import foreignToScr :: Foreign  -> Pinto.StartChildResult
@@ -113,7 +113,7 @@ terminateChild :: SupervisorName -> String  -> Effect Unit
 terminateChild name child = terminateChildImpl (nativeName name) (atom child)
 
 deleteChild :: SupervisorName -> String  -> Effect Unit
-deleteChild name child = deleteChildImpl (nativeName name) child
+deleteChild name child = deleteChildImpl (nativeName name) (atom child)
 
 stop :: SupervisorName -> Effect Unit
 stop name = stopImpl (nativeName name)

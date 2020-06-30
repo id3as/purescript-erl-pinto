@@ -55,7 +55,7 @@ selfImpl() ->
 
 logWarning(Message, Metadata) ->
   fun() ->
-      ?LOG_WARNING(Message,[], [Metadata])
+      ?LOG_WARNING(Message,[], Metadata)
   end.
 
 startLinkImpl(Name, Init, Opts) ->
