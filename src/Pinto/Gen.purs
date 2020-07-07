@@ -8,8 +8,10 @@ module Pinto.Gen ( startLink
                  , CallResult(..)
                  , CastResult(..)
                  , call
+                 , callByPid
                  , init
                  , cast
+                 , castByPid
                  , defaultHandleInfo
                  , whereIs
                  , monitor
