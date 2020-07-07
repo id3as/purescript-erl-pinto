@@ -244,14 +244,14 @@ foreign import unpackArgsImpl :: forall state msg. Foreign -> Init2Args state ms
 -- Actual Gen Callbacks
 -----
 
-type Init2Args state msg = { init :: Init state msg, opts :: StartLinkBuilder state msg, name :: ServerName state msg }
+type Init2Args state msg = { init :: Init state msg, opts :: StartLinkBuilder state msg }
 
 
 init :: forall state msg. EffectFn1 Foreign  (Tuple2 Atom (StateImpl state msg))
 init = mkEffectFn1 (\args -> init2 $ unpackArgsImpl args)
 
 init2 :: forall state msg. Init2Args state msg  -> Effect (Tuple2 Atom (StateImpl state msg))
-init2 { init, opts: {  handleInfo, terminate, trapExit }, name } = do
+init2 { init, opts: {  handleInfo, terminate, trapExit } } = do
   _ <- case trapExit of
          Nothing -> pure unit
          Just _  -> enableTrapExitImpl
