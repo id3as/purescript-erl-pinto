@@ -1,7 +1,9 @@
 
 -- | See also 'gen_server' in the OTP docs
 module Pinto.Gen ( startLink
+                 , startLinkNameless
                  , buildStartLink
+                 , buildStartLinkNameless
                  , StartLinkBuilder(..)
                  , defaultStartLink
                  , stop
