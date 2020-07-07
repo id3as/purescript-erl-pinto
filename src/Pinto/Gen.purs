@@ -7,9 +7,9 @@ module Pinto.Gen ( startLink
                  , stop
                  , CallResult(..)
                  , CastResult(..)
-                 , doCall
+                 , call
                  , init
-                 , doCast
+                 , cast
                  , defaultHandleInfo
                  , whereIs
                  , monitor
@@ -66,7 +66,6 @@ data ExitMessage = Exit Pid Foreign
 newtype GenContext state msg = GenContext { handleInfo :: msg -> state -> HandleInfo state msg
                                           , terminate :: Maybe (TerminateReason -> state -> Effect Unit)
                                           , trapExit :: Maybe (ExitMessage -> msg)
-                                          , name :: ServerName state msg
                                           , pid :: Process msg
                                           } 
 
@@ -96,8 +95,8 @@ type With state msg response = StateT (GenContext state msg) Effect response
 type Over state msg = StateT (GenContext state msg) Effect state
 
 foreign import enableTrapExitImpl :: Effect Unit
-foreign import doCallImpl :: forall name state msg response. name -> ((StateImpl state msg) -> Pid -> Effect (CallResultImpl response state msg)) -> Effect response
-foreign import doCastImpl :: forall name state msg. name -> ((StateImpl state msg) -> Effect (CastResultImpl state msg)) -> Effect Unit
+foreign import callImpl :: forall name state msg response. name -> ((StateImpl state msg) -> Pid -> Effect (CallResultImpl response state msg)) -> Effect response
+foreign import castImpl :: forall name state msg. name -> ((StateImpl state msg) -> Effect (CastResultImpl state msg)) -> Effect Unit
 foreign import stopImpl :: forall name. name -> Effect Unit
 foreign import startLinkImpl :: forall name state msg. name -> Init state msg -> StartLinkBuilder state msg -> Effect Foreign
 foreign import selfImpl :: forall msg.  Effect (Process msg)
@@ -115,12 +114,6 @@ self :: forall state msg. StateT (GenContext state msg) Effect (Process msg)
 self = do
   GenContext { pid } <- State.get
   pure pid
-
--- | Gets the serverName for this gen server
-name :: forall state msg. StateT (GenContext state msg) Effect (ServerName state msg)
-name = do
-  GenContext { name  } <- State.get
-  pure name
 
 -- | Gets the pid of this gen server (if running)
 -- | This is designed to be called from external agents and therefore might fail, hence the Maybe 
@@ -168,6 +161,41 @@ type StartLinkBuilder state msg = {
 -- | See also: gen_server:start_link in the OTP docs (roughly)
 startLink :: forall state msg. ServerName state msg -> Init state msg -> Effect StartLinkResult
 startLink name init = buildStartLink name init $ defaultStartLink
+
+-- | Starts a typed gen-server proxy with the state being the result of the supplied effect
+-- | This sets up the most basic gen server without a terminate handler, handle_info handler or any means of trapping exits
+-- | This also has no name, it is up to the calling code to retrieve the pid for further communication with the server
+-- |
+-- | ```purescript
+-- |
+-- | startLink :: Effect StartLinkResult
+-- | startLink = Gen.startLinkNameless init
+-- |
+-- | init :: Effect State
+-- | init = pure {}
+-- | ```
+-- | See also: gen_server:start_link in the OTP docs (roughly)
+startLinkNameless :: forall state msg. Init state msg -> Effect StartLinkResult
+startLinkNameless init = foreignToSlr <$> startLinkImpl (atom "undefined") init defaultStartLink
+
+-- | Starts a typed gen-server proxy with the state being the result of the supplied effect
+-- | This takes in a builder of optional values which can be overriden (See: StartLinkBuilder)
+-- | This also has no name, it is up to the calling code to retrieve the pid for further communication with the server
+-- |
+-- | ```purescript
+-- |
+-- | startLink :: Effect StartLinkResult
+-- | startLink = Gen.startLinkNameless init $ Gen.defaultStartLink { handleInfo: myHandleInfo }
+-- |
+-- | init :: Effect State
+-- | init = pure {}
+-- |
+-- | handleInfo :: Msg -> State -> Effect (CastResult State)
+-- | handleInfo msg state = pure $ CastNoReply state
+-- | ```
+-- | See also: gen_server:start_link in the OTP docs (roughly)
+buildStartLinkNameless :: forall state msg. Init state msg -> StartLinkBuilder state msg -> Effect StartLinkResult
+buildStartLinkNameless init builder = foreignToSlr <$> startLinkImpl (atom "undefined") init builder
 
 
 -- | Starts a typed gen-server proxy with the supplied ServerName, with the state being the result of the supplied effect
@@ -227,8 +255,8 @@ init2 { init, opts: {  handleInfo, terminate, trapExit }, name } = do
   
   -- Note: We're discarding the state here, when it comes to registering callbacks/etc
   -- or injecting logging, we'll probably want to keep it so we can use it to populate our StateImpl
-  innerState <- evalStateT init $ GenContext { handleInfo, terminate, trapExit, pid, name }
-  pure $ tuple2 (atom "ok") $ { innerState, context: GenContext { handleInfo, terminate, trapExit, pid, name }  }
+  innerState <- evalStateT init $ GenContext { handleInfo, terminate, trapExit, pid  }
+  pure $ tuple2 (atom "ok") $ { innerState, context: GenContext { handleInfo, terminate, trapExit, pid  }  }
 
 handle_call :: forall response state msg. EffectFn3 (StateImpl state msg -> Pid -> Effect (CallResultImpl response state msg))  Pid (StateImpl state msg) (CallResultImpl response state msg)
 handle_call = mkEffectFn3 \fn from state -> fn state from
@@ -297,11 +325,28 @@ readTerminateReason f =
 -- | ```purescript
 -- |
 -- | doSomething :: Effect Unit
--- | doSomething = Gen.doCall serverName \state -> pure $ CallResult unit (modifyState state)
+-- | doSomething = Gen.call serverName \state -> pure $ CallResult unit (modifyState state)
 -- | ```
 -- | See also handle_call and gen_server:call in the OTP docs
-doCall :: forall response state msg. ServerName state msg -> (state -> Call response state msg) -> Effect response
-doCall name fn = doCallImpl (nativeName name) \genState@{ innerState, context } from -> 
+call :: forall response state msg. ServerName state msg -> (state -> Call response state msg) -> Effect response
+call name fn = callImpl (nativeName name) \genState@{ innerState, context } from -> 
+  uncurry dispatchCallResp <$> runStateT (fn innerState) context
+
+-- | Defines an effectful call that performs an interaction on the state held by the gen server, and perhaps side-effects
+-- | Directly returns the result of the callback provided
+-- |
+-- | Warning: No validation is performed on whether the Pid passed in belongs to the gen server
+-- | Expect runtime problems if this is not the case
+-- | It is expected that clients of this code does the work of making this safe
+-- |
+-- | ```purescript
+-- |
+-- | doSomething :: Pid -> Effect Unit
+-- | doSomething pid = Gen.call pid \state -> pure $ CallResult unit (modifyState state)
+-- | ```
+-- | See also handle_call and gen_server:call in the OTP docs
+callByPid :: forall response state msg. Pid -> (state -> Call response state msg) -> Effect response
+callByPid pid fn = callImpl pid \genState@{ innerState, context } from -> 
   uncurry dispatchCallResp <$> runStateT (fn innerState) context
 
 
@@ -311,10 +356,34 @@ doCall name fn = doCallImpl (nativeName name) \genState@{ innerState, context } 
 -- | doSomething = Gen.cast serverName \state -> pure $ CastNoReply $ modifyState state
 -- | ```
 -- | See also handle_cast and gen_server:cast in the OTP docs
-doCast :: forall state msg. ServerName state msg -> (state -> Cast state msg) -> Effect Unit
-doCast name fn = doCastImpl (nativeName name) \genState@{ innerState, context } -> 
+cast :: forall state msg. ServerName state msg -> (state -> Cast state msg) -> Effect Unit
+cast name fn = castImpl (nativeName name) \genState@{ innerState, context } -> 
   uncurry dispatchCastResp <$> runStateT (fn innerState) context
 
+-- | Defines an effectful cast that performs an interaction on the state held by the gen server
+-- |
+-- | Warning: No validation is performed on whether the Pid passed in belongs to the gen server
+-- | Expect runtime problems if this is not the case
+-- | It is expected that clients of this code does the work of making this safe
+-- |
+-- | ```purescript
+-- |
+-- | doSomething :: Pid -> Effect Unit
+-- | doSomething pid = Gen.call pid \state -> pure $ CallResult unit (modifyState state)
+-- | ```
+-- | See also handle_cast and gen_server:cast in the OTP docs
+castByPid :: forall state msg. Pid -> (state -> Cast state msg) -> Effect Unit
+castByPid pid fn = castImpl pid \genState@{ innerState, context } -> 
+  uncurry dispatchCastResp <$> runStateT (fn innerState) context
+
+
+-- | Shuts down the gen server from the outside
+-- |
+-- | ```purescript 
+-- | stop :: Effect Unit
+-- | stop = Gen.stop serverName 
+-- | ```
+-- | See also gen_server:stop in the OTP docs
 stop :: forall state msg. ServerName state msg -> Effect Unit
 stop name = stopImpl (nativeName name)
 

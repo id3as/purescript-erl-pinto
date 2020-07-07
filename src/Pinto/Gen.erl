@@ -5,8 +5,8 @@
 -export([startLinkImpl/3
        , unpackArgsImpl/1
        , stopImpl/1
-       , doCallImpl/2
-       , doCastImpl/2
+       , callImpl/2
+       , castImpl/2
        , callReplyImpl/2
        , callReplyHibernateImpl/2
        , callStopImpl/3
@@ -36,8 +36,8 @@ castNoReplyImpl(NewState) -> {noreply, NewState }.
 castNoReplyHibernateImpl(NewState) -> {noreply, NewState, hibernate }.
 castStopImpl(Reason, NewState) -> { stop, Reason, NewState }.
 
-doCallImpl(Name, Fn) -> fun() -> gen_server:call(Name, Fn) end.
-doCastImpl(Name, Fn) -> fun() -> gen_server:cast(Name, Fn) end.
+callImpl(Name, Fn) -> fun() -> gen_server:call(Name, Fn) end.
+castImpl(Name, Fn) -> fun() -> gen_server:cast(Name, Fn) end.
 stopImpl(Name) -> fun() -> gen_server:stop(Name) end.
 
 mapInfoMessageImpl({just, Mapper}, Constructor, { 'EXIT', Pid,  Reason }) ->
@@ -58,9 +58,13 @@ logWarning(Message, Info) ->
       ?LOG_WARNING(Message, Info)
   end.
 
+startLinkImpl(undefined, Init, Opts) ->
+  fun() ->
+      gen_server:start_link('pinto_gen@ps', [ #{ init => Init, opts => Opts }], [])
+  end;
 startLinkImpl(Name, Init, Opts) ->
   fun() ->
-      gen_server:start_link(Name, 'pinto_gen@ps', [ #{ init => Init, opts => Opts, name  => Name }], [])
+      gen_server:start_link(Name, 'pinto_gen@ps', [ #{ init => Init, opts => Opts }], [])
   end.
 
 unpackArgsImpl([Args]) -> Args. %% shrug
