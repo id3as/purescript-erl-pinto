@@ -60,7 +60,7 @@ logWarning(Message, Info) ->
 
 startLinkImpl(Name, Init, Opts) ->
   fun() ->
-      gen_server:start_link(Name, 'pinto_gen@ps', [ #{ init => Init, opts => Opts  }], [])
+      gen_server:start_link(Name, 'pinto_gen@ps', [ #{ init => Init, opts => Opts, name  => Name }], [])
   end.
 
 unpackArgsImpl([Args]) -> Args. %% shrug

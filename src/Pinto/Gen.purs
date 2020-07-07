@@ -66,6 +66,7 @@ data ExitMessage = Exit Pid Foreign
 newtype GenContext state msg = GenContext { handleInfo :: msg -> state -> HandleInfo state msg
                                           , terminate :: Maybe (TerminateReason -> state -> Effect Unit)
                                           , trapExit :: Maybe (ExitMessage -> msg)
+                                          , name :: ServerName state msg
                                           , pid :: Process msg
                                           } 
 
@@ -114,6 +115,12 @@ self :: forall state msg. StateT (GenContext state msg) Effect (Process msg)
 self = do
   GenContext { pid } <- State.get
   pure pid
+
+-- | Gets the serverName for this gen server
+name :: forall state msg. StateT (GenContext state msg) Effect (ServerName state msg)
+name = do
+  GenContext { name  } <- State.get
+  pure name
 
 -- | Gets the pid of this gen server (if running)
 -- | This is designed to be called from external agents and therefore might fail, hence the Maybe 
@@ -205,14 +212,14 @@ foreign import unpackArgsImpl :: forall state msg. Foreign -> Init2Args state ms
 -- Actual Gen Callbacks
 -----
 
-type Init2Args state msg = { init :: Init state msg, opts :: StartLinkBuilder state msg }
+type Init2Args state msg = { init :: Init state msg, opts :: StartLinkBuilder state msg, name :: ServerName state msg }
 
 
 init :: forall state msg. EffectFn1 Foreign  (Tuple2 Atom (StateImpl state msg))
 init = mkEffectFn1 (\args -> init2 $ unpackArgsImpl args)
 
 init2 :: forall state msg. Init2Args state msg  -> Effect (Tuple2 Atom (StateImpl state msg))
-init2 { init, opts: {  handleInfo, terminate, trapExit } } = do
+init2 { init, opts: {  handleInfo, terminate, trapExit }, name } = do
   _ <- case trapExit of
          Nothing -> pure unit
          Just _  -> enableTrapExitImpl
@@ -220,8 +227,8 @@ init2 { init, opts: {  handleInfo, terminate, trapExit } } = do
   
   -- Note: We're discarding the state here, when it comes to registering callbacks/etc
   -- or injecting logging, we'll probably want to keep it so we can use it to populate our StateImpl
-  innerState <- evalStateT init $ GenContext { handleInfo, terminate, trapExit, pid }
-  pure $ tuple2 (atom "ok") $ { innerState, context: GenContext { handleInfo, terminate, trapExit, pid }  }
+  innerState <- evalStateT init $ GenContext { handleInfo, terminate, trapExit, pid, name }
+  pure $ tuple2 (atom "ok") $ { innerState, context: GenContext { handleInfo, terminate, trapExit, pid, name }  }
 
 handle_call :: forall response state msg. EffectFn3 (StateImpl state msg -> Pid -> Effect (CallResultImpl response state msg))  Pid (StateImpl state msg) (CallResultImpl response state msg)
 handle_call = mkEffectFn3 \fn from state -> fn state from
