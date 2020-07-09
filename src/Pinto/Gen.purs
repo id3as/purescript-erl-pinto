@@ -247,7 +247,7 @@ init :: forall state msg. EffectFn1 Foreign  (Tuple2 Atom (StateImpl state msg))
 init = mkEffectFn1 (\args -> init2 $ unpackArgsImpl args)
 
 init2 :: forall state msg. Init2Args state msg  -> Effect (Tuple2 Atom (StateImpl state msg))
-init2 { init, opts: {  handleInfo, terminate, trapExit }, name } = do
+init2 { init, opts: {  handleInfo, terminate, trapExit } } = do
   _ <- case trapExit of
          Nothing -> pure unit
          Just _  -> enableTrapExitImpl
