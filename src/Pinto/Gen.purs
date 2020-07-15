@@ -7,6 +7,7 @@ module Pinto.Gen ( startLink
                  , stop
                  , CallResult(..)
                  , CastResult(..)
+                 , InitResult(..)
                  , doCall
                  , init
                  , doCast
@@ -67,7 +68,7 @@ newtype GenContext state msg = GenContext { handleInfo :: msg -> state -> Handle
                                           , terminate :: Maybe (TerminateReason -> state -> Effect Unit)
                                           , trapExit :: Maybe (ExitMessage -> msg)
                                           , pid :: Process msg
-                                          } 
+                                          }
 
 -- | Internal record used in the actual gen server itself
 type StateImpl state msg = { innerState :: state
@@ -77,7 +78,7 @@ type StateImpl state msg = { innerState :: state
 type GenResultT response state msg = StateT (GenContext state msg) Effect response
 
 -- | Type of the callback invoked during a gen_server:init
-type Init state msg = GenResultT state state msg
+type Init state msg = GenResultT (InitResult state) state msg
 
 --- | Type of the callback invoked during a gen_server:handle_info
 type HandleInfo state msg = GenResultT (CastResult state) state msg
@@ -116,7 +117,7 @@ self = do
   pure pid
 
 -- | Gets the pid of this gen server (if running)
--- | This is designed to be called from external agents and therefore might fail, hence the Maybe 
+-- | This is designed to be called from external agents and therefore might fail, hence the Maybe
 whereIs :: forall state msg. ServerName state msg -> Effect (Maybe (Process msg))
 whereIs serverName = whereIsImpl (nativeName serverName) Just Nothing
 
@@ -207,21 +208,30 @@ foreign import unpackArgsImpl :: forall state msg. Foreign -> Init2Args state ms
 
 type Init2Args state msg = { init :: Init state msg, opts :: StartLinkBuilder state msg }
 
-
-init :: forall state msg. EffectFn1 Foreign  (Tuple2 Atom (StateImpl state msg))
+init :: forall state msg. EffectFn1 Foreign Foreign
 init = mkEffectFn1 (\args -> init2 $ unpackArgsImpl args)
 
-init2 :: forall state msg. Init2Args state msg  -> Effect (Tuple2 Atom (StateImpl state msg))
+init2 :: forall state msg. Init2Args state msg  -> Effect Foreign
 init2 { init, opts: {  handleInfo, terminate, trapExit } } = do
   _ <- case trapExit of
          Nothing -> pure unit
          Just _  -> enableTrapExitImpl
   pid <- selfImpl
-  
+
   -- Note: We're discarding the state here, when it comes to registering callbacks/etc
   -- or injecting logging, we'll probably want to keep it so we can use it to populate our StateImpl
-  innerState <- evalStateT init $ GenContext { handleInfo, terminate, trapExit, pid }
-  pure $ tuple2 (atom "ok") $ { innerState, context: GenContext { handleInfo, terminate, trapExit, pid }  }
+  initResponse <- evalStateT init $ GenContext { handleInfo, terminate, trapExit, pid }
+  case initResponse of
+    InitOk innerState ->
+      pure $ unsafeToForeign $ tuple2 (atom "ok") { innerState, context: GenContext { handleInfo, terminate, trapExit, pid } }
+    InitOkTimeout innerState timeout ->
+      pure $ unsafeToForeign $ tuple3 (atom "ok") { innerState, context: GenContext { handleInfo, terminate, trapExit, pid } } timeout
+    InitOkHibernate innerState ->
+      pure $ unsafeToForeign $ tuple3 (atom "ok") { innerState, context: GenContext { handleInfo, terminate, trapExit, pid } } (atom "hibernate")
+    InitStop terminateReason ->
+      pure $ unsafeToForeign $ tuple2 (atom "stop") $ writeTerminateReason terminateReason
+    InitIgnore ->
+      pure $ unsafeToForeign $ atom "ignore"
 
 handle_call :: forall response state msg. EffectFn3 (StateImpl state msg -> Pid -> Effect (CallResultImpl response state msg))  Pid (StateImpl state msg) (CallResultImpl response state msg)
 handle_call = mkEffectFn3 \fn from state -> fn state from
@@ -232,7 +242,7 @@ handle_cast = mkEffectFn2 \fn state -> fn state
 handle_info :: forall state msg. EffectFn2 Foreign (StateImpl state msg) (CastResultImpl state msg)
 handle_info = mkEffectFn2 \msg state@({ innerState, context: context@(GenContext {  handleInfo, trapExit })}) ->
     let
-        mappedMsg = mapInfoMessageImpl trapExit Exit msg 
+        mappedMsg = mapInfoMessageImpl trapExit Exit msg
      in
     uncurry dispatchCastResp <$> runStateT (handleInfo mappedMsg innerState) context
 
@@ -246,6 +256,7 @@ terminate = mkEffectFn2 \reason { context: GenContext { terminate:  mt }, innerS
              pure $ atom "ok"
 
 
+data InitResult state = InitOk state | InitOkTimeout state Int | InitOkHibernate state | InitStop TerminateReason | InitIgnore
 data CallResult response state = CallReply response state | CallReplyHibernate response state | CallStop TerminateReason response state
 data CastResult state = CastNoReply state | CastNoReplyHibernate state | CastStop state | CastStopReason TerminateReason state
 
@@ -275,7 +286,7 @@ writeTerminateReason :: TerminateReason -> Foreign
 writeTerminateReason reason=
   case reason of
        Normal -> unsafeCoerce (atom "normal")
-       Shutdown -> unsafeCoerce (atom "shutdown") 
+       Shutdown -> unsafeCoerce (atom "shutdown")
        ShutdownWithCustom custom -> unsafeCoerce $ tuple2 (atom "shutdown")  custom
        Custom custom -> unsafeCoerce $ custom
 
@@ -294,18 +305,18 @@ readTerminateReason f =
 -- | ```
 -- | See also handle_call and gen_server:call in the OTP docs
 doCall :: forall response state msg. ServerName state msg -> (state -> Call response state msg) -> Effect response
-doCall name fn = doCallImpl (nativeName name) \genState@{ innerState, context } from -> 
+doCall name fn = doCallImpl (nativeName name) \genState@{ innerState, context } from ->
   uncurry dispatchCallResp <$> runStateT (fn innerState) context
 
 
 -- | Defines an effectful cast that performs an interaction on the state held by the gen server
--- | ```purescript 
+-- | ```purescript
 -- | doSomething :: Effect Unit
 -- | doSomething = Gen.cast serverName \state -> pure $ CastNoReply $ modifyState state
 -- | ```
 -- | See also handle_cast and gen_server:cast in the OTP docs
 doCast :: forall state msg. ServerName state msg -> (state -> Cast state msg) -> Effect Unit
-doCast name fn = doCastImpl (nativeName name) \genState@{ innerState, context } -> 
+doCast name fn = doCastImpl (nativeName name) \genState@{ innerState, context } ->
   uncurry dispatchCastResp <$> runStateT (fn innerState) context
 
 stop :: forall state msg. ServerName state msg -> Effect Unit
@@ -333,5 +344,3 @@ dispatchCastResp resp context  =
       castStopImpl (writeTerminateReason Normal) $ { innerState: newState, context }
     CastStopReason reason newState ->
       castStopImpl (writeTerminateReason reason) $ { innerState: newState, context }
-
-
