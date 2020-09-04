@@ -19,9 +19,10 @@ maybeStartRouterImpl(Ref, RegisterListener, DeregisterListener, Callback) ->
   Recipient = self(),
   Fun = fun Fun(Handle, MonitorRef) ->
               receive
-                stop ->
+                {stop, From, StopRef} ->
                   (DeregisterListener(Handle))(),
                   demonitor(MonitorRef),
+                  From ! {stopped, StopRef},
                   exit(normal);
                 {'DOWN', MonitorRef, _, _, _} ->
                   (DeregisterListener(Handle))(),
@@ -60,12 +61,20 @@ maybeStartRouterImpl(Ref, RegisterListener, DeregisterListener, Callback) ->
 stopRouterFromCallback() ->
   Self = self(),
   fun() ->
-      Self ! stop,
+      Ref = make_ref(),
+      Self ! {stop, self(), Ref},
+      receive
+        {stopped, Ref} -> ok
+      end,
       ok
   end.
 
 stopRouter({_, _, Pid}) ->
   fun() ->
-      Pid ! stop,
+      Ref = make_ref(),
+      Pid ! {stop, self(), Ref},
+      receive
+        {stopped, Ref} -> ok
+      end,
       ok
   end.
