@@ -63,9 +63,6 @@ stopRouterFromCallback() ->
   fun() ->
       Ref = make_ref(),
       Self ! {stop, self(), Ref},
-      receive
-        {stopped, Ref} -> ok
-      end,
       ok
   end.
 
