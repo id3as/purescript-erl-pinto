@@ -101,7 +101,7 @@ startLink (Via (NativeModuleName m) name) = startLinkImpl $ tuple3 (atom "via") 
 
 -- | Dynamically starts a child with the supplied name and args as specified with the child template
 -- | See also: supervisor:start_child in the OTP docs
-startSimpleChild :: forall args. Pinto.ChildTemplate args -> SupervisorName -> args -> Effect Pinto.StartChildResult
+startSimpleChild :: forall args state msg. Pinto.ChildTemplate args -> SupervisorHandle state msg -> Effect Pinto.StartChildResult
 startSimpleChild _ name args = startChildImpl (nativeName name) args
 
 -- | Dynamically starts a child with the supplied spec

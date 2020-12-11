@@ -27,18 +27,40 @@ foreign import data GlobalName :: Type
 -- | will be using internally and the 'msg' type that will be received in the handleInfo calls
 -- | this will be supplied to every call to the gen server API in order
 -- | to enforce type safety across calls
-data ServerName state msg = Local Atom
-                          | Global GlobalName
-                          | Via NativeModuleName Foreign
 
-type SupervisorName = ServerName Unit Unit
 
--- | The result of invoking gen_server:start_link
-data StartLinkResult
-  = Ok Pid
-  | Ignore
-  | AlreadyStarted Pid
+
+data RegistryName state msg
+  = Local Atom
+  | Global GlobalName
+  | Via NativeModuleName Foreign
+
+
+data ServerStartName state msg
+  = Named (RegistryName state msg)
+  | Anonymous
+
+
+data ServerHandle state msg
+  = NamedHandle (RegistryName state msg)
+  | AnonymousHandle (ServerPid state msg)
+
+
+data SupervisorHandle a
+  = NamedSupervisorHandle (RegistryName a Void)
+  | AnonymousSupervisorHandle (ServerPid a Void)
+
+
+data NotStartedReason state msg
+  = Ignore
+  | AlreadyStarted (ServerPid state msg)
   | Failed Foreign
+
+
+type StartLinkResult state msg
+  = Either NotStartedReason (ServerPid state msg)
+
+newtype ServerPid state msg = ServerPid Pid
 
 data TerminateReason
   = Normal
@@ -46,12 +68,17 @@ data TerminateReason
   | ShutdownWithCustom Foreign
   | Custom Foreign
 
--- | The result of invoking gen_server:start_link
-data StartChildResult
-  = ChildStarted Pid
-  | ChildStartedWithInfo Pid Foreign
-  | ChildAlreadyStarted Pid
-  | ChildAlreadyPresent
+type StartChildResult state msg
+  = Either (ChildNotStartedReason state msg) (ChildStarted state msg)
+
+data ChildStarted state msg
+  = ChildStarted (ServerPid state msg)
+  | ChildStartedWithInfo (ServerPid state msg) Foreign
+
+data ChildNotStartedReason state msg
+  = ChildAlreadyPresent
+  | ChildAlreadyStarted (ServerPid state msg)
+  | ChildStartReturnedIgnore
   | ChildFailed Foreign
 
 -- | The type used to link startSimpleChild and startTemplate together
