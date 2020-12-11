@@ -1,7 +1,6 @@
 
 -- | See also 'gen_server' in the OTP docs
 module Pinto.Gen ( startLink
-                 , startLinkWithoutName
                  , buildStartLink
                  , StartLinkBuilder(..)
                  , defaultStartLink
@@ -10,7 +9,6 @@ module Pinto.Gen ( startLink
                  , CastResult(..)
                  , InitResult(..)
                  , doCall
-                 , doCallNameless
                  , init
                  , doCast
                  , defaultHandleInfo
@@ -34,6 +32,11 @@ module Pinto.Gen ( startLink
                  , CastResultImpl
                  , Over
                  , With
+
+                 , StartName(..)
+                 , Handle(..)
+                 , NotStartedReason(..)
+                 , StartLinkResult(..)
                  )
   where
 
@@ -43,6 +46,7 @@ import Control.Monad.State (State, StateT)
 import Control.Monad.State (lift) as Exports
 import Control.Monad.State (runStateT, execStateT, evalStateT, lift)
 import Control.Monad.State as State
+import Data.Either (Either)
 import Data.Maybe (Maybe(..))
 import Data.Tuple (uncurry)
 import Effect (Effect)
@@ -55,11 +59,39 @@ import Erl.ModuleName (NativeModuleName(..))
 import Erl.Process (Process(..), runProcess)
 import Erl.Process.Raw (Pid)
 import Foreign (Foreign, unsafeToForeign)
-import Pinto (ServerName(..), StartLinkResult, TerminateReason(..))
 import Pinto.MessageRouting as MR
 import Pinto.Monitor as Monitor
-import Pinto.Sup (foreignToSlr)
+import Pinto.Types (RegistryName(..), ServerPid, TerminateReason)
 import Unsafe.Coerce (unsafeCoerce)
+
+
+
+-- foreign import foreignToSlr :: Foreign  -> StartLinkResult
+-- foreign import foreignToScr :: Foreign  -> StartChildResult
+
+-- foreign import slrToForeign :: StartLinkResult -> Foreign
+-- foreign import scrToForeign :: StartChildResult -> Foreign
+
+
+
+data StartName state msg
+  = Named (RegistryName state msg)
+  | Anonymous
+
+data Handle state msg
+  = NamedHandle (RegistryName state msg)
+  | AnonymousHandle (ServerPid state msg)
+
+
+data NotStartedReason state msg
+  = Ignore
+  | AlreadyStarted (ServerPid state msg)
+  | Failed Foreign
+
+
+type StartLinkResult state msg
+  = Either (NotStartedReason state msg) (ServerPid state msg)
+
 
 -- | The message receives by trapped exits (configured using trapExit)
 data ExitMessage = Exit Pid Foreign
@@ -107,7 +139,7 @@ foreign import whereIsImpl :: forall msg name. name -> (Process msg -> Maybe (Pr
 foreign import logWarning :: forall obj. String -> obj -> Effect Unit
 foreign import mapInfoMessageImpl :: forall msg. Maybe (ExitMessage -> msg) -> (Pid -> Foreign -> ExitMessage) -> Foreign -> msg
 
-nativeName :: forall state msg. ServerName state msg -> Foreign
+nativeName :: forall state msg. StartName state msg -> Foreign
 nativeName (Local name) = unsafeToForeign $ name
 nativeName (Global name) = unsafeToForeign $ tuple2 (atom "global") name
 nativeName (Via (NativeModuleName m) name) = unsafeToForeign $ tuple3 (atom "via") m name
@@ -120,11 +152,11 @@ self = do
 
 -- | Gets the pid of this gen server (if running)
 -- | This is designed to be called from external agents and therefore might fail, hence the Maybe
-whereIs :: forall state msg. ServerName state msg -> Effect (Maybe (Process msg))
+whereIs :: forall state msg. Handle state msg -> Effect (Maybe (ServerPid state msg))
 whereIs serverName = whereIsImpl (nativeName serverName) Just Nothing
 
 -- | Short cut for monitoring a gen server via Pinto.Monitor
-monitor :: forall state msg. ServerName state msg -> (Monitor.MonitorMsg -> Effect Unit) -> Effect Unit -> Effect (Maybe (MR.RouterRef Monitor.MonitorRef))
+monitor :: forall state msg. Handle state msg -> (Monitor.MonitorMsg -> Effect Unit) -> Effect Unit -> Effect (Maybe (MR.RouterRef Monitor.MonitorRef))
 monitor name cb alreadyDown = do
   maybeProcess <- whereIs name
   case maybeProcess of
@@ -162,7 +194,7 @@ type StartLinkBuilder state msg = {
 -- | init = pure {}
 -- | ```
 -- | See also: gen_server:start_link in the OTP docs (roughly)
-startLink :: forall state msg. ServerName state msg -> Init state msg -> Effect StartLinkResult
+startLink :: forall state msg. StartName state msg -> Init state msg -> Effect StartLinkResult
 startLink name init = buildStartLink name init $ defaultStartLink
 
 

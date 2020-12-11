@@ -1,9 +1,0 @@
-{
-  "name": "erl-pinto",
-  "set": "id3as-20190706",
-  "source": "https://github.com/id3as/purerl-package-sets.git",
-  "depends": [
-    "erl-cowboy",
-    "erl-process"
-  ]
-}
