@@ -65,8 +65,9 @@ import Erl.Data.Tuple (Tuple2, Tuple3, tuple2, tuple3)
 import Erl.ModuleName (NativeModuleName(..))
 import Erl.Process.Raw (Pid)
 import Foreign (Foreign, unsafeToForeign)
-import Pinto (RegistryName(..), ServerPid, StartLinkResult)
+import Pinto.Types (RegistryName(..), ServerPid)
 import Pinto as Pinto
+import Pinto.Gen as Gen
 import Pinto.Types as Types
 import Unsafe.Coerce (unsafeCoerce)
 
@@ -104,8 +105,8 @@ data ChildTemplate args state msg = ChildTemplate (args -> Effect (Gen.StartLink
 foreign import data BoxedStartFn :: Type
 foreign import data BoxedStartArgs :: Type
 
-foreign import startLinkImpl :: forall state . SupervisorStartName state -> Effect state -> Effect (StartLinkResult state Void)
-foreign import startChildImpl :: forall name args. name -> args -> Effect StartChildResult
+foreign import startLinkImpl :: forall state . SupervisorStartName state -> Effect state -> Effect (StartLinkResult state)
+foreign import startSimpleChildImpl :: forall name args. name -> args -> Effect StartChildResult
 foreign import startSpeccedChildImpl :: forall name args. (Pid -> StartChildResult) -> (Pid -> StartChildResult) -> name -> args -> Effect StartChildResult
 foreign import stopImpl :: forall state name. name -> Effect Unit
 
@@ -133,8 +134,8 @@ startLink (Via (NativeModuleName m) name) = startLinkImpl $ tuple3 (atom "via") 
 
 -- | Dynamically starts a child with the supplied name and args as specified with the child template
 -- | See also: supervisor:start_child in the OTP docs
-startSimpleChild :: forall args state msg. ChildTemplate args -> SupervisorHandle state msg -> Effect StartChildResult
-startSimpleChild _ name args = startChildImpl (nativeName name) args
+startSimpleChild :: forall args state msg. ChildTemplate args -> SupervisorHandle state msg -> Effect (Gen.StartLinkResult state msg)
+startSimpleChild _ name args = startSimpleChildImpl (nativeName name) args
 
 -- | Dynamically starts a child with the supplied spec
 -- | See also: supervisor:start_child in the OTP docs
@@ -177,22 +178,29 @@ emptyStartFn = unsafeCoerce (\_ -> unit)
 emptyStartArgs :: BoxedStartArgs
 emptyStartArgs = unsafeCoerce unit
 
+
+newtype ChildId state msg = ChildId String
+
 -- | This type is not used directly, but is here to support the buildSupervisor hierarchy
-type SupervisorChildSpec =
+type SupervisorChildSpec state msg =
   { type_ :: SupervisorChildType
-  , id :: String
+  , id :: ChildId state msg
   , startFn :: BoxedStartFn
   , startArgs :: BoxedStartArgs
   , restart :: SupervisorChildRestart
   , shutdown :: SupervisorChildShutdown
   }
 
+-- foreign import data ExistsErlChildSpec :: (Type -> TYpe -> Type) -> Type
+-- mkErlChildSpec :: forall state msg. SupervisorChildSpec state msg ->
+-- type ChildSpec' = forall f a. f a -> Exists f
+
 -- | This type is not used directly, but is here to support the buildSupervisor hierarchy
 type SupervisorSpec =
   { strategy :: SupervisorStrategy
   , intensity :: Int
   , period :: Int
-  , children :: List SupervisorChildSpec
+  , children :: List (SupervisorChildSpec Unit Unit)
   }
 
 -- | This type is not used directly, but is here to support the buildSupervisor hierarchy

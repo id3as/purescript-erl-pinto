@@ -1,11 +1,7 @@
 module Pinto.Types
        ( -- Names and handles
          RegistryName(..)
-       , ServerHandle(..)
-       , ServerStartName
          -- Result Types -- TODO - move these to Gen and Sup?
-       , NotStartedReason(..)
-       , StartLinkResult(..)
        , TerminateReason(..)
 
          -- Opaque types
@@ -18,7 +14,6 @@ module Pinto.Types
        )
        where
 
-import Data.Either (Either)
 import Erl.Atom (Atom)
 import Erl.ModuleName (NativeModuleName)
 import Erl.Process.Raw (Pid)

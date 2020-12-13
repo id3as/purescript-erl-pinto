@@ -1,4 +1,3 @@
-
 -- | See also 'gen_server' in the OTP docs
 module Pinto.Gen ( startLink
                  , buildStartLink
@@ -8,9 +7,9 @@ module Pinto.Gen ( startLink
                  , CallResult(..)
                  , CastResult(..)
                  , InitResult(..)
-                 , doCall
                  , init
-                 , doCast
+                 , call
+                 , cast
                  , defaultHandleInfo
                  , whereIs
                  , monitor
@@ -56,21 +55,20 @@ import Erl.Atom (atom)
 import Erl.Data.List ((:), nil)
 import Erl.Data.Tuple (tuple2, tuple3, Tuple2(..))
 import Erl.ModuleName (NativeModuleName(..))
-import Erl.Process (Process(..), runProcess)
 import Erl.Process.Raw (Pid)
 import Foreign (Foreign, unsafeToForeign)
 import Pinto.MessageRouting as MR
 import Pinto.Monitor as Monitor
-import Pinto.Types (RegistryName(..), ServerPid, TerminateReason)
+import Pinto.Types (RegistryName(..), ServerPid, TerminateReason(..))
 import Unsafe.Coerce (unsafeCoerce)
 
 
 
--- foreign import foreignToSlr :: Foreign  -> StartLinkResult
--- foreign import foreignToScr :: Foreign  -> StartChildResult
+foreign import foreignToSlr :: forall state msg. Foreign  -> StartLinkResult state msg
+--foreign import foreignToScr :: Foreign  -> StartChildResult
 
--- foreign import slrToForeign :: StartLinkResult -> Foreign
--- foreign import scrToForeign :: StartChildResult -> Foreign
+foreign import slrToForeign :: forall state msg. StartLinkResult state msg -> Foreign
+--foreign import scrToForeign :: StartChildResult -> Foreign
 
 
 
@@ -101,7 +99,7 @@ data ExitMessage = Exit Pid Foreign
 newtype GenContext state msg = GenContext { handleInfo :: msg -> state -> HandleInfo state msg
                                           , terminate :: Maybe (TerminateReason -> state -> Effect Unit)
                                           , trapExit :: Maybe (ExitMessage -> msg)
-                                          , pid :: Process msg
+                                          , pid :: ServerPid state msg
                                           }
 
 -- | Internal record used in the actual gen server itself
@@ -134,18 +132,20 @@ foreign import doCallImpl :: forall name state msg response. name -> ((StateImpl
 foreign import doCastImpl :: forall name state msg. name -> ((StateImpl state msg) -> Effect (CastResultImpl state msg)) -> Effect Unit
 foreign import stopImpl :: forall name. name -> Effect Unit
 foreign import startLinkImpl :: forall name state msg. name -> Init state msg -> StartLinkBuilder state msg -> Effect Foreign
-foreign import selfImpl :: forall msg.  Effect (Process msg)
-foreign import whereIsImpl :: forall msg name. name -> (Process msg -> Maybe (Process msg)) -> (Maybe (Process msg)) -> Effect (Maybe (Process msg))
+foreign import startLinkAnonymousImpl :: forall state msg. Init state msg -> StartLinkBuilder state msg -> Effect Foreign
+foreign import selfImpl :: forall state msg.  Effect (ServerPid state msg)
+foreign import whereIsImpl :: forall state msg. RegistryName state msg -> (forall a. a -> Maybe a) -> Maybe (ServerPid state msg) -> Effect (Maybe (ServerPid state msg))
 foreign import logWarning :: forall obj. String -> obj -> Effect Unit
 foreign import mapInfoMessageImpl :: forall msg. Maybe (ExitMessage -> msg) -> (Pid -> Foreign -> ExitMessage) -> Foreign -> msg
 
-nativeName :: forall state msg. StartName state msg -> Foreign
-nativeName (Local name) = unsafeToForeign $ name
-nativeName (Global name) = unsafeToForeign $ tuple2 (atom "global") name
-nativeName (Via (NativeModuleName m) name) = unsafeToForeign $ tuple3 (atom "via") m name
+nativeHandle :: forall state msg. Handle state msg -> Foreign
+nativeHandle (NamedHandle (Local name)) = unsafeToForeign $ name
+nativeHandle (NamedHandle (Global name)) = unsafeToForeign $ tuple2 (atom "global") name
+nativeHandle (NamedHandle (Via (NativeModuleName m) name)) = unsafeToForeign $ tuple3 (atom "via") m name
+nativeHandle (AnonymousHandle pid) = unsafeToForeign $ pid
 
 -- | Gets the pid for this gen server
-self :: forall state msg. StateT (GenContext state msg) Effect (Process msg)
+self :: forall state msg. StateT (GenContext state msg) Effect (ServerPid state msg)
 self = do
   GenContext { pid } <- State.get
   pure pid
@@ -153,8 +153,8 @@ self = do
 -- | Gets the pid of this gen server (if running)
 -- | This is designed to be called from external agents and therefore might fail, hence the Maybe
 whereIs :: forall state msg. Handle state msg -> Effect (Maybe (ServerPid state msg))
-whereIs serverName = whereIsImpl (nativeName serverName) Just Nothing
-
+whereIs (AnonymousHandle serverPid) = pure $ Just serverPid
+whereIs (NamedHandle namedHandle) = whereIsImpl namedHandle Just Nothing
 -- | Short cut for monitoring a gen server via Pinto.Monitor
 monitor :: forall state msg. Handle state msg -> (Monitor.MonitorMsg -> Effect Unit) -> Effect Unit -> Effect (Maybe (MR.RouterRef Monitor.MonitorRef))
 monitor name cb alreadyDown = do
@@ -194,7 +194,7 @@ type StartLinkBuilder state msg = {
 -- | init = pure {}
 -- | ```
 -- | See also: gen_server:start_link in the OTP docs (roughly)
-startLink :: forall state msg. StartName state msg -> Init state msg -> Effect StartLinkResult
+startLink :: forall state msg. StartName state msg -> Init state msg -> Effect (StartLinkResult state msg)
 startLink name init = buildStartLink name init $ defaultStartLink
 
 
@@ -216,10 +216,11 @@ startLink name init = buildStartLink name init $ defaultStartLink
 -- | ```
 -- | See also: gen_server:start_link in the OTP docs (roughly)
 
-buildStartLink :: forall state msg. ServerName state msg -> Init state msg -> StartLinkBuilder state msg -> Effect StartLinkResult
-buildStartLink (Local name) init builder = foreignToSlr <$> startLinkImpl (tuple2 (atom "local") name) init builder
-buildStartLink (Global name) init builder = foreignToSlr <$> startLinkImpl (tuple2 (atom "global") name) init builder
-buildStartLink (Via (NativeModuleName m) name) init builder = foreignToSlr <$> startLinkImpl (tuple3 (atom "via") m name) init builder
+buildStartLink :: forall state msg. StartName state msg -> Init state msg -> StartLinkBuilder state msg -> Effect (StartLinkResult state msg)
+buildStartLink (Named (Local name)) init builder = foreignToSlr <$> startLinkImpl (tuple2 (atom "local") name) init builder
+buildStartLink (Named (Global name)) init builder = foreignToSlr <$> startLinkImpl (tuple2 (atom "global") name) init builder
+buildStartLink (Named (Via (NativeModuleName m) name)) init builder = foreignToSlr <$> startLinkImpl (tuple3 (atom "via") m name) init builder
+buildStartLink Anonymous init builder = foreignToSlr <$> startLinkAnonymousImpl init builder
 
 -- | Creates the default start link options for a gen server
 -- | These can be replaced  by modifying the record
@@ -338,8 +339,8 @@ readTerminateReason f =
 -- | doSomething = Gen.doCall serverName \state -> pure $ CallResult unit (modifyState state)
 -- | ```
 -- | See also handle_call and gen_server:call in the OTP docs
-doCall :: forall response state msg. ServerName state msg -> (state -> Call response state msg) -> Effect response
-doCall name fn = doCallImpl (nativeName name) \genState@{ innerState, context } from ->
+call :: forall response state msg. Handle state msg -> (state -> Call response state msg) -> Effect response
+call name fn = doCallImpl (nativeHandle name) \genState@{ innerState, context } from ->
   uncurry dispatchCallResp <$> runStateT (fn innerState) context
 
 
@@ -349,12 +350,12 @@ doCall name fn = doCallImpl (nativeName name) \genState@{ innerState, context } 
 -- | doSomething = Gen.cast serverName \state -> pure $ CastNoReply $ modifyState state
 -- | ```
 -- | See also handle_cast and gen_server:cast in the OTP docs
-doCast :: forall state msg. ServerName state msg -> (state -> Cast state msg) -> Effect Unit
-doCast name fn = doCastImpl (nativeName name) \genState@{ innerState, context } ->
+cast :: forall state msg. Handle state msg -> (state -> Cast state msg) -> Effect Unit
+cast name fn = doCastImpl (nativeHandle name) \genState@{ innerState, context } ->
   uncurry dispatchCastResp <$> runStateT (fn innerState) context
 
-stop :: forall state msg. ServerName state msg -> Effect Unit
-stop name = stopImpl (nativeName name)
+stop :: forall state msg. Handle state msg -> Effect Unit
+stop name = stopImpl (nativeHandle name)
 
 
 dispatchCallResp :: forall  response state msg. CallResult response state -> GenContext state msg ->  CallResultImpl response state msg
