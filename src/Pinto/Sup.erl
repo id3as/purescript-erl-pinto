@@ -1,80 +1,95 @@
 -module(pinto_sup@foreign).
 
--export([
-         start_from_spec/1,
-         startLinkImpl/2,
-         startChildImpl/2,
-         startSpeccedChildImpl/4,
-         stopImpl/1,
-         terminateChildImpl/2,
-         deleteChildImpl/2,
-         foreignToSlr/1,
-         slrToForeign/1,
-         foreignToScr/1,
-         scrToForeign/1,
-         init/1
+%%------------------------------------------------------------------------------
+%% FFI API
+%%------------------------------------------------------------------------------
+-export([ mkErlChildSpec/1
+        , startLink/2
         ]).
 
-start_from_spec(_Spec = #{ startFn := Fn, startArgs := Args }) ->
-  (Fn(Args))().
 
-startLinkImpl(Name, Effect) ->
+%%------------------------------------------------------------------------------
+%% Runtime supervisor stubs
+%%------------------------------------------------------------------------------
+-export([ start_stub/1
+        , init/1
+        ]).
+
+init(EffectSupervisorSpec) ->
+  #{ flags := Flags
+   , childSpecs := ChildSpecs
+   } = EffectSupervisorSpec(),
+  {ok, {flags_from_ps(Flags), ChildSpecs}}.
+
+
+%%------------------------------------------------------------------------------
+%% FFI API
+%%------------------------------------------------------------------------------
+mkErlChildSpec(#{ id := ChildId
+                , start := StartFn
+                , restartStrategy := RestartStrategy
+                , shutdownStrategy := ChildShutdownTimeoutStrategy
+                , childType := ChildType
+                }) ->
+  #{ id => ChildId
+   , start => {?MODULE, start_stub, [StartFn]}
+   , restart => restart_from_ps(RestartStrategy)
+   , shutdown => shutdown_from_ps(ChildShutdownTimeoutStrategy)
+   , type => type_from_ps(ChildType)
+   }.
+
+
+startLink(Name, EffectSupervisorSpec) ->
   fun() ->
-      foreignToSlr(supervisor:start_link(Name, ?MODULE, [Effect]))
+      startLinkPure(Name, EffectSupervisorSpec)
   end.
 
-foreignToSlr({ok, Pid})  -> {ok, Pid};
-foreignToSlr(ignore) -> {ignore};
-foreignToSlr({error, {already_started, Pid}}) -> {alreadyStarted, Pid};
-foreignToSlr({error, E}) -> {failed, E}.
+startLinkPure({nothing}, _EffectSupervisorSpec) ->
+  ok;
+startLinkPure({just, RegisterName}, EffectSupervisorSpec) ->
+  supervisor:start_link(register_name_from_ps(RegisterName), ?MODULE, EffectSupervisorSpec),
+  ok.
 
-slrToForeign({ok, Pid})  -> {ok, Pid};
-slrToForeign({ignore}) -> ignore;
-slrToForeign({alreadyStarted, Pid}) -> {error, {already_started, Pid}};
-slrToForeign({failed, E}) -> {error, E}.
 
-startChildImpl(Name, Args) ->
-  fun() ->
-      foreignToScr(supervisor:start_child(Name, [Args]))
-  end.
 
-stopImpl(Name) -> fun() ->
-                      gen:stop(Name)
-                  end.
+%%------------------------------------------------------------------------------
+%% ps -> erlang conversion helpers
+%%------------------------------------------------------------------------------
+flags_from_ps( #{ strategy := Strategy
+                , intensity := Intensity
+                , period := Period
+                }) ->
+  #{ strategy => strategy_from_ps(Strategy)
+   , intensity => Intensity
+   , period => Period
+   }.
 
-foreignToScr({ok, Pid}) -> {childStarted, Pid};
-foreignToScr({ok, Pid, Info}) -> {childStartedWithInfo, Pid, Info};
-foreignToScr({error, {already_started, Pid}}) -> {childAlreadyStarted, Pid};
-foreignToScr({error, already_present}) -> {childAlreadyPresent};
-foreignToScr({error, Err}) -> {childFailed, Err}.
 
-scrToForeign({childStarted, Pid}) -> {ok, Pid};
-scrToForeign({childStartedWithInfo, Pid, Info}) -> {ok, Pid, Info};
-scrToForeign({childAlreadyStarted, Pid}) -> {error, {already_started, Pid}};
-scrToForeign({childAlreadyPresent}) -> {error, already_present};
-scrToForeign({childFailed, Err}) -> {error, Err}.
+strategy_from_ps({oneForAll}) -> one_for_all;
+strategy_from_ps({oneForOne}) -> one_for_one;
+strategy_from_ps({restForOne}) -> rest_for_one.
 
-startSpeccedChildImpl(AlreadyStarted, Started, Name, Args) ->
-  fun() ->
-    case supervisor:start_child(Name, Args) of
-      {error, {already_started, Pid}} -> AlreadyStarted(Pid);
-      {error, {already_started, Pid},  _Child} -> AlreadyStarted(Pid);
-      { ok, Pid } -> Started(Pid);
-      Other ->
-        io:format(user, "What on earth ~p", [ Other ])
-    end
-  end.
 
-terminateChildImpl(Name, Args) ->
-  fun() ->
-    supervisor:terminate_child(Name, Args)
-  end.
 
-deleteChildImpl(Name, Args) ->
-  fun() ->
-    supervisor:delete_child(Name, Args)
-  end.
 
-init([Effect]) ->
-  Spec = Effect(),
-  { ok, pinto_sup@ps:reify(Spec) }.
+
+
+register_name_from_ps({local, Name}) -> Name;
+register_name_from_ps({global, _} = Global) -> Global;
+register_name_from_ps({via, _, _} = Via) -> Via.
+
+
+restart_from_ps({restartNever}) -> transient;
+restart_from_ps({restartAlways}) -> permanent;
+restart_from_ps({restartOnCrash}) -> temporary.
+
+shutdown_from_ps({killImmediately}) -> brutal;
+shutdown_from_ps({killNever}) -> infinity;
+shutdown_from_ps({killAfter, Ms}) ->  Ms.
+
+type_from_ps({supervisor}) -> supervisor;
+type_from_ps({worker}) -> worker.
+
+
+start_stub(StartFn) ->
+  io:format(user, "Start called ~p~n", [StartFn]).
