@@ -1,34 +1,19 @@
-.PHONY: all clean test
+.PHONY: ps ps_test erl all test clean
 
-PS_SRC = src
-OUTPUT = output
-PS_SOURCEFILES = $(shell find ${PS_SRC} -type f -name \*.purs)
-PS_ERL_FFI = $(shell find ${PS_SRC} -type f -name \*.erl)
+all: ps
 
-PACKAGE_SET = $(shell jq '.set' < psc-package.json)
-ERL_MODULES_VERSION = $(shell jq '."erl-modules".version' < .psc-package/$(PACKAGE_SET)/.set/packages.json)
+ps:
+	spago build
 
-all: output docs
+ps_test:
+	spago --config test.dhall build
 
-output: $(PS_SOURCEFILES) $(PS_ERL_FFI) .psc-package
-	.psc-package/${PACKAGE_SET}/erl-modules/${ERL_MODULES_VERSION}/scripts/gen_module_names.sh src/Pinto Pinto.ModuleNames
-	psc-package sources | xargs purs compile '$(PS_SRC)/**/*.purs'
-	@touch output
+test: ps_test erl
+	erl -pa ebin -noshell -eval '(test_main@ps:main())()' -eval 'init:stop()'
 
-docs: $(PS_SOURCEFILES) $(PS_ERL_FFI) .psc-package
-	mkdir -p docs
-	psc-package sources | xargs purs docs '$(PS_SRC)/**/*.purs' \
-		--docgen Pinto.Sup:docs/Pinto.Sup.md \
-		--docgen Pinto.App:docs/Pinto.App.md \
-		--docgen Pinto.Gen:docs/Pinto.Gen.md \
-		--docgen Pinto.Timer:docs/Pinto.Timer.md \
-		--docgen Pinto.Types:docs/Pinto.Types.md 
-	touch docs
-
-.psc-package: psc-package.json
-	psc-package install
-	touch .psc-package
+erl:
+	mkdir -p ebin
+	erlc -o ebin/ output/*/*.erl
 
 clean:
-	rm -rf $(OUTPUT)/*
-	rm -rf docs
+	rm -rf ebin output src/compiled_ps

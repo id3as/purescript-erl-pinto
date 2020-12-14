@@ -1,7 +1,7 @@
 -module(pinto@foreign).
 
 -export([ isRegisteredImpl/1
-%%        , alreadyStartedImpl/1
+        , alreadyStartedImpl/1
         , node/0
         , self/0
         ]).

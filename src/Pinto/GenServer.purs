@@ -1,67 +1,106 @@
-module Pinto.Gen where
--- -- | See also 'gen_server' in the OTP docs
--- module Pinto.Gen ( startLink
---                  , buildStartLink
---                  , StartLinkBuilder(..)
---                  , defaultStartLink
---                  , stop
---                  , CallResult(..)
---                  , CastResult(..)
---                  , InitResult(..)
---                  , init
---                  , call
---                  , cast
---                  , defaultHandleInfo
---                  , whereIs
---                  , monitor
---                  , self
---                  , GenContext
---                  , StateImpl
---                  , GenResultT
---                  , ExitMessage(..)
---                  , module Exports
---                  , Call
---                  , Cast
---                  , Init
---                  , HandleInfo
---                  , handle_call
---                  , handle_cast
---                  , handle_info
---                  , terminate
---                  , CallResultImpl
---                  , CastResultImpl
---                  , Over
---                  , With
+module Pinto.GenServer
+  ( InitFn
+  , InitResult
+  , ResultT
+  , ServerRunning(..)
+  , ServerNotRunning(..)
+  , Context
+  ) where
 
---                  , StartName(..)
---                  , Handle(..)
---                  , NotStartedReason(..)
---                  , StartLinkResult(..)
---                  )
---   where
+import Prelude
 
--- import Prelude
+import Control.Monad.Reader.Trans (ReaderT(..))
+import Control.Monad.State (State, StateT)
+import Control.Monad.State (lift) as Exports
+import Control.Monad.State (runStateT, execStateT, evalStateT, lift)
+import Control.Monad.State as State
+import Data.Either (Either)
+import Data.Maybe (Maybe(..))
+import Data.Tuple (uncurry)
+import Effect (Effect)
+import Effect.Uncurried (EffectFn1, EffectFn2, EffectFn3, mkEffectFn1, mkEffectFn2, mkEffectFn3)
+import Erl.Atom (Atom, atom)
+import Erl.Atom (atom)
+import Erl.Data.List ((:), nil)
+import Erl.Data.Tuple (tuple2, tuple3, Tuple2(..))
+import Erl.ModuleName (NativeModuleName(..))
+import Erl.Process.Raw (Pid)
+import Foreign (Foreign, unsafeToForeign)
+import Pinto.MessageRouting as MR
+import Pinto.Monitor as Monitor
+import Pinto.Types (Handle, RegistryName(..), ServerPid, StartLinkResult, TerminateReason(..))
+import Unsafe.Coerce (unsafeCoerce)
 
--- import Control.Monad.State (State, StateT)
--- import Control.Monad.State (lift) as Exports
--- import Control.Monad.State (runStateT, execStateT, evalStateT, lift)
--- import Control.Monad.State as State
--- import Data.Either (Either)
--- import Data.Maybe (Maybe(..))
--- import Data.Tuple (uncurry)
--- import Effect (Effect)
--- import Effect.Uncurried (EffectFn1, EffectFn2, EffectFn3, mkEffectFn1, mkEffectFn2, mkEffectFn3)
--- import Erl.Atom (Atom, atom)
--- import Erl.Atom (atom)
--- import Erl.Data.List ((:), nil)
--- import Erl.Data.Tuple (tuple2, tuple3, Tuple2(..))
--- import Erl.ModuleName (NativeModuleName(..))
--- import Erl.Process.Raw (Pid)
--- import Foreign (Foreign, unsafeToForeign)
--- import Pinto.MessageRouting as MR
--- import Pinto.Monitor as Monitor
--- import Pinto.Types (RegistryName(..), ServerPid, TerminateReason(..))
--- import Unsafe.Coerce (unsafeCoerce)
+
+
+--------------------------------------------------------------------------------
+-- Public types
+--------------------------------------------------------------------------------
+data CallResult response state
+  = CallReply response state
+  -- | CallReplyWithTimout response state Int
+  -- | CallReplyHibernate response state
+  -- | CallReplyContinue response state cont
+  -- | CallNoReply state
+  -- | CallNoReplyWithTimout state Int
+  -- | CallNoReplyHibernate state
+  -- | CallNoReplyContinue state cont
+  -- | CallStopReply stop response state
+  -- | CallStopNoReply stop state
+
+
+data CastResult state
+  = CastNoReply state
+  -- | CastNoReplyWithTimout state Int
+  -- | CastNoReplyHibernate state
+  -- | CastNoReplyContinue state cont
+  -- | CastStop stop state
+
+
+
+type CallFn response state msg = ResultT (CallResult response state) state msg
+type CastFn state msg = ResultT (CastResult state) state msg
+
+
+
+-- -- | Type of the callback invoked during a gen_server:handle_cast
+-- type Cast state msg = ResultT (CastResult state) state msg
+
+type InitResult state cont = Either (ServerRunning state cont) ServerNotRunning
+
+data ServerRunning state cont
+  = InitOk state
+  | InitOkTimeout state Int
+  | InitContinue state cont
+  | InitOkHibernate state
+
+data ServerNotRunning
+  = InitStop Foreign
+  | InitIgnore
+
+
+
+--------------------------------------------------------------------------------
+-- Internal types
+--------------------------------------------------------------------------------
+type State state msg
+  = { innerState :: state
+    , context :: Context state msg
+    }
+
+newtype Context state msg
+  = Context { pid :: ServerPid state msg
+            }
+
+type ResultT response state msg = ReaderT (Context state msg) Effect response
+type InitFn state cont msg = ResultT (InitResult state cont) state msg
+
+startLink :: forall state cont msg. Maybe (RegistryName state msg) -> InitFn state cont msg -> Effect (StartLinkResult state msg)
+startLink = unsafeCoerce 2
+
+
+call :: forall response state msg. Handle state msg -> (state -> CallFn response state msg) -> Effect response
+call name fn = unsafeCoerce 3
 
 
 
@@ -86,7 +125,7 @@ module Pinto.Gen where
 
 
 -- -- | The context of this gen server (everything except 'state' which tends to get passed into handlers
--- newtype GenContext state msg = GenContext { handleInfo :: msg -> state -> HandleInfo state msg
+-- newtype Context state msg = Context { handleInfo :: msg -> state -> HandleInfo state msg
 --                                           , terminate :: Maybe (TerminateReason -> state -> Effect Unit)
 --                                           , trapExit :: Maybe (ExitMessage -> msg)
 --                                           , pid :: ServerPid state msg
@@ -94,28 +133,28 @@ module Pinto.Gen where
 
 -- -- | Internal record used in the actual gen server itself
 -- type StateImpl state msg = { innerState :: state
---                            , context :: GenContext state msg }
+--                            , context :: Context state msg }
 
 -- -- | The type of any effectful callback into this gen server
--- type GenResultT response state msg = StateT (GenContext state msg) Effect response
+-- type ResultT response state msg = StateT (Context state msg) Effect response
 
 -- -- | Type of the callback invoked during a gen_server:init
--- type Init state msg = GenResultT (InitResult state) state msg
+-- type Init state msg = ResultT (InitResult state) state msg
 
 -- --- | Type of the callback invoked during a gen_server:handle_info
--- type HandleInfo state msg = GenResultT (CastResult state) state msg
+-- type HandleInfo state msg = ResultT (CastResult state) state msg
 
 -- -- | Type of the callback invoked during a gen_server:handle_call
--- type Call response state msg = GenResultT (CallResult response state) state msg
+-- type Call response state msg = ResultT (CallResult response state) state msg
 
 -- -- | Type of the callback invoked during a gen_server:handle_cast
--- type Cast state msg = GenResultT (CastResult state) state msg
+-- type Cast state msg = ResultT (CastResult state) state msg
 
 -- -- | Helper type for creating a function that operates in the context of a gen server and returns 'response' effectfully
--- type With state msg response = StateT (GenContext state msg) Effect response
+-- type With state msg response = StateT (Context state msg) Effect response
 
 -- -- | Helper type for creating a function that operates in the context of a gen server and operates over 'state' effectfully
--- type Over state msg = StateT (GenContext state msg) Effect state
+-- type Over state msg = StateT (Context state msg) Effect state
 
 -- foreign import enableTrapExitImpl :: Effect Unit
 -- foreign import doCallImpl :: forall name state msg response. name -> ((StateImpl state msg) -> Pid -> Effect (CallResultImpl response state msg)) -> Effect response
@@ -135,9 +174,9 @@ module Pinto.Gen where
 -- nativeHandle (AnonymousHandle pid) = unsafeToForeign $ pid
 
 -- -- | Gets the pid for this gen server
--- self :: forall state msg. StateT (GenContext state msg) Effect (ServerPid state msg)
+-- self :: forall state msg. StateT (Context state msg) Effect (ServerPid state msg)
 -- self = do
---   GenContext { pid } <- State.get
+--   Context { pid } <- State.get
 --   pure pid
 
 -- -- | Gets the pid of this gen server (if running)
@@ -245,14 +284,14 @@ module Pinto.Gen where
 
 --   -- Note: We're discarding the state here, when it comes to registering callbacks/etc
 --   -- or injecting logging, we'll probably want to keep it so we can use it to populate our StateImpl
---   initResponse <- evalStateT init $ GenContext { handleInfo, terminate, trapExit, pid }
+--   initResponse <- evalStateT init $ Context { handleInfo, terminate, trapExit, pid }
 --   case initResponse of
 --     InitOk innerState ->
---       pure $ unsafeToForeign $ tuple2 (atom "ok") { innerState, context: GenContext { handleInfo, terminate, trapExit, pid } }
+--       pure $ unsafeToForeign $ tuple2 (atom "ok") { innerState, context: Context { handleInfo, terminate, trapExit, pid } }
 --     InitOkTimeout innerState timeout ->
---       pure $ unsafeToForeign $ tuple3 (atom "ok") { innerState, context: GenContext { handleInfo, terminate, trapExit, pid } } timeout
+--       pure $ unsafeToForeign $ tuple3 (atom "ok") { innerState, context: Context { handleInfo, terminate, trapExit, pid } } timeout
 --     InitOkHibernate innerState ->
---       pure $ unsafeToForeign $ tuple3 (atom "ok") { innerState, context: GenContext { handleInfo, terminate, trapExit, pid } } (atom "hibernate")
+--       pure $ unsafeToForeign $ tuple3 (atom "ok") { innerState, context: Context { handleInfo, terminate, trapExit, pid } } (atom "hibernate")
 --     InitStop terminateReason ->
 --       pure $ unsafeToForeign $ tuple2 (atom "stop") $ writeTerminateReason terminateReason
 --     InitIgnore ->
@@ -265,14 +304,14 @@ module Pinto.Gen where
 -- handle_cast = mkEffectFn2 \fn state -> fn state
 
 -- handle_info :: forall state msg. EffectFn2 Foreign (StateImpl state msg) (CastResultImpl state msg)
--- handle_info = mkEffectFn2 \msg state@({ innerState, context: context@(GenContext {  handleInfo, trapExit })}) ->
+-- handle_info = mkEffectFn2 \msg state@({ innerState, context: context@(Context {  handleInfo, trapExit })}) ->
 --     let
 --         mappedMsg = mapInfoMessageImpl trapExit Exit msg
 --      in
 --     uncurry dispatchCastResp <$> runStateT (handleInfo mappedMsg innerState) context
 
 -- terminate :: forall state msg. EffectFn2 Foreign (StateImpl state msg) Atom
--- terminate = mkEffectFn2 \reason { context: GenContext { terminate:  mt }, innerState } ->
+-- terminate = mkEffectFn2 \reason { context: Context { terminate:  mt }, innerState } ->
 --   case mt of
 --            Just t -> do
 --              _ <- t (readTerminateReason reason) innerState
@@ -348,7 +387,7 @@ module Pinto.Gen where
 -- stop name = stopImpl (nativeHandle name)
 
 
--- dispatchCallResp :: forall  response state msg. CallResult response state -> GenContext state msg ->  CallResultImpl response state msg
+-- dispatchCallResp :: forall  response state msg. CallResult response state -> Context state msg ->  CallResultImpl response state msg
 -- dispatchCallResp resp context =
 --   case resp of
 --     CallReply resp newState ->
@@ -358,7 +397,7 @@ module Pinto.Gen where
 --     CallStop reason resp newState ->
 --       callStopImpl (writeTerminateReason reason) resp $ { innerState: newState, context }
 
--- dispatchCastResp :: forall  state msg. CastResult state -> GenContext state msg -> CastResultImpl state msg
+-- dispatchCastResp :: forall  state msg. CastResult state -> Context state msg -> CastResultImpl state msg
 -- dispatchCastResp resp context  =
 --   case resp of
 --     CastNoReply newState ->

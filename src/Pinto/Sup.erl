@@ -5,6 +5,7 @@
 %%------------------------------------------------------------------------------
 -export([ mkErlChildSpec/1
         , startLink/2
+        , startChild/2
         ]).
 
 
@@ -44,13 +45,42 @@ startLink(Name, EffectSupervisorSpec) ->
       startLinkPure(Name, EffectSupervisorSpec)
   end.
 
-startLinkPure({nothing}, _EffectSupervisorSpec) ->
-  ok;
-startLinkPure({just, RegisterName}, EffectSupervisorSpec) ->
-  supervisor:start_link(register_name_from_ps(RegisterName), ?MODULE, EffectSupervisorSpec),
-  ok.
+startLinkPure({nothing}, EffectSupervisorSpec) ->
+  Result = supervisor:start_link(?MODULE, EffectSupervisorSpec),
+  start_link_result_to_ps(Result);
+startLinkPure({just, RegistryName}, EffectSupervisorSpec) ->
+  Result = supervisor:start_link(registry_name_from_ps(RegistryName), ?MODULE, EffectSupervisorSpec),
+  start_link_result_to_ps(Result).
+
+startChild(SupHandle, ChildSpec) ->
+  fun() ->
+      startChildPure(SupHandle, mkErlChildSpec(ChildSpec))
+  end.
+
+startChildPure({byPid, Pid}, ChildSpec) ->
+  Result = supervisor:start_child(Pid, ChildSpec),
+  start_child_result_to_ps(Result);
+startChildPure({byName, Name}, ChildSpec) ->
+  Result = supervisor:start_child(registry_name_from_ps(Name), ChildSpec),
+  start_child_result_to_ps(Result).
 
 
+
+
+%%------------------------------------------------------------------------------
+%% erlang -> ps conversion helpers
+%%------------------------------------------------------------------------------
+start_link_result_to_ps({ok, Pid})                        -> {right, Pid};
+start_link_result_to_ps(ignore)                           -> {left, {ignore}};
+start_link_result_to_ps({error, {already_started, Pid}})  -> {left, {alreadyStarted, Pid}};
+start_link_result_to_ps({error, Other})                   -> {left, {failed, Other}}.
+
+start_child_result_to_ps({ok, undefined})                 -> {left, {childStartReturnedIgnore}};
+start_child_result_to_ps({ok, {Pid, Info}})               -> {right, #{pid => Pid, info => {just, Info}}};
+start_child_result_to_ps({ok, Pid})                       -> {right, #{pid => Pid, info => {nothing}}};
+start_child_result_to_ps({error, already_present})        -> {left, {childAlreadyPresent}};
+start_child_result_to_ps({error, {already_started, Pid}}) -> {left, {childAlreadyStarted, Pid}};
+start_child_result_to_ps({error, Other})                  -> {left, {childFailed, Other}}.
 
 %%------------------------------------------------------------------------------
 %% ps -> erlang conversion helpers
@@ -69,15 +99,9 @@ strategy_from_ps({oneForAll}) -> one_for_all;
 strategy_from_ps({oneForOne}) -> one_for_one;
 strategy_from_ps({restForOne}) -> rest_for_one.
 
-
-
-
-
-
-register_name_from_ps({local, Name}) -> Name;
-register_name_from_ps({global, _} = Global) -> Global;
-register_name_from_ps({via, _, _} = Via) -> Via.
-
+registry_name_from_ps({local, Name}) -> Name;
+registry_name_from_ps({global, _} = Global) -> Global;
+registry_name_from_ps({via, _, _} = Via) -> Via.
 
 restart_from_ps({restartNever}) -> transient;
 restart_from_ps({restartAlways}) -> permanent;
@@ -89,7 +113,6 @@ shutdown_from_ps({killAfter, Ms}) ->  Ms.
 
 type_from_ps({supervisor}) -> supervisor;
 type_from_ps({worker}) -> worker.
-
 
 start_stub(StartFn) ->
   io:format(user, "Start called ~p~n", [StartFn]).

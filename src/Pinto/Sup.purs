@@ -1,35 +1,22 @@
 module Pinto.Sup (
-  StartName()
+  ChildStarted
   ) where
 
 import Prelude
 
 import Data.Either (Either)
+import Data.Maybe (Maybe)
 import Effect (Effect)
-import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, nil, (:))
-import Erl.Data.List as List
-import Erl.Data.Tuple (Tuple2, Tuple3, tuple2, tuple3)
-import Erl.ModuleName (NativeModuleName(..))
-import Erl.Process.Raw (Pid)
-import Foreign (Foreign, unsafeToForeign)
-import Pinto as Pinto
-import Pinto.Gen as Gen
-import Pinto.Types (RegistryName(..), ServerPid, StartLinkResult)
-import Pinto.Types as Types
+import Foreign (Foreign)
+import Pinto.Types (Handle, RegistryName, ServerPid, StartLinkResult)
 import Unsafe.Coerce (unsafeCoerce)
 
 
-type StartName a
-  = Maybe (RegistryName a Void)
-
-data Handle a
-  = NamedSupervisorHandle (RegistryName a Void)
-  | AnonymousSupervisorHandle (ServerPid a Void)
-
-data ChildStarted state msg
-  = ChildStarted (ServerPid state msg)
-  | ChildStartedWithInfo (ServerPid state msg) Foreign
+type ChildStarted state msg
+  = { pid :: ServerPid state msg
+    , info :: Maybe Foreign
+    }
 
 data ChildNotStartedReason state msg
   = ChildAlreadyPresent
@@ -47,6 +34,7 @@ data RestartStrategy = RestartNever | RestartAlways | RestartOnCrash
 
 
 type Millisecond = Int
+type Seconds = Int
 
 data ChildShutdownTimeoutStrategy
   = KillImmediately       -- brutal
@@ -58,7 +46,7 @@ data ChildType
   = Supervisor
   | Worker
 
-newtype ChildId id state msg = ChildId id
+type ChildId id state msg = id
 
 type ChildSpec id state msg
   = { id :: ChildId id state msg
@@ -68,10 +56,6 @@ type ChildSpec id state msg
     , childType :: ChildType
     }
 
-foreign import data ErlChildSpec :: Type
-foreign import mkErlChildSpec :: forall id state ms. ChildSpec id state msg -> ErlChildSpec
-
-
 data Strategy
   = OneForAll
   | OneForOne
@@ -80,7 +64,7 @@ data Strategy
 type Flags
   = { strategy:: Strategy
     , intensity :: Int
-    , period :: Int
+    , period :: Seconds
     }
 
 type SupervisorSpec
@@ -88,37 +72,44 @@ type SupervisorSpec
     , childSpecs :: List ErlChildSpec
     }
 
+foreign import startLink :: forall supState. Maybe (RegistryName supState Void) -> Effect SupervisorSpec -> Effect (StartLinkResult supState Void)
+
+foreign import data ErlChildSpec :: Type
+foreign import mkErlChildSpec :: forall id state msg. ChildSpec id state msg -> ErlChildSpec
+
+foreign import startChild :: forall supState childId childState childMsg. Handle supState Void -> ChildSpec childId childState childMsg -> StartChildResult childState childMsg
+
 --------------------------------------------------------------------------------
 -- Example
 --------------------------------------------------------------------------------
 
---startLink :: forall supState. StartName supState Void -> List ErlChildSpec -> Effect (ServerPid supState Void)
-foreign import startLInk :: forall supState. StartName supState Void -> Effect SupervisorSpec -> Effect (StartLinkResult supState Void)
+data SupStateExample = SupStateExample
 
-
-
-mySup name  = startLink name children
+mySup :: Maybe (RegistryName SupStateExample Void) -> Effect (StartLinkResult SupStateExample Void)
+mySup name  = startLink name init
   where
-    children = existsChild myChild
-             : existsChild myChild2
-             : Nil
-
-
-mkSup = unsafeCoerce unit
-
-
+    init = pure { flags: { strategy : OneForOne
+                         , intensity : 1
+                         , period: 5
+                         }
+                , childSpecs
+                }
+    childSpecs = mkErlChildSpec myChild
+             : nil
 
 
 myChild :: forall childState childMsg. ChildSpec String childState childMsg
-myChild = mkChildSpec
-          { id: "myChildId"
-          , start: myGenserverStartLink
-          , restartStrategy: RestartOnCrash
-          , shutdownTimeout: KillAfter 5000
-          }
+myChild = (mkChildSpec "myChildId")
+            { start = myGenserverStartLink
+            }
 
 
-mkChildSpec = unsafeCoerce unit
-
+mkChildSpec :: forall childState childMsg. String -> ChildSpec String childState childMsg
+mkChildSpec id  = { id
+                  , childType : Worker
+                  , start : unsafeCoerce unit
+                  , restartStrategy: RestartOnCrash
+                  , shutdownStrategy: KillAfter 5000
+                  }
 
 myGenserverStartLink  = unsafeCoerce unit

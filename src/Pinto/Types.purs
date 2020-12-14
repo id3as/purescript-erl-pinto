@@ -3,9 +3,11 @@ module Pinto.Types
          RegistryName(..)
          -- Result Types -- TODO - move these to Gen and Sup?
        , TerminateReason(..)
-
+       , StartLinkResult(..)
+       , NotStartedReason(..)
+       , Handle(..)
          -- Opaque types
-         , ServerPid
+       , ServerPid
        , GlobalName
 
        -- , class StartOk
@@ -14,6 +16,7 @@ module Pinto.Types
        )
        where
 
+import Data.Either (Either)
 import Erl.Atom (Atom)
 import Erl.ModuleName (NativeModuleName)
 import Erl.Process.Raw (Pid)
@@ -34,9 +37,24 @@ data RegistryName state msg
   | Global GlobalName
   | Via NativeModuleName Foreign
 
--- TODO move me
-
 newtype ServerPid state msg = ServerPid Pid
+
+data Handle state msg
+  = ByName (RegistryName state msg)
+  | ByPid (ServerPid state msg)
+
+
+data NotStartedReason state msg
+  = Ignore
+  | AlreadyStarted (ServerPid state msg)
+  | Failed Foreign
+
+
+type StartLinkResult state msg
+  = Either (NotStartedReason state msg) (ServerPid state msg)
+
+
+
 
 data TerminateReason
   = Normal

@@ -2,31 +2,42 @@
 
 -include_lib("kernel/include/logger.hrl").
 
--export([startLinkImpl/3
-       , unpackArgsImpl/1
-       , stopImpl/1
-       , doCallImpl/2
-       , doCastImpl/2
-       , callReplyImpl/2
-       , callReplyHibernateImpl/2
-       , callStopImpl/3
-       , castNoReplyImpl/1
-       , castNoReplyHibernateImpl/1
-       , castStopImpl/2
-       , enableTrapExitImpl/0
-       , mapInfoMessageImpl/3
-       , readTerminateReasonImpl/5
-       , start_from_spec/1
-       , start_from_spec/2
-       , mapInfoMessageImpl/3
-     ]).
+-export([ startLinkImpl/3
+        , unpackArgsImpl/1
+        , stopImpl/1
+        , doCallImpl/2
+        , doCastImpl/2
+        , callReplyImpl/2
+        , callReplyHibernateImpl/2
+        , callStopImpl/3
+        , castNoReplyImpl/1
+        , castNoReplyHibernateImpl/1
+        , castStopImpl/2
+        , enableTrapExitImpl/0
+        , mapInfoMessageImpl/3
+        , readTerminateReasonImpl/5
+        , start_from_spec/1
+        , start_from_spec/2
+        , mapInfoMessageImpl/3
 
+        , foreignToSlr/1
+        , slrToForeign/1
+        , startLinkAnonymousImpl/2
+        ]).
 
 %% Pinto specific APIs
 -export([whereIsImpl/3,
          logWarning/2,
          selfImpl/0
         ]).
+
+foreignToSlr(_) ->
+   ok.
+slrToForeign(_) ->
+   ok.
+
+startLinkAnonymousImpl(_, _) ->
+   ok.
 
 callReplyImpl(Resp, NewState) -> { reply, Resp, NewState }.
 callReplyHibernateImpl(Resp, NewState) -> { reply, Resp, NewState, hibernate }.
