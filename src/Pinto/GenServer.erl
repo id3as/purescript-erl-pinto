@@ -7,6 +7,7 @@
         ]).
 
 -export([ init/1
+        , handle_info/2
         ]).
 
 -import('pinto_types@foreign',
@@ -51,4 +52,16 @@ init([InitEffect]) ->
     {right, {initOkTimeout, State, Timeout}} -> {ok, State, Timeout};
     {right, {initOkContinue, State, Continue}} -> {ok, State, {continue, Continue}};
     {right, {initOkHibernate, State}} -> {ok, State, hibernate}
+  end.
+
+handle_info(Msg, #{ context := #{ handleInfo := {just, WrappedHandleInfo } } } = OuterState) ->
+
+  InfoResultEffect = WrappedHandleInfo(Msg, OuterState),
+
+  case InfoResultEffect() of
+    {noReply, NewOuterState} -> {noreply, NewOuterState};
+    {noReplyTimeout, NewOuterState, Timeout} -> {noreply, NewOuterState, Timeout};
+    {noReplyHibernate, NewOuterState} -> {noreply, NewOuterState, hibernate};
+    {noReplyContinue, NewOuterState, Continue} -> {noreply, NewOuterState, {continue, Continue}};
+    {stop, Reason, NewOuterState} -> {stop, Reason, NewOuterState}
   end.

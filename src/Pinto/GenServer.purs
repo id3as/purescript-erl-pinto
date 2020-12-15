@@ -1,19 +1,27 @@
 module Pinto.GenServer
   ( InitFn
-  , InitResult
+  , InitResult(..)
+  , CallFn
+  , CallResult(..)
+  , CastFn
+  , CastResult(..)
+  , InfoFn
+  , InfoResult(..)
   , ResultT
   , ServerRunning(..)
   , ServerNotRunning(..)
   , Context
+  , mkSpec
   , startLink
   , self
   ) where
 
-
+import Prelude
 
 import Control.Monad.Reader (ReaderT, runReaderT)
 import Control.Monad.Reader as Reader
-import Data.Either (Either)
+import Data.Either (Either(..))
+import Data.Function.Uncurried (Fn2, mkFn2)
 import Data.Maybe (Maybe(..))
 import Data.Tuple (uncurry)
 import Effect (Effect)
@@ -37,11 +45,11 @@ import Unsafe.Coerce (unsafeCoerce)
 --------------------------------------------------------------------------------
 data CallResult response state
   = CallReply response state
-  -- | CallReplyWithTimout response state Int
+  -- | CallReplyWithTimeout response state Int
   -- | CallReplyHibernate response state
   -- | CallReplyContinue response state cont
   -- | CallNoReply state
-  -- | CallNoReplyWithTimout state Int
+  -- | CallNoReplyWithTimeout state Int
   -- | CallNoReplyHibernate state
   -- | CallNoReplyContinue state cont
   -- | CallStopReply stop response state
@@ -50,7 +58,7 @@ data CallResult response state
 
 data CastResult state
   = NoReply state
-  -- | NoReplyTimout state Int
+  -- | NoReplyTimeout state Int
   -- | NoReplyHibernate state
   -- | NoReplyContinue state cont
   -- | Stop stop state
@@ -58,13 +66,13 @@ data CastResult state
 type InfoResult state = CastResult state
 type ContinueResult state = CastResult state
 
+type ResultT response state msg = ReaderT (Context state msg) Effect response
 
+type InitFn state cont msg = ResultT (InitResult state cont) state msg
 type CallFn response state msg = ResultT (CallResult response state) state msg
 type CastFn state msg = ResultT (CastResult state) state msg
 type ContinueFn state msg = ResultT (ContinueResult state) state msg
-type InfoFn state msg = ResultT (InfoResult state) state msg
-
-
+type InfoFn state msg = msg -> state -> ResultT (InfoResult state) state msg
 
 -- -- | Type of the callback invoked during a gen_server:handle_cast
 -- type Cast state msg = ResultT (CastResult state) state msg
@@ -82,6 +90,12 @@ data ServerNotRunning
   | InitIgnore
 
 
+type ServerSpec state cont msg =
+  { name :: Maybe (RegistryName state msg)
+  , init :: InitFn state cont msg
+  , handleInfo :: Maybe (InfoFn state msg)
+  }
+
 
 --------------------------------------------------------------------------------
 -- Internal types
@@ -92,23 +106,58 @@ type State state msg
     }
 
 newtype Context state msg
-  = Context {}
+  = Context
+    { handleInfo :: Maybe (WrappedInfoFn state msg)
+    }
 
-type ResultT response state msg = ReaderT (Context state msg) Effect response
-type InitFn state cont msg = ResultT (InitResult state cont) state msg
+type WrappedInfoFn state msg = Fn2 msg (State state msg) (Effect (InfoResult state))
 
-startLink :: forall state cont msg. Maybe (RegistryName state msg) -> InitFn state cont msg -> Effect (StartLinkResult state msg)
-startLink maybeName initFn =
+mkSpec :: forall state cont msg. InitFn state cont msg -> ServerSpec state cont msg
+mkSpec initFn =
+  { name: Nothing
+  , init: initFn
+  , handleInfo: Nothing
+  }
+
+startLink :: forall state cont msg. (ServerSpec state cont msg) -> Effect (StartLinkResult state msg)
+startLink { name: maybeName, init: initFn, handleInfo: maybeHandleInfo } =
   startLinkFFI maybeName initEffect
 
   where
-    context = Context {}
+    context =
+      Context
+      { handleInfo: wrapHandleInfo <$> maybeHandleInfo
+      }
 
-    initEffect :: Effect (InitResult state cont)
-    initEffect =
-      (runReaderT initFn) context
+    initEffect :: Effect (InitResult (State state msg) cont)
+    initEffect = do
+      innerResult <- (runReaderT initFn) context
 
-foreign import startLinkFFI :: forall state cont msg. Maybe (RegistryName state msg) -> Effect (InitResult state cont) -> Effect (StartLinkResult state msg)
+      let
+        outerResult =
+            case innerResult of
+                Left error -> Left error
+                Right (InitOk state) -> Right $ InitOk (mkOuterState state)
+                Right (InitOkTimeout state timeout) -> Right $ InitOkTimeout (mkOuterState state) timeout
+                Right (InitOkContinue state continue) -> Right $ InitOkContinue (mkOuterState state) continue
+                Right (InitOkHibernate state) -> Right $ InitOkHibernate (mkOuterState state)
+
+      pure outerResult
+
+    mkOuterState :: state -> State state msg
+    mkOuterState innerState =
+      { innerState, context }
+
+    wrapHandleInfo :: InfoFn state msg -> WrappedInfoFn state msg
+    wrapHandleInfo handleInfo =
+      let
+        handler msg state@{ innerState, context: handlerContext } =
+            (runReaderT $ handleInfo msg innerState) handlerContext
+      in
+        mkFn2 handler
+
+
+foreign import startLinkFFI :: forall state cont msg. Maybe (RegistryName state msg) -> Effect (InitResult (State state msg) cont) -> Effect (StartLinkResult state msg)
 
 call :: forall response state msg. Handle state msg -> (state -> CallFn response state msg) -> Effect response
 call name fn = unsafeCoerce 3
