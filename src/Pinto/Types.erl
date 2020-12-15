@@ -11,6 +11,6 @@ start_link_result_to_ps(ignore)                           -> {left, {ignore}};
 start_link_result_to_ps({error, {already_started, Pid}})  -> {left, {alreadyStarted, Pid}};
 start_link_result_to_ps({error, Other})                   -> {left, {failed, Other}}.
 
-registry_name_from_ps({local, Name}) -> Name;
+registry_name_from_ps({local, Name} = Local) -> Local;
 registry_name_from_ps({global, _} = Global) -> Global;
 registry_name_from_ps({via, _, _} = Via) -> Via.
