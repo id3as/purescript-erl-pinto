@@ -1,0 +1,54 @@
+-module(pinto_genServer@foreign).
+
+-include_lib("kernel/include/logger.hrl").
+
+-export([ selfFFI/0
+        , startLinkFFI/2
+        ]).
+
+-export([ init/1
+        ]).
+
+-import('pinto_types@foreign',
+        [ start_link_result_to_ps/1
+        , registry_name_from_ps/1
+        ]).
+
+%%% ----------------------------------------------------------------------------
+%%% FFI API
+%%% ----------------------------------------------------------------------------
+startLinkFFI(MaybeName, InitEffect) ->
+  fun() ->
+      Result =
+        case MaybeName of
+          {nothing} ->
+            gen_server:start_link(?MODULE, [InitEffect], []);
+          {just, NamePS} ->
+            Name = registry_name_from_ps(NamePS),
+            gen_server:start_link(Name, ?MODULE, [InitEffect], [])
+        end,
+
+      start_link_result_to_ps(Result)
+  end.
+
+selfFFI() ->
+  fun() ->
+      self()
+  end.
+
+%%% ----------------------------------------------------------------------------
+%%% gen_server callbacks
+%%% ----------------------------------------------------------------------------
+init([InitEffect]) ->
+
+  InitResult = InitEffect(),
+
+  case InitResult of
+    {left, {initStop, Error}} -> {stop, Error};
+    {left, {initIgnore}} -> ignore;
+
+    {right, {initOk, State}} -> {ok, State};
+    {right, {initOkTimeout, State, Timeout}} -> {ok, State, Timeout};
+    {right, {initOkContinue, State, Continue}} -> {ok, State, {continue, Continue}};
+    {right, {initOkHibernate, State}} -> {ok, State, hibernate}
+  end.

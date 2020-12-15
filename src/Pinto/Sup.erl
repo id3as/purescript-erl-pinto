@@ -16,6 +16,11 @@
         , init/1
         ]).
 
+-import('pinto_types@foreign',
+        [ start_link_result_to_ps/1
+        , registry_name_from_ps/1
+        ]).
+
 init(EffectSupervisorSpec) ->
   #{ flags := Flags
    , childSpecs := ChildSpecs
@@ -70,11 +75,6 @@ startChildPure({byName, Name}, ChildSpec) ->
 %%------------------------------------------------------------------------------
 %% erlang -> ps conversion helpers
 %%------------------------------------------------------------------------------
-start_link_result_to_ps({ok, Pid})                        -> {right, Pid};
-start_link_result_to_ps(ignore)                           -> {left, {ignore}};
-start_link_result_to_ps({error, {already_started, Pid}})  -> {left, {alreadyStarted, Pid}};
-start_link_result_to_ps({error, Other})                   -> {left, {failed, Other}}.
-
 start_child_result_to_ps({ok, undefined})                 -> {left, {childStartReturnedIgnore}};
 start_child_result_to_ps({ok, {Pid, Info}})               -> {right, #{pid => Pid, info => {just, Info}}};
 start_child_result_to_ps({ok, Pid})                       -> {right, #{pid => Pid, info => {nothing}}};
@@ -98,10 +98,6 @@ flags_from_ps( #{ strategy := Strategy
 strategy_from_ps({oneForAll}) -> one_for_all;
 strategy_from_ps({oneForOne}) -> one_for_one;
 strategy_from_ps({restForOne}) -> rest_for_one.
-
-registry_name_from_ps({local, Name}) -> Name;
-registry_name_from_ps({global, _} = Global) -> Global;
-registry_name_from_ps({via, _, _} = Via) -> Via.
 
 restart_from_ps({restartNever}) -> transient;
 restart_from_ps({restartAlways}) -> permanent;

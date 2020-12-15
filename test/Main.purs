@@ -5,6 +5,7 @@ import Prelude
 import Control.Monad.Free (Free)
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
+import Debug.Trace (spy)
 import Effect (Effect)
 import Effect.Unsafe (unsafePerformEffect)
 import Erl.Data.List (List)
@@ -44,4 +45,9 @@ testStartLinkAnonymous =
 
     where
       init :: forall cont msg. InitFn State cont msg
-      init = pure $ Right $ InitOk TestState
+      init = do
+        self <- GS.self
+
+        let _ = spy "Got self" self
+
+        pure $ Right $ InitOk TestState

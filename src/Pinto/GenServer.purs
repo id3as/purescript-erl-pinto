@@ -6,15 +6,13 @@ module Pinto.GenServer
   , ServerNotRunning(..)
   , Context
   , startLink
+  , self
   ) where
 
-import Prelude
 
-import Control.Monad.Reader.Trans (ReaderT(..))
-import Control.Monad.State (State, StateT)
-import Control.Monad.State (lift) as Exports
-import Control.Monad.State (runStateT, execStateT, evalStateT, lift)
-import Control.Monad.State as State
+
+import Control.Monad.Reader (ReaderT, runReaderT)
+import Control.Monad.Reader as Reader
 import Data.Either (Either)
 import Data.Maybe (Maybe(..))
 import Data.Tuple (uncurry)
@@ -76,7 +74,7 @@ type InitResult state cont = Either ServerNotRunning (ServerRunning state cont)
 data ServerRunning state cont
   = InitOk state
   | InitOkTimeout state Int
-  | InitContinue state cont
+  | InitOkContinue state cont
   | InitOkHibernate state
 
 data ServerNotRunning
@@ -94,19 +92,31 @@ type State state msg
     }
 
 newtype Context state msg
-  = Context { pid :: ServerPid state msg
-            }
+  = Context {}
 
 type ResultT response state msg = ReaderT (Context state msg) Effect response
 type InitFn state cont msg = ResultT (InitResult state cont) state msg
 
-foreign import startLink :: forall state cont msg. Maybe (RegistryName state msg) -> InitFn state cont msg -> Effect (StartLinkResult state msg)
+startLink :: forall state cont msg. Maybe (RegistryName state msg) -> InitFn state cont msg -> Effect (StartLinkResult state msg)
+startLink maybeName initFn =
+  startLinkFFI maybeName initEffect
 
+  where
+    context = Context {}
+
+    initEffect :: Effect (InitResult state cont)
+    initEffect =
+      (runReaderT initFn) context
+
+foreign import startLinkFFI :: forall state cont msg. Maybe (RegistryName state msg) -> Effect (InitResult state cont) -> Effect (StartLinkResult state msg)
 
 call :: forall response state msg. Handle state msg -> (state -> CallFn response state msg) -> Effect response
 call name fn = unsafeCoerce 3
 
+self :: forall state msg. ReaderT (Context state msg) Effect (ServerPid state msg)
+self = Reader.lift selfFFI
 
+foreign import selfFFI :: forall state msg. Effect (ServerPid state msg)
 
 -- foreign import foreignToSlr :: forall state msg. Foreign  -> StartLinkResult state msg
 -- --foreign import foreignToScr :: Foreign  -> StartChildResult
