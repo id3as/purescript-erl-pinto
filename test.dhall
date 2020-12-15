@@ -1,8 +1,8 @@
-let conf = ./spago.dhall
+let base = ./spago.dhall
 
-in    conf
+in    base
     ⫽ { sources =
-          conf.sources # [ "test/**/*.purs" ]
+          base.sources # [ "test/**/*.purs" ]
       , dependencies =
-          conf.dependencies # [ "assert", "console", "erl-test-eunit" ]
+          base.dependencies # [ "assert", "console", "erl-test-eunit" ]
       }

@@ -1,3 +1,4 @@
 .psc-ide-port
 .psc-package/
 output/
+*beam

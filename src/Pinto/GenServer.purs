@@ -5,6 +5,7 @@ module Pinto.GenServer
   , ServerRunning(..)
   , ServerNotRunning(..)
   , Context
+  , startLink
   ) where
 
 import Prelude
@@ -50,23 +51,27 @@ data CallResult response state
 
 
 data CastResult state
-  = CastNoReply state
-  -- | CastNoReplyWithTimout state Int
-  -- | CastNoReplyHibernate state
-  -- | CastNoReplyContinue state cont
-  -- | CastStop stop state
+  = NoReply state
+  -- | NoReplyTimout state Int
+  -- | NoReplyHibernate state
+  -- | NoReplyContinue state cont
+  -- | Stop stop state
 
+type InfoResult state = CastResult state
+type ContinueResult state = CastResult state
 
 
 type CallFn response state msg = ResultT (CallResult response state) state msg
 type CastFn state msg = ResultT (CastResult state) state msg
+type ContinueFn state msg = ResultT (ContinueResult state) state msg
+type InfoFn state msg = ResultT (InfoResult state) state msg
 
 
 
 -- -- | Type of the callback invoked during a gen_server:handle_cast
 -- type Cast state msg = ResultT (CastResult state) state msg
 
-type InitResult state cont = Either (ServerRunning state cont) ServerNotRunning
+type InitResult state cont = Either ServerNotRunning (ServerRunning state cont)
 
 data ServerRunning state cont
   = InitOk state
@@ -95,8 +100,7 @@ newtype Context state msg
 type ResultT response state msg = ReaderT (Context state msg) Effect response
 type InitFn state cont msg = ResultT (InitResult state cont) state msg
 
-startLink :: forall state cont msg. Maybe (RegistryName state msg) -> InitFn state cont msg -> Effect (StartLinkResult state msg)
-startLink = unsafeCoerce 2
+foreign import startLink :: forall state cont msg. Maybe (RegistryName state msg) -> InitFn state cont msg -> Effect (StartLinkResult state msg)
 
 
 call :: forall response state msg. Handle state msg -> (state -> CallFn response state msg) -> Effect response
