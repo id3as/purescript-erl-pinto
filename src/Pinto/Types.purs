@@ -45,6 +45,7 @@ data RegistryName state msg
   | Global GlobalName
   | Via NativeModuleName Foreign
 
+
 newtype ServerPid state msg = ServerPid Pid
 
 data InstanceRef state msg

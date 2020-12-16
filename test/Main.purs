@@ -8,18 +8,17 @@ import Data.Maybe (Maybe(..))
 import Debug.Trace (spy)
 import Effect (Effect)
 import Effect.Unsafe (unsafePerformEffect)
-import Erl.Atom (Atom, atom)
-import Erl.Data.List (List, nil, (:))
-import Erl.Process (Process(..), (!))
-import Erl.Process.Raw (Pid)
-import Erl.Test.EUnit (TestF, TestSet, collectTests, runTests, suite, test)
-import Partial.Unsafe (unsafePartial)
-import Pinto.GenServer (CallResult(..), CastResult(..), InitFn, ServerRunning(..))
+import Erl.Atom (atom)
+import Erl.Data.List (nil, (:))
+import Erl.Process (Process, (!))
+import Erl.Test.EUnit (TestF, runTests, suite, test)
+import Pinto.GenServer (CallResult(..), CastResult(..), ServerRunning(..))
 import Pinto.GenServer as GS
 import Pinto.Sup (ChildShutdownTimeoutStrategy(..), ChildSpec, ChildType(..), RestartStrategy(..), Strategy(..), SupervisorSpec, mkErlChildSpec)
 import Pinto.Sup as Sup
-import Pinto.Types (InstanceRef(..), NotStartedReason(..), RegistryName(..), ServerPid, StartLinkResult, crashIfNotStarted)
+import Pinto.Types (InstanceRef(..), RegistryName(..), crashIfNotStarted)
 import Test.Assert (assert, assertEqual)
+import Test.ValueServer as ValueServer
 import Unsafe.Coerce (unsafeCoerce)
 
 foreign import filterSasl :: Effect  Unit
@@ -42,6 +41,7 @@ genServerSuite =
 
     testStartWithNamedChild
 
+    testValueServer
 
 data TestState = TestState Int
 derive instance eqTestState :: Eq TestState
@@ -138,6 +138,20 @@ testCast =
         pure $ Right $ InitOk $ TestState 0
 
 
+testValueServer :: Free TestF Unit
+testValueServer =
+  test "Interaction with gen_server with closed API" do
+    void $ ValueServer.startLink
+    void $ ValueServer.setValue 42
+    v1 <- ValueServer.setValue 43
+    v2 <- ValueServer.getValue
+    ValueServer.setValueAsync 50
+    v3 <- ValueServer.getValue
+    assertEqual { actual: v1, expected: 42 }
+    assertEqual { actual: v2, expected: 43 }
+    assertEqual { actual: v3, expected: 50 }
+
+    pure unit
 
 
 --------------------------------------------------------------------------------
