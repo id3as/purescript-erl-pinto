@@ -36,7 +36,7 @@ genServerSuite =
     testStartLinkNamed
     testHandleInfo
     testCall
-
+    testCast
 
 
 data TestState = TestState Int
@@ -119,6 +119,39 @@ testCall =
       init = do
         pure $ Right $ InitOk $ TestState 7
 
+
+testCast :: Free TestF Unit
+testCast =
+  test "HandleCast changes state" do
+    serverPid <- crashIfNotStarted <$> (GS.startLink $ (GS.mkSpec init))
+
+    setStateCast (ByPid serverPid) $ TestState 42
+
+    state <- getState (ByPid serverPid)
+    assertEqual { actual: state
+                , expected: TestState 42
+                }
+    pure unit
+
+    where
+      init :: forall cont msg. InitFn TestState cont msg
+      init = do
+        pure $ Right $ InitOk $ TestState 0
+
+
+---------------------------------------------------------------------------------
+-- Internal
+---------------------------------------------------------------------------------
 getState :: forall state msg. InstanceRef state msg -> Effect state
 getState handle = GS.call handle
        \state -> pure $ CallReply state state
+
+
+setState :: forall state msg. InstanceRef state msg -> state ->  Effect state
+setState handle newState = GS.call handle
+       \state -> pure $ CallReply state newState
+
+
+setStateCast :: forall state msg. InstanceRef state msg -> state ->  Effect Unit
+setStateCast handle newState = GS.cast handle
+       \_state -> pure $ NoReply newState

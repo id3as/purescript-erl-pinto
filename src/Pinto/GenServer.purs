@@ -14,6 +14,7 @@ module Pinto.GenServer
   , mkSpec
   , startLink
   , call
+  , cast
   , self
   ) where
 

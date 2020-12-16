@@ -5,13 +5,13 @@
 -export([ selfFFI/0
         , startLinkFFI/2
         , callFFI/2
-        , castFFI/1
+        , castFFI/2
         ]).
 
 -export([ init/1
         , handle_info/2
         , handle_call/3
-%%        , handle_cast/2
+        , handle_cast/2
         ]).
 
 -import('pinto_types@foreign',
@@ -38,8 +38,11 @@ startLinkFFI(MaybeName, InitEffect) ->
   end.
 
 
-castFFI(_) ->
-   ok.
+castFFI(ServerRef, CastFn) ->
+  fun() ->
+      gen_server:cast(instance_ref_from_ps(ServerRef), {do_cast, CastFn})
+  end.
+
 
 callFFI(ServerRef, CallFn) ->
   fun() ->
@@ -88,15 +91,27 @@ handle_call({do_call, CallFn}, _From, State) ->
     {callStopNoReply, Reason, NewState}              -> {stop, Reason, NewState}
   end.
 
+handle_cast({do_cast, CastFn}, State) ->
 
-handle_info(Msg, #{ context := #{ handleInfo := {just, WrappedHandleInfo } } } = OuterState) ->
+  CastEffect = CastFn(State),
+  CastResult = CastEffect(),
 
-  InfoResultEffect = WrappedHandleInfo(Msg, OuterState),
+  cast_result_to_ps(CastResult).
 
-  case InfoResultEffect() of
-    {noReply, NewOuterState}                   -> {noreply, NewOuterState};
-    {noReplyTimeout, NewOuterState, Timeout}   -> {noreply, NewOuterState, Timeout};
-    {noReplyHibernate, NewOuterState}          -> {noreply, NewOuterState, hibernate};
-    {noReplyContinue, NewOuterState, Continue} -> {noreply, NewOuterState, {continue, Continue}};
-    {stop, Reason, NewOuterState}              -> {stop, Reason, NewOuterState}
+
+
+handle_info(Msg, #{ context := #{ handleInfo := {just, WrappedHandleInfo } } } = State) ->
+
+  InfoResultEffect = WrappedHandleInfo(Msg, State),
+  InfoResult = InfoResultEffect(),
+  cast_result_to_ps(InfoResult).
+
+
+cast_result_to_ps(CastResult) ->
+  case CastResult of
+    {noReply, NewState}                   -> {noreply, NewState};
+    {noReplyTimeout, NewState, Timeout}   -> {noreply, NewState, Timeout};
+    {noReplyHibernate, NewState}          -> {noreply, NewState, hibernate};
+    {noReplyContinue, NewState, Continue} -> {noreply, NewState, {continue, Continue}};
+    {stop, Reason, NewState}              -> {stop, Reason, NewState}
   end.
