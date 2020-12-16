@@ -57,9 +57,9 @@ startLinkPure({just, RegistryName}, EffectSupervisorSpec) ->
   Result = supervisor:start_link(registry_name_from_ps(RegistryName), ?MODULE, EffectSupervisorSpec),
   start_link_result_to_ps(Result).
 
-startChild(SupHandle, ChildSpec) ->
+startChild(SupRef, ChildSpec) ->
   fun() ->
-      startChildPure(SupHandle, mkErlChildSpec(ChildSpec))
+      startChildPure(SupRef, mkErlChildSpec(ChildSpec))
   end.
 
 startChildPure({byPid, Pid}, ChildSpec) ->

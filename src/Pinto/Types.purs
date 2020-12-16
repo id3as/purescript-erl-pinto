@@ -5,10 +5,16 @@ module Pinto.Types
        , TerminateReason(..)
        , StartLinkResult(..)
        , NotStartedReason(..)
-       , Handle(..)
+       , InstanceRef(..)
          -- Opaque types
        , ServerPid
        , GlobalName
+
+       , maybeStarted
+       , maybeRunning
+
+       , crashIfNotStarted
+       , crashIfNotRunning
 
        -- , class StartOk
        -- , startOk
@@ -16,11 +22,13 @@ module Pinto.Types
        )
        where
 
-import Data.Either (Either)
+import Data.Either (Either(..))
+import Data.Maybe (Maybe(..))
 import Erl.Atom (Atom)
 import Erl.ModuleName (NativeModuleName)
 import Erl.Process.Raw (Pid)
 import Foreign (Foreign)
+import Partial.Unsafe (unsafePartial)
 
 
 foreign import data GlobalName :: Type
@@ -39,7 +47,7 @@ data RegistryName state msg
 
 newtype ServerPid state msg = ServerPid Pid
 
-data Handle state msg
+data InstanceRef state msg
   = ByName (RegistryName state msg)
   | ByPid (ServerPid state msg)
 
@@ -63,6 +71,27 @@ data TerminateReason
   | Custom Foreign
 
 
+maybeStarted :: forall state msg. StartLinkResult state msg -> Maybe (ServerPid state msg)
+maybeStarted slr = case slr of
+    Right serverPid -> Just serverPid
+    _ -> Nothing
+
+maybeRunning :: forall state msg. StartLinkResult state msg -> Maybe (ServerPid state msg)
+maybeRunning slr = case slr of
+    Right serverPid -> Just serverPid
+    Left (AlreadyStarted serverPid) -> Just serverPid
+    _ -> Nothing
+
+
+crashIfNotStarted :: forall state msg. StartLinkResult state msg -> ServerPid state msg
+crashIfNotStarted = unsafePartial \slr ->
+  case maybeStarted slr of
+     Just serverPid -> serverPid
+
+crashIfNotRunning :: forall state msg. StartLinkResult state msg -> ServerPid state msg
+crashIfNotRunning = unsafePartial \slr ->
+  case maybeRunning slr of
+     Just serverPid -> serverPid
 
 -- class StartOk a state msg where
 --   startOk :: a -> Maybe (ServerPid state msg)

@@ -9,7 +9,7 @@ import Data.Maybe (Maybe)
 import Effect (Effect)
 import Erl.Data.List (List, nil, (:))
 import Foreign (Foreign)
-import Pinto.Types (Handle, RegistryName, ServerPid, StartLinkResult)
+import Pinto.Types (InstanceRef, RegistryName, ServerPid, StartLinkResult)
 import Unsafe.Coerce (unsafeCoerce)
 
 
@@ -77,7 +77,7 @@ foreign import startLink :: forall supState. Maybe (RegistryName supState Void) 
 foreign import data ErlChildSpec :: Type
 foreign import mkErlChildSpec :: forall id state msg. ChildSpec id state msg -> ErlChildSpec
 
-foreign import startChild :: forall supState childId childState childMsg. Handle supState Void -> ChildSpec childId childState childMsg -> StartChildResult childState childMsg
+foreign import startChild :: forall supState childId childState childMsg. InstanceRef supState Void -> ChildSpec childId childState childMsg -> StartChildResult childState childMsg
 
 --------------------------------------------------------------------------------
 -- Example
