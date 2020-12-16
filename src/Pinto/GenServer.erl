@@ -5,11 +5,13 @@
 -export([ selfFFI/0
         , startLinkFFI/2
         , callFFI/2
+        , castFFI/1
         ]).
 
 -export([ init/1
         , handle_info/2
         , handle_call/3
+%%        , handle_cast/2
         ]).
 
 -import('pinto_types@foreign',
@@ -35,6 +37,9 @@ startLinkFFI(MaybeName, InitEffect) ->
       start_link_result_to_ps(Result)
   end.
 
+
+castFFI(_) ->
+   ok.
 
 callFFI(ServerRef, CallFn) ->
   fun() ->

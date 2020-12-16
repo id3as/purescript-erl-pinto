@@ -82,16 +82,15 @@ testStartLinkNamed =
 testHandleInfo :: Free TestF Unit
 testHandleInfo =
   test "HandleInfo handler receives message" do
-    slRes <- GS.startLink $ (GS.mkSpec init) { handleInfo = Just handleInfo }
+    serverPid <- crashIfNotStarted <$> (GS.startLink $ (GS.mkSpec init) { handleInfo = Just handleInfo })
 
-    worked <- case slRes of
-        Right pid -> do
-            (unsafeCoerce pid :: Process Msg) ! TestMsg
-            pure true
-        Left reason ->
-            pure false
+    (unsafeCoerce serverPid :: Process Msg) ! TestMsg
 
-    assert worked
+    state <- getState (ByPid serverPid)
+    assertEqual { actual: state
+                , expected: TestState 1
+                }
+
     pure unit
 
     where

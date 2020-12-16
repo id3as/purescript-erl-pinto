@@ -58,6 +58,10 @@ data CastResult state
   -- | NoReplyContinue state cont
   -- | Stop stop state
 
+instance mapCastResult :: Functor CastResult where
+  map f (NoReply state) = NoReply (f state)
+
+
 type InfoResult state = CastResult state
 type ContinueResult state = CastResult state
 
@@ -65,8 +69,8 @@ type ResultT result state msg = ReaderT (Context state msg) Effect result
 
 type InitFn state cont msg = ResultT (InitResult state cont) state msg
 type CallFn reply state msg = state -> ResultT (CallResult reply state) state msg
-type CastFn state msg = ResultT (CastResult state) state msg
-type ContinueFn state msg = ResultT (ContinueResult state) state msg
+type CastFn state msg = state -> ResultT (CastResult state) state msg
+type ContinueFn cont state msg = cont -> state -> ResultT (ContinueResult state) state msg
 type InfoFn state msg = msg -> state -> ResultT (InfoResult state) state msg
 
 -- -- | Type of the callback invoked during a gen_server:handle_cast
@@ -109,8 +113,9 @@ newtype Context state msg
     { handleInfo :: Maybe (WrappedInfoFn state msg)
     }
 
-type WrappedInfoFn state msg = Fn2 msg (OuterState state msg) (Effect (InfoResult state))
+type WrappedInfoFn state msg = Fn2 msg (OuterState state msg) (Effect (InfoResult (OuterState state msg)))
 type WrappedCallFn reply state msg = Fn1 (OuterState state msg) (Effect (CallResult reply (OuterState state msg)))
+type WrappedCastFn state msg = Fn1 (OuterState state msg) (Effect (CastResult (OuterState state msg)))
 
 mkSpec :: forall state cont msg. InitFn state cont msg -> ServerSpec state cont msg
 mkSpec initFn =
@@ -119,18 +124,10 @@ mkSpec initFn =
   , handleInfo: Nothing
   }
 
-
-
-
-      -- getState :: InstanceRef OuterState Msg -> Effect (Maybe Int)
-      -- getState handle = GS.call handle
-      --        \state@(TestState n) -> pure $ CallReply n state
-
-
 foreign import callFFI :: forall reply state msg . InstanceRef state msg -> WrappedCallFn reply state msg -> Effect reply
 call :: forall reply state msg . InstanceRef state msg -> CallFn reply state msg -> Effect reply
-call handle callFn =
-  callFFI handle wrappedCallFn
+call instanceRef callFn =
+  callFFI instanceRef wrappedCallFn
 
   where
     wrappedCallFn :: WrappedCallFn reply state msg
@@ -138,6 +135,22 @@ call handle callFn =
       let
         handler state@{ innerState, context: handlerContext } = do
           innerResult <- (runReaderT $ callFn innerState) handlerContext
+          pure $ (mkOuterState handlerContext) <$> innerResult
+      in
+        mkFn1 handler
+
+
+foreign import castFFI :: forall state msg . InstanceRef state msg -> WrappedCastFn state msg -> Effect Unit
+cast :: forall state msg . InstanceRef state msg -> CastFn state msg -> Effect Unit
+cast instanceRef castFn =
+  castFFI instanceRef wrappedCastFn
+
+  where
+    wrappedCastFn :: WrappedCastFn state msg
+    wrappedCastFn =
+      let
+        handler state@{ innerState, context: handlerContext } = do
+          innerResult <- (runReaderT $ castFn innerState) handlerContext
           pure $ (mkOuterState handlerContext) <$> innerResult
       in
         mkFn1 handler
@@ -171,8 +184,9 @@ startLink { name: maybeName, init: initFn, handleInfo: maybeHandleInfo } =
     wrapHandleInfo :: InfoFn state msg -> WrappedInfoFn state msg
     wrapHandleInfo handleInfo =
       let
-        handler msg state@{ innerState, context: handlerContext } =
-            (runReaderT $ handleInfo msg innerState) handlerContext
+        handler msg state@{ innerState, context: handlerContext } = do
+          innerResult <- (runReaderT $ handleInfo msg innerState) handlerContext
+          pure $ (mkOuterState handlerContext) <$> innerResult
       in
         mkFn2 handler
 
