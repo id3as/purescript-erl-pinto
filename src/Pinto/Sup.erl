@@ -18,6 +18,8 @@
 
 -import('pinto_types@foreign',
         [ start_link_result_to_ps/1
+        , start_link_result_from_ps/1
+
         , registry_name_from_ps/1
         ]).
 
@@ -25,6 +27,10 @@ init(EffectSupervisorSpec) ->
   #{ flags := Flags
    , childSpecs := ChildSpecs
    } = EffectSupervisorSpec(),
+  io:format(user, "ChildSpecs ~p~n", [ChildSpecs]),
+  io:format(user, "Flags ~p~n", [Flags]),
+
+
   {ok, {flags_from_ps(Flags), ChildSpecs}}.
 
 
@@ -110,5 +116,6 @@ shutdown_from_ps({killAfter, Ms}) ->  Ms.
 type_from_ps({supervisor}) -> supervisor;
 type_from_ps({worker}) -> worker.
 
-start_stub(StartFn) ->
-  io:format(user, "Start called ~p~n", [StartFn]).
+start_stub(StartEffect) ->
+  StartResult = StartEffect(),
+  start_link_result_from_ps(StartResult).

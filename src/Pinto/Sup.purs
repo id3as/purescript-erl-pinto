@@ -1,16 +1,30 @@
-module Pinto.Sup (
-  ChildStarted
-  ) where
+module Pinto.Sup
+  ( ChildId(..)
+  , ChildStarted(..)
+  , ChildShutdownTimeoutStrategy(..)
+  , ChildSpec(..)
+  , ChildType(..)
+  , ErlChildSpec
+  , Flags
+  , RestartStrategy(..)
+  , Strategy(..)
+  , SupervisorSpec
+
+  , Millisecond
+  , Seconds
+
+  , mkErlChildSpec
+  , startLink
+ ) where
 
 import Prelude
 
 import Data.Either (Either)
 import Data.Maybe (Maybe)
 import Effect (Effect)
-import Erl.Data.List (List, nil, (:))
+import Erl.Data.List (List)
 import Foreign (Foreign)
 import Pinto.Types (InstanceRef, RegistryName, ServerPid, StartLinkResult)
-import Unsafe.Coerce (unsafeCoerce)
 
 
 type ChildStarted state msg
@@ -78,38 +92,3 @@ foreign import data ErlChildSpec :: Type
 foreign import mkErlChildSpec :: forall id state msg. ChildSpec id state msg -> ErlChildSpec
 
 foreign import startChild :: forall supState childId childState childMsg. InstanceRef supState Void -> ChildSpec childId childState childMsg -> StartChildResult childState childMsg
-
---------------------------------------------------------------------------------
--- Example
---------------------------------------------------------------------------------
-
-data SupStateExample = SupStateExample
-
-mySup :: Maybe (RegistryName SupStateExample Void) -> Effect (StartLinkResult SupStateExample Void)
-mySup name  = startLink name init
-  where
-    init = pure { flags: { strategy : OneForOne
-                         , intensity : 1
-                         , period: 5
-                         }
-                , childSpecs
-                }
-    childSpecs = mkErlChildSpec myChild
-             : nil
-
-
-myChild :: forall childState childMsg. ChildSpec String childState childMsg
-myChild = (mkChildSpec "myChildId")
-            { start = myGenserverStartLink
-            }
-
-
-mkChildSpec :: forall childState childMsg. String -> ChildSpec String childState childMsg
-mkChildSpec id  = { id
-                  , childType : Worker
-                  , start : unsafeCoerce unit
-                  , restartStrategy: RestartOnCrash
-                  , shutdownStrategy: KillAfter 5000
-                  }
-
-myGenserverStartLink  = unsafeCoerce unit
