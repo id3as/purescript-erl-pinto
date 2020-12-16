@@ -49,9 +49,6 @@ data CallResult reply state
 instance mapCallResult :: Functor (CallResult reply) where
   map f (CallReply reply state) = (CallReply reply (f state))
 
-
-
-
 data CastResult state
   = NoReply state
   -- | NoReplyTimeout state Int
@@ -68,7 +65,7 @@ type ContinueResult state = CastResult state
 
 type ResultT result state msg = ReaderT (Context state msg) Effect result
 
-type InitFn state cont msg = ResultT (InitResult state cont) state msg
+type InitFn state cont msg = ResultT (InitResult cont state) state msg
 type CallFn reply state msg = state -> ResultT (CallResult reply state) state msg
 type CastFn state msg = state -> ResultT (CastResult state) state msg
 type ContinueFn cont state msg = cont -> state -> ResultT (ContinueResult state) state msg
@@ -77,9 +74,8 @@ type InfoFn state msg = msg -> state -> ResultT (InfoResult state) state msg
 -- -- | Type of the callback invoked during a gen_server:handle_cast
 -- type Cast state msg = ResultT (CastResult state) state msg
 
-type InitResult state cont = Either ServerNotRunning (ServerRunning state cont)
 
-data ServerRunning state cont
+data ServerRunning cont state
   = InitOk state
   | InitOkTimeout state Int
   | InitOkContinue state cont
@@ -88,6 +84,19 @@ data ServerRunning state cont
 data ServerNotRunning
   = InitStop Foreign
   | InitIgnore
+
+type InitResult cont state = Either ServerNotRunning (ServerRunning cont state )
+
+-- Can't do a functor instance over a type synonym, so just have a function instead
+mapInitResult :: forall state state' cont. (state -> state') -> InitResult cont state -> InitResult cont state'
+mapInitResult f (Right (InitOk state)) = Right (InitOk $ f state)
+mapInitResult f (Right (InitOkTimeout state timeout)) = Right (InitOkTimeout (f state) timeout)
+mapInitResult f (Right (InitOkContinue state cont)) = Right (InitOkContinue (f state) cont)
+mapInitResult f (Right (InitOkHibernate state)) = Right (InitOkHibernate $ f state)
+mapInitResult _ (Left (InitStop term)) = Left (InitStop term)
+mapInitResult _ (Left InitIgnore) = Left InitIgnore
+
+
 
 
 type ServerSpec state cont msg =
@@ -167,20 +176,10 @@ startLink { name: maybeName, init: initFn, handleInfo: maybeHandleInfo } =
       { handleInfo: wrapHandleInfo <$> maybeHandleInfo
       }
 
-    initEffect :: Effect (InitResult (OuterState state msg) cont)
+    initEffect :: Effect (InitResult cont (OuterState state msg))
     initEffect = do
       innerResult <- (runReaderT initFn) context
-
-      let
-        outerResult =
-            case innerResult of
-                Left error -> Left error
-                Right (InitOk state) -> Right $ InitOk (mkOuterState context state)
-                Right (InitOkTimeout state timeout) -> Right $ InitOkTimeout (mkOuterState context state) timeout
-                Right (InitOkContinue state continue) -> Right $ InitOkContinue (mkOuterState context state) continue
-                Right (InitOkHibernate state) -> Right $ InitOkHibernate (mkOuterState context state)
-
-      pure outerResult
+      pure $ mapInitResult (mkOuterState context) innerResult
 
     wrapHandleInfo :: InfoFn state msg -> WrappedInfoFn state msg
     wrapHandleInfo handleInfo =
@@ -196,7 +195,7 @@ startLink { name: maybeName, init: initFn, handleInfo: maybeHandleInfo } =
 
 
 
-foreign import startLinkFFI :: forall state cont msg. Maybe (RegistryName state msg) -> Effect (InitResult (OuterState state msg) cont) -> Effect (StartLinkResult state msg)
+foreign import startLinkFFI :: forall state cont msg. Maybe (RegistryName state msg) -> Effect (InitResult cont (OuterState state msg)) -> Effect (StartLinkResult state msg)
 
 self :: forall state msg. ReaderT (Context state msg) Effect (ServerPid state msg)
 self = Reader.lift selfFFI

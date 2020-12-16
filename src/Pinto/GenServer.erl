@@ -58,7 +58,6 @@ selfFFI() ->
 %%% gen_server callbacks
 %%% ----------------------------------------------------------------------------
 init([InitEffect]) ->
-
   InitResult = InitEffect(),
 
   case InitResult of
@@ -101,7 +100,6 @@ handle_cast({do_cast, CastFn}, State) ->
 
 
 handle_info(Msg, #{ context := #{ handleInfo := {just, WrappedHandleInfo } } } = State) ->
-
   InfoResultEffect = WrappedHandleInfo(Msg, State),
   InfoResult = InfoResultEffect(),
   cast_result_to_ps(InfoResult).
