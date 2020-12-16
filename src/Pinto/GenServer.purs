@@ -34,20 +34,30 @@ import Pinto.Types (InstanceRef, RegistryName, ServerPid, StartLinkResult)
 --------------------------------------------------------------------------------
 -- Public types
 --------------------------------------------------------------------------------
-data CallResult reply state
+data CallResult reply cont stop state
   = CallReply reply state
-  -- | CallReplyWithTimeout reply state Int
-  -- | CallReplyHibernate reply state
-  -- | CallReplyContinue reply state cont
-  -- | CallNoReply state
-  -- | CallNoReplyWithTimeout state Int
-  -- | CallNoReplyHibernate state
-  -- | CallNoReplyContinue state cont
-  -- | CallStopReply stop reply state
-  -- | CallStopNoReply stop state
+  | CallReplyWithTimeout reply state Int
+  | CallReplyHibernate reply state
+  | CallReplyContinue reply state cont
+  | CallNoReply state
+  | CallNoReplyWithTimeout state Int
+  | CallNoReplyHibernate state
+  | CallNoReplyContinue state cont
+  | CallStopReply stop reply state
+  | CallStopNoReply stop state
 
-instance mapCallResult :: Functor (CallResult reply) where
+instance mapCallResult :: Functor (CallResult reply cont stop) where
   map f (CallReply reply state) = (CallReply reply (f state))
+  map f (CallReplyWithTimeout reply state n) = CallReplyWithTimeout reply (f state) n
+  map f (CallReplyHibernate reply state) = CallReplyHibernate reply (f state)
+  map f (CallReplyContinue reply state cont) = CallReplyContinue reply (f state) cont
+  map f (CallNoReply state) = CallNoReply (f state)
+  map f (CallNoReplyWithTimeout state n) = CallNoReplyWithTimeout (f state) n
+  map f (CallNoReplyHibernate state) = CallNoReplyHibernate (f state)
+  map f (CallNoReplyContinue state cont) = CallNoReplyContinue (f state) cont
+  map f (CallStopReply stop reply state) = CallStopReply stop reply (f state)
+  map f (CallStopNoReply stop state) = CallStopNoReply stop (f state)
+
 
 data CastResult state
   = NoReply state
@@ -63,13 +73,15 @@ instance mapCastResult :: Functor CastResult where
 type InfoResult state = CastResult state
 type ContinueResult state = CastResult state
 
-type ResultT result state msg = ReaderT (Context state msg) Effect result
+type ResultT result cont stop msg state = ReaderT (Context cont stop msg state) Effect result
 
-type InitFn state cont msg = ResultT (InitResult cont state) state msg
-type CallFn reply state msg = state -> ResultT (CallResult reply state) state msg
-type CastFn state msg = state -> ResultT (CastResult state) state msg
-type ContinueFn cont state msg = cont -> state -> ResultT (ContinueResult state) state msg
-type InfoFn state msg = msg -> state -> ResultT (InfoResult state) state msg
+
+-- TODO make order of type variables consistent
+type InitFn cont stop msg state = ResultT (InitResult cont state) cont stop msg state
+type CallFn reply cont stop msg state = state -> ResultT (CallResult reply cont stop state) cont stop msg state
+type CastFn cont stop msg state = state -> ResultT (CastResult state) cont stop msg state
+type ContinueFn cont stop msg state = cont -> state -> ResultT (ContinueResult state) cont stop msg state
+type InfoFn cont stop msg state = msg -> state -> ResultT (InfoResult state) cont stop msg state
 
 -- -- | Type of the callback invoked during a gen_server:handle_cast
 -- type Cast state msg = ResultT (CastResult state) state msg
@@ -99,48 +111,48 @@ mapInitResult _ (Left InitIgnore) = Left InitIgnore
 
 
 
-type ServerSpec state cont msg =
+type ServerSpec cont stop msg state =
   { name :: Maybe (RegistryName state msg)
-  , init :: InitFn state cont msg
-  , handleInfo :: Maybe (InfoFn state msg)
+  , init :: InitFn cont stop msg state
+  , handleInfo :: Maybe (InfoFn cont stop msg state)
   }
 
 
 --------------------------------------------------------------------------------
 -- Internal types
 --------------------------------------------------------------------------------
-type OuterState state msg
+type OuterState cont stop msg state
   = { innerState :: state
-    , context :: Context state msg
+    , context :: Context cont stop msg state
     }
 
-mkOuterState :: forall state msg. Context state msg -> state -> OuterState state msg
-mkOuterState context innerState = { innerState, context }
+mkOuterState :: forall cont stop msg state. Context cont stop msg state -> state -> OuterState cont stop msg state
+mkOuterState context innerState = {context, innerState}
 
 
-newtype Context state msg
+newtype Context cont stop msg state
   = Context
-    { handleInfo :: Maybe (WrappedInfoFn state msg)
+    { handleInfo :: Maybe (WrappedInfoFn cont stop msg state)
     }
 
-type WrappedInfoFn state msg = Fn2 msg (OuterState state msg) (Effect (InfoResult (OuterState state msg)))
-type WrappedCallFn reply state msg = Fn1 (OuterState state msg) (Effect (CallResult reply (OuterState state msg)))
-type WrappedCastFn state msg = Fn1 (OuterState state msg) (Effect (CastResult (OuterState state msg)))
+type WrappedInfoFn cont stop msg state = Fn2 msg (OuterState cont stop msg state) (Effect (InfoResult (OuterState cont stop msg state)))
+type WrappedCallFn reply cont stop msg state = Fn1 (OuterState cont stop msg state) (Effect (CallResult reply cont stop (OuterState cont stop msg state)))
+type WrappedCastFn cont stop msg state = Fn1 (OuterState cont stop msg state) (Effect (CastResult (OuterState cont stop msg state)))
 
-mkSpec :: forall state cont msg. InitFn state cont msg -> ServerSpec state cont msg
+mkSpec :: forall cont stop msg state. InitFn cont stop msg state -> ServerSpec cont stop msg state
 mkSpec initFn =
   { name: Nothing
   , init: initFn
   , handleInfo: Nothing
   }
 
-foreign import callFFI :: forall reply state msg . InstanceRef state msg -> WrappedCallFn reply state msg -> Effect reply
-call :: forall reply state msg . InstanceRef state msg -> CallFn reply state msg -> Effect reply
+foreign import callFFI :: forall reply cont stop msg state. InstanceRef state msg -> WrappedCallFn reply cont stop msg state -> Effect reply
+call :: forall reply cont stop msg state. InstanceRef state msg -> CallFn reply cont stop msg state -> Effect reply
 call instanceRef callFn =
   callFFI instanceRef wrappedCallFn
 
   where
-    wrappedCallFn :: WrappedCallFn reply state msg
+    wrappedCallFn :: WrappedCallFn reply cont stop msg state
     wrappedCallFn =
       let
         handler state@{ innerState, context: handlerContext } = do
@@ -150,13 +162,13 @@ call instanceRef callFn =
         mkFn1 handler
 
 
-foreign import castFFI :: forall state msg . InstanceRef state msg -> WrappedCastFn state msg -> Effect Unit
-cast :: forall state msg . InstanceRef state msg -> CastFn state msg -> Effect Unit
+foreign import castFFI :: forall cont stop msg state. InstanceRef state msg -> WrappedCastFn cont stop msg state -> Effect Unit
+cast :: forall cont stop msg state. InstanceRef state msg -> CastFn cont stop msg state -> Effect Unit
 cast instanceRef castFn =
   castFFI instanceRef wrappedCastFn
 
   where
-    wrappedCastFn :: WrappedCastFn state msg
+    wrappedCastFn :: WrappedCastFn cont stop msg state
     wrappedCastFn =
       let
         handler state@{ innerState, context: handlerContext } = do
@@ -166,7 +178,7 @@ cast instanceRef castFn =
         mkFn1 handler
 
 
-startLink :: forall state cont msg. (ServerSpec state cont msg) -> Effect (StartLinkResult state msg)
+startLink :: forall cont stop msg state. (ServerSpec cont stop msg state) -> Effect (StartLinkResult state msg)
 startLink { name: maybeName, init: initFn, handleInfo: maybeHandleInfo } =
   startLinkFFI maybeName initEffect
 
@@ -176,12 +188,12 @@ startLink { name: maybeName, init: initFn, handleInfo: maybeHandleInfo } =
       { handleInfo: wrapHandleInfo <$> maybeHandleInfo
       }
 
-    initEffect :: Effect (InitResult cont (OuterState state msg))
+    initEffect :: Effect (InitResult cont (OuterState cont stop msg state))
     initEffect = do
       innerResult <- (runReaderT initFn) context
       pure $ mapInitResult (mkOuterState context) innerResult
 
-    wrapHandleInfo :: InfoFn state msg -> WrappedInfoFn state msg
+    wrapHandleInfo :: InfoFn cont stop msg state -> WrappedInfoFn cont stop msg state
     wrapHandleInfo handleInfo =
       let
         handler msg state@{ innerState, context: handlerContext } = do
@@ -195,9 +207,9 @@ startLink { name: maybeName, init: initFn, handleInfo: maybeHandleInfo } =
 
 
 
-foreign import startLinkFFI :: forall state cont msg. Maybe (RegistryName state msg) -> Effect (InitResult cont (OuterState state msg)) -> Effect (StartLinkResult state msg)
+foreign import startLinkFFI :: forall cont stop msg state. Maybe (RegistryName state msg) -> Effect (InitResult cont (OuterState cont stop msg state)) -> Effect (StartLinkResult state msg)
 
-self :: forall state msg. ReaderT (Context state msg) Effect (ServerPid state msg)
+self :: forall cont stop msg state. ReaderT (Context cont stop msg state) Effect (ServerPid state msg)
 self = Reader.lift selfFFI
 
 foreign import selfFFI :: forall state msg. Effect (ServerPid state msg)

@@ -63,7 +63,6 @@ testStartLinkAnonymous =
     pure unit
 
     where
-      init :: forall cont msg. InitFn TestState cont msg
       init = do
         pure $ Right $ InitOk $ TestState 0
 
@@ -79,7 +78,6 @@ testStartLinkLocal =
     pure unit
 
     where
-      init :: forall cont msg. InitFn TestState cont msg
       init = do
         pure $ Right $ InitOk (TestState 0)
 
@@ -98,7 +96,6 @@ testHandleInfo =
     pure unit
 
     where
-      init :: forall cont msg. InitFn TestState cont msg
       init = do
         pure $ Right $ InitOk $ TestState 0
 
@@ -119,7 +116,6 @@ testCall =
     pure unit
 
     where
-      init :: forall cont msg. InitFn TestState cont msg
       init = do
         pure $ Right $ InitOk $ TestState 7
 
@@ -138,7 +134,6 @@ testCast =
     pure unit
 
     where
-      init :: forall cont msg. InitFn TestState cont msg
       init = do
         pure $ Right $ InitOk $ TestState 0
 
@@ -174,7 +169,6 @@ testStartWithNamedChild =
              , childSpecs
              }
 
-      childInit :: forall cont msg. InitFn TestState cont msg
       childInit = do
         pure $ Right $ InitOk $ TestState 0
 
