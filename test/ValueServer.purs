@@ -51,13 +51,13 @@ getValue :: Effect Int
 getValue =
   GS.call (ByName serverName) impl
   where
-    impl state@{value} = pure $ CallReply value state
+    impl _from state@{value} = pure $ CallReply value state
 
 setValue :: Int -> Effect Int
 setValue n =
   GS.call (ByName serverName) impl
   where
-    impl state@{value} = pure $ CallReply value state{value = n}
+    impl _from state@{value} = pure $ CallReply value state{value = n}
 
 
 setValueAsync :: Int -> Effect Unit

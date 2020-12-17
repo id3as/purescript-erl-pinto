@@ -89,9 +89,6 @@ testStartWithNamedChild =
 data SupStateExample = SupStateExample
 
 
-
-
-
 mkChildSpec :: forall childState childMsg. String -> ChildSpec String childState childMsg
 mkChildSpec id  = { id
                   , childType : Worker
@@ -105,12 +102,12 @@ mkChildSpec id  = { id
 ---------------------------------------------------------------------------------
 getState :: forall state msg. InstanceRef state msg -> Effect state
 getState handle = GS.call handle
-       \state -> pure $ CallReply state state
+       \_from state -> pure $ CallReply state state
 
 
 setState :: forall state msg. InstanceRef state msg -> state ->  Effect state
 setState handle newState = GS.call handle
-       \state -> pure $ CallReply state newState
+       \_from state -> pure $ CallReply state newState
 
 
 setStateCast :: forall state msg. InstanceRef state msg -> state ->  Effect Unit

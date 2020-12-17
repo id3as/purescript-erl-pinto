@@ -7,6 +7,7 @@ module Pinto.GenServer
   , CastResult(..)
   , InfoFn
   , InfoResult(..)
+  , From
   , ResultT
   , ServerRunning(..)
   , ServerNotRunning(..)
@@ -23,7 +24,7 @@ import Prelude
 import Control.Monad.Reader (ReaderT, runReaderT)
 import Control.Monad.Reader as Reader
 import Data.Either (Either(..))
-import Data.Function.Uncurried (Fn2, Fn1, mkFn1, mkFn2)
+import Data.Function.Uncurried (Fn1, Fn2, mkFn1, mkFn2)
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Foreign (Foreign)
@@ -77,9 +78,13 @@ type ContinueResult state = CastResult state
 type ResultT result cont stop msg state = ReaderT (Context cont stop msg state) Effect result
 
 
+foreign import data FromForeign :: Type
+newtype From reply = From FromForeign
+
+
 -- TODO make order of type variables consistent
 type InitFn cont stop msg state = ResultT (InitResult cont state) cont stop msg state
-type CallFn reply cont stop msg state = state -> ResultT (CallResult reply cont stop state) cont stop msg state
+type CallFn reply cont stop msg state = From reply -> state -> ResultT (CallResult reply cont stop state) cont stop msg state
 type CastFn cont stop msg state = state -> ResultT (CastResult state) cont stop msg state
 type ContinueFn cont stop msg state = cont -> state -> ResultT (ContinueResult state) cont stop msg state
 type InfoFn cont stop msg state = msg -> state -> ResultT (InfoResult state) cont stop msg state
@@ -137,7 +142,7 @@ newtype Context cont stop msg state
     }
 
 type WrappedInfoFn cont stop msg state = Fn2 msg (OuterState cont stop msg state) (Effect (InfoResult (OuterState cont stop msg state)))
-type WrappedCallFn reply cont stop msg state = Fn1 (OuterState cont stop msg state) (Effect (CallResult reply cont stop (OuterState cont stop msg state)))
+type WrappedCallFn reply cont stop msg state = Fn2 (From reply) (OuterState cont stop msg state) (Effect (CallResult reply cont stop (OuterState cont stop msg state)))
 type WrappedCastFn cont stop msg state = Fn1 (OuterState cont stop msg state) (Effect (CastResult (OuterState cont stop msg state)))
 
 mkSpec :: forall cont stop msg state. InitFn cont stop msg state -> ServerSpec cont stop msg state
@@ -156,11 +161,11 @@ call instanceRef callFn =
     wrappedCallFn :: WrappedCallFn reply cont stop msg state
     wrappedCallFn =
       let
-        handler state@{ innerState, context: handlerContext } = do
-          innerResult <- (runReaderT $ callFn innerState) handlerContext
+        handler from state@{ innerState, context: handlerContext } = do
+          innerResult <- (runReaderT $ callFn from innerState) handlerContext
           pure $ (mkOuterState handlerContext) <$> innerResult
       in
-        mkFn1 handler
+        mkFn2 handler
 
 
 foreign import castFFI :: forall cont stop msg state. InstanceRef state msg -> WrappedCastFn cont stop msg state -> Effect Unit

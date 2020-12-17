@@ -71,8 +71,8 @@ init([InitEffect]) ->
   end.
 
 
-handle_call({do_call, CallFn}, _From, State) ->
-  CallEffect = CallFn(State),
+handle_call({do_call, CallFn}, From, State) ->
+  CallEffect = CallFn(From, State),
   CallResult = CallEffect(),
 
   case CallResult of

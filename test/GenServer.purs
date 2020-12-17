@@ -198,12 +198,12 @@ testStartGetSet registryName = do
 
 getState :: forall state msg. InstanceRef state msg -> Effect state
 getState handle = GS.call handle
-       \state -> pure $ CallReply state state
+       \from state -> pure $ CallReply state state
 
 
 setState :: forall state msg. InstanceRef state msg -> state ->  Effect state
 setState handle newState = GS.call handle
-       \state -> pure $ CallReply state newState
+       \from state -> pure $ CallReply state newState
 
 
 setStateCast :: forall state msg. InstanceRef state msg -> state ->  Effect Unit
