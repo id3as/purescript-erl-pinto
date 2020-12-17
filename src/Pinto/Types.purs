@@ -59,9 +59,6 @@ data NotStartedReason state msg
 type StartLinkResult state msg
   = Either (NotStartedReason state msg) (ServerPid state msg)
 
-
-
-
 data TerminateReason
   = Normal
   | Shutdown

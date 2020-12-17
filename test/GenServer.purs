@@ -6,6 +6,7 @@ module Test.GenServer
   , testCall
   , testCast
   , testValueServer
+  , sleep
   ) where
 
 
@@ -20,9 +21,9 @@ import Erl.Atom (atom)
 import Erl.Process (Process, (!))
 import Erl.Test.EUnit (TestF, suite, test)
 import Foreign (unsafeToForeign)
-import Pinto.GenServer (Action(..), From, ServerRunning(..))
+import Pinto.GenServer (Action(..), From, ServerRunning(..), ServerSpec)
 import Pinto.GenServer as GS
-import Pinto.Types (InstanceRef(..), RegistryName(..), crashIfNotStarted)
+import Pinto.Types (InstanceRef(..), NotStartedReason(..), RegistryName(..), crashIfNotStarted)
 import Test.Assert (assertEqual)
 import Test.ValueServer as ValueServer
 import Unsafe.Coerce (unsafeCoerce)
@@ -30,6 +31,7 @@ import Unsafe.Coerce (unsafeCoerce)
 
 
 foreign import startGprocFFI :: Effect Unit
+foreign import sleep :: Int -> Effect Unit
 
 genServerSuite :: Free TestF Unit
 genServerSuite =
@@ -38,6 +40,9 @@ genServerSuite =
     testStartLinkLocal
     testStartLinkGlobal
     -- testStartLinkVia
+    testStopNormalLocal
+    -- testStopNormalGlobal
+
     testHandleInfo
     testCall
     testCast
@@ -54,6 +59,7 @@ data TestCont
   = TestCont
   | TestContFrom (From TestState)
 data TestMsg = TestMsg
+data TestStop = StopReason
 
 testStartLinkAnonymous :: Free TestF Unit
 testStartLinkAnonymous =
@@ -94,6 +100,17 @@ testStartLinkGlobal =
 --     let
 --       viaName = Via (NativeModuleName $ atom "gproc") $ unsafeToForeign (tuple3 (atom "n") (atom "l") "testStartLinkVia")
 --     testStartGetSet viaName
+
+testStopNormalLocal :: Free TestF Unit
+testStopNormalLocal =
+  test "Can start and stop a locally named GenServer" do
+    testStopNormal $ Local $ atom "testStopNormalLocal"
+
+testStopNormalGlobal :: Free TestF Unit
+testStopNormalGlobal =
+  test "Can start and stop a globally named GenServer" do
+    testStopNormal $ Global (unsafeToForeign $  atom "testStopNormalGlobal")
+
 
 
 testHandleInfo :: Free TestF Unit
@@ -173,25 +190,28 @@ testValueServer =
 testStartGetSet :: RegistryName TestState TestMsg -> Effect Unit
 testStartGetSet registryName = do
   let
+    gsSpec :: ServerSpec TestCont TestStop TestMsg TestState
+    gsSpec = (GS.mkSpec init)
+               { name = Just registryName
+               , handleInfo = Just handleInfo
+               , handleContinue = Just handleContinue
+               }
     instanceRef = ByName registryName
-  serverPid <- crashIfNotStarted <$> (GS.startLink $ (GS.mkSpec init)
-                                { name = Just registryName
-                                , handleInfo = Just handleInfo
-                                , handleContinue = Just handleContinue
-                                })
-  getState instanceRef               >>= expect  0
-  setState instanceRef (TestState 1) >>= expect  0
-  getState instanceRef               >>= expect  1
-  setStateCast instanceRef (TestState 2)
-  getState instanceRef               >>= expect  2
-  (unsafeCoerce serverPid :: Process TestMsg) ! TestMsg
-  getState instanceRef               >>= expect  102
-  callContinueReply instanceRef      >>= expect  102
-  getState instanceRef               >>= expect  202
-  callContinueNoReply instanceRef    >>= expect  202
-  getState instanceRef               >>= expect  302
-  castContinue instanceRef
-  getState instanceRef               >>= expect  402
+
+  serverPid <- crashIfNotStarted <$> (GS.startLink gsSpec)
+  getState instanceRef               >>= expect  0 -- Starts with initial state 0
+  setState instanceRef (TestState 1) >>= expect  0 -- Set new as 1, old is 0
+  getState instanceRef               >>= expect  1 -- Previsouly set state returned
+  setStateCast instanceRef (TestState 2)           -- Set new state async
+  getState instanceRef               >>= expect  2 -- Previsouly set state returned
+  (unsafeCoerce serverPid :: Process TestMsg) ! TestMsg -- Trigger HandleInfo to add 100
+  getState instanceRef               >>= expect  102 -- Previsouly set state returned
+  callContinueReply instanceRef      >>= expect  102 -- Trigger a continue - returning old state
+  getState instanceRef               >>= expect  202 -- The continue fires updating state befor the next get
+  callContinueNoReply instanceRef    >>= expect  202 -- Tigger a continue that replies in the continuation
+  getState instanceRef               >>= expect  302 -- Post the reply, the continuation updates the state
+  castContinue instanceRef                           -- Continues are triggered by casts as well
+  getState instanceRef               >>= expect  402 -- As evidenced by the updated state
   pure unit
 
   where
@@ -210,34 +230,105 @@ testStartGetSet registryName = do
           pure $ GS.return $ TestState $ x + 100
 
     callContinueReply handle = GS.call handle
-           \from state -> pure $ GS.replyWithAction state (Continue TestCont) state
+      \from state -> pure $ GS.replyWithAction state (Continue TestCont) state
 
     callContinueNoReply handle = GS.call handle
-           \from state -> pure $ GS.noReplyWithAction (Continue $ TestContFrom from) state
+      \from state -> pure $ GS.noReplyWithAction (Continue $ TestContFrom from) state
 
     castContinue handle = GS.cast handle
-           \state -> pure $ GS.returnWithAction (Continue TestCont) state
+      \state -> pure $ GS.returnWithAction (Continue TestCont) state
 
-    expect :: Int -> TestState -> Effect Unit
-    expect expected actual =
-      assertEqual { actual, expected: TestState expected }
+testStopNormal  :: RegistryName TestState TestMsg -> Effect Unit
+testStopNormal registryName = do
+  let
+    gsSpec :: ServerSpec TestCont TestStop TestMsg TestState
+    gsSpec = (GS.mkSpec init)
+               { name = Just registryName
+               , handleInfo = Just handleInfo
+               , handleContinue = Just handleContinue
+               }
+    instanceRef = ByName registryName
+
+  serverPid <- crashIfNotStarted <$> (GS.startLink gsSpec)
+  getState instanceRef               >>= expect  0 -- Starts with initial state 0
+
+  -- Try to start the server again - should fail with already running
+  (GS.startLink gsSpec) <#> isAlreadyRunning >>= expectBool true
+  triggerStopCast instanceRef
+  sleep 1
+  void $ crashIfNotStarted <$> (GS.startLink gsSpec)
+
+  (GS.startLink gsSpec) <#> isAlreadyRunning >>= expectBool true
+  triggerStopCallReply instanceRef >>= expect 42 -- New instance starts with initial state 0
+  sleep 1
+  void $ crashIfNotStarted <$> (GS.startLink gsSpec)
+  getState instanceRef               >>= expect  0 -- New instance starts with initial state 0
+
+
+  pure unit
+
+  where
+    init = do
+      pure $ Right $ InitOk (TestState 0)
+
+    handleInfo TestMsg (TestState x) = do
+      pure $ GS.return $ TestState $ x + 100
+
+    handleContinue cont (TestState x) = GS.lift do
+      case cont of
+        TestCont ->
+          pure $ GS.return $ TestState $ x + 100
+        TestContFrom from -> do
+          GS.replyTo from (TestState x)
+          pure $ GS.return $ TestState $ x + 100
+
+    callContinueReply handle = GS.call handle
+      \from state -> pure $ GS.replyWithAction state (Continue TestCont) state
+
+    callContinueNoReply handle = GS.call handle
+      \from state -> pure $ GS.noReplyWithAction (Continue $ TestContFrom from) state
+
+    castContinue handle = GS.cast handle
+      \state -> pure $ GS.returnWithAction (Continue TestCont) state
+
+    triggerStopCast handle = GS.cast handle
+      \state -> pure $ GS.returnWithAction StopNormal state
+
+    triggerStopCallReply handle = GS.call handle
+      \from state -> pure $ GS.replyWithAction (TestState 42) StopNormal state
+
+
+isAlreadyRunning = case _ of
+    Left (AlreadyStarted _) -> true
+    _ -> false
+
+
+
+expect :: Int -> TestState -> Effect Unit
+expect expected actual =
+  assertEqual { actual, expected: TestState expected }
+
+expectBool :: Boolean -> Boolean -> Effect Unit
+expectBool expected actual =
+  assertEqual { actual, expected: expected }
+
 
 
 getState :: forall state msg. InstanceRef state msg -> Effect state
 getState handle = GS.call handle
-       \_from state ->
-         let reply = state
-         in pure $ GS.reply reply state
+  \_from state ->
+    let reply = state
+    in pure $ GS.reply reply state
 
 
 
 setState :: forall state msg. InstanceRef state msg -> state ->  Effect state
 setState handle newState = GS.call handle
-       \_from state ->
-         let reply = state
-         in pure $ GS.reply reply newState
+  \_from state ->
+    let reply = state
+    in pure $ GS.reply reply newState
 
 
 setStateCast :: forall state msg. InstanceRef state msg -> state ->  Effect Unit
 setStateCast handle newState = GS.cast handle
-       \_state -> pure $ GS.return newState
+  \_state -> pure $ GS.return newState

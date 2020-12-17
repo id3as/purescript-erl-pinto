@@ -13,7 +13,7 @@ import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Erl.Atom (atom)
-import Pinto.GenServer (CallResult(..), ReturnResult(..), ServerRunning(..))
+import Pinto.GenServer (ServerRunning(..))
 import Pinto.GenServer as GS
 import Pinto.Types (InstanceRef(..), RegistryName(..), ServerPid, crashIfNotStarted)
 

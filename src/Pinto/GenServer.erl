@@ -83,17 +83,19 @@ handle_call({do_call, CallFn}, From, State) ->
   CallResult = CallEffect(),
 
   case CallResult of
-    {callResult, {just, Reply}, {nothing}, NewState}                    -> {reply, Reply, NewState};
-    {callResult, {just, Reply}, {just, {timeout, Timeout}}, NewState}   -> {reply, Reply, NewState, Timeout};
-    {callResult, {just, Reply}, {just, {hibernate}}, NewState}          -> {reply, Reply, NewState, hibernate};
-    {callResult, {just, Reply}, {just, {continue, Continue}}, NewState} -> {reply, Reply, NewState, {continue, Continue}};
-    {callResult, {just, Reply}, {just, {stop, StopReason}}, NewState}   -> {stop, StopReason, Reply, NewState};
+    {callResult, {just, Reply}, {nothing}, NewState}                       -> {reply, Reply, NewState};
+    {callResult, {just, Reply}, {just, {timeout, Timeout}}, NewState}      -> {reply, Reply, NewState, Timeout};
+    {callResult, {just, Reply}, {just, {hibernate}}, NewState}             -> {reply, Reply, NewState, hibernate};
+    {callResult, {just, Reply}, {just, {continue, Continue}}, NewState}    -> {reply, Reply, NewState, {continue, Continue}};
+    {callResult, {just, Reply}, {just, {stopNormal}}, NewState}            -> {stop, normal, Reply, NewState};
+    {callResult, {just, Reply}, {just, {stopOther, StopReason}}, NewState} -> {stop, StopReason, Reply, NewState};
 
-    {callResult, {nothing}, {nothing}, NewState}                        -> {noreply, NewState};
-    {callResult, {nothing}, {just, {timeout, Timeout}}, NewState}       -> {noreply, NewState, Timeout};
-    {callResult, {nothing}, {just, {hibernate}}, NewState}              -> {noreply, NewState, hibernate};
-    {callResult, {nothing}, {just, {continue, Continue}}, NewState}     -> {noreply, NewState, {continue, Continue}};
-    {callResult, {noreply}, {just, {stop, StopReason}}, NewState}       -> {stop, StopReason, NewState}
+    {callResult, {nothing}, {nothing}, NewState}                           -> {noreply, NewState};
+    {callResult, {nothing}, {just, {timeout, Timeout}}, NewState}          -> {noreply, NewState, Timeout};
+    {callResult, {nothing}, {just, {hibernate}}, NewState}                 -> {noreply, NewState, hibernate};
+    {callResult, {nothing}, {just, {continue, Continue}}, NewState}        -> {noreply, NewState, {continue, Continue}};
+    {callResult, {noreply}, {just, {stopNormal}}, NewState}                -> {stop, normal, NewState};
+    {callResult, {noreply}, {just, {stopOther, StopReason}}, NewState}     -> {stop, StopReason, NewState}
   end.
 
 handle_cast({do_cast, CastFn}, State) ->
@@ -113,9 +115,10 @@ handle_continue(Msg, #{ context := #{ handleContinue := {just, WrappedHandler } 
 
 return_result_to_ps(ReturnResult) ->
   case ReturnResult of
-    {returnResult, {nothing}, NewState}                             -> {noreply, NewState};
-    {returnResult, {just, {timeout, Timeout}}, NewState}            -> {noreply, NewState, Timeout};
-    {returnResult, {just, {hibernate}}, NewState}                   -> {noreply, NewState, hibernate};
-    {returnResult, {just, {continue, Continue}}, NewState}          -> {noreply, NewState, {continue, Continue}};
-    {returnResult, {noreply}, {just, {stop, StopReason}}, NewState} -> {stop, StopReason, NewState}
+    {returnResult, {nothing}, NewState}                       -> {noreply, NewState};
+    {returnResult, {just, {timeout, Timeout}}, NewState}      -> {noreply, NewState, Timeout};
+    {returnResult, {just, {hibernate}}, NewState}             -> {noreply, NewState, hibernate};
+    {returnResult, {just, {continue, Continue}}, NewState}    -> {noreply, NewState, {continue, Continue}};
+    {returnResult, {just, {stopNormal}}, NewState}            -> {stop, normal, NewState};
+    {returnResult, {just, {stopOther, StopReason}}, NewState} -> {stop, StopReason, NewState}
   end.

@@ -1,12 +1,16 @@
 module Pinto.GenServer
   ( InitFn
   , InitResult(..)
+
+  , ServerSpec
   , CallFn
   , CallResult(..)
   , CastFn
   , InfoFn
-  , From
+  , ContinueFn
   , ReturnResult(..)
+
+  , From
   , ResultT
   , ServerRunning(..)
   , ServerNotRunning(..)
@@ -53,7 +57,8 @@ data Action cont stop
   = Timeout Int
   | Hibernate
   | Continue cont
-  | Stop stop
+  | StopNormal
+  | StopOther stop
 
 data CallResult reply cont stop state = CallResult (Maybe reply) (Maybe (Action cont stop)) state
 instance mapCallResult :: Functor (CallResult reply cont stop) where
