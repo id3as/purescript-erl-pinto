@@ -17,12 +17,10 @@ import Data.Maybe (Maybe(..))
 import Debug.Trace (spy)
 import Effect (Effect)
 import Erl.Atom (atom)
-import Erl.Data.Tuple (tuple3)
-import Erl.ModuleName (NativeModuleName(..))
 import Erl.Process (Process, (!))
 import Erl.Test.EUnit (TestF, suite, test)
 import Foreign (unsafeToForeign)
-import Pinto.GenServer (CallResult(..), CastResult(..), From, ServerRunning(..))
+import Pinto.GenServer (Action(..), From, ServerRunning(..))
 import Pinto.GenServer as GS
 import Pinto.Types (InstanceRef(..), RegistryName(..), crashIfNotStarted)
 import Test.Assert (assertEqual)
@@ -118,7 +116,7 @@ testHandleInfo =
 
       handleInfo msg (TestState x) = do
         let _ = spy "Got message" msg
-        pure $ NoReply $ TestState $ x + 1
+        pure $ GS.return $ TestState $ x + 1
 
 
 testCall :: Free TestF Unit
@@ -192,6 +190,8 @@ testStartGetSet registryName = do
   getState instanceRef               >>= expect  202
   callContinueNoReply instanceRef    >>= expect  202
   getState instanceRef               >>= expect  302
+  castContinue instanceRef
+  getState instanceRef               >>= expect  402
   pure unit
 
   where
@@ -199,21 +199,24 @@ testStartGetSet registryName = do
       pure $ Right $ InitOk (TestState 0)
 
     handleInfo TestMsg (TestState x) = do
-      pure $ NoReply $ TestState $ x + 100
+      pure $ GS.return $ TestState $ x + 100
 
     handleContinue cont (TestState x) = GS.lift do
       case cont of
         TestCont ->
-          pure $ NoReply $ TestState $ x + 100
+          pure $ GS.return $ TestState $ x + 100
         TestContFrom from -> do
-          GS.reply from (TestState x)
-          pure $ NoReply $ TestState $ x + 100
+          GS.replyTo from (TestState x)
+          pure $ GS.return $ TestState $ x + 100
 
     callContinueReply handle = GS.call handle
-           \from state -> pure $ CallReplyContinue state TestCont state
+           \from state -> pure $ GS.replyWithAction state (Continue TestCont) state
 
     callContinueNoReply handle = GS.call handle
-           \from state -> pure $ CallNoReplyContinue (TestContFrom from) state
+           \from state -> pure $ GS.noReplyWithAction (Continue $ TestContFrom from) state
+
+    castContinue handle = GS.cast handle
+           \state -> pure $ GS.returnWithAction (Continue TestCont) state
 
     expect :: Int -> TestState -> Effect Unit
     expect expected actual =
@@ -222,14 +225,19 @@ testStartGetSet registryName = do
 
 getState :: forall state msg. InstanceRef state msg -> Effect state
 getState handle = GS.call handle
-       \from state -> pure $ CallReply state state
+       \_from state ->
+         let reply = state
+         in pure $ GS.reply reply state
+
 
 
 setState :: forall state msg. InstanceRef state msg -> state ->  Effect state
 setState handle newState = GS.call handle
-       \from state -> pure $ CallReply state newState
+       \_from state ->
+         let reply = state
+         in pure $ GS.reply reply newState
 
 
 setStateCast :: forall state msg. InstanceRef state msg -> state ->  Effect Unit
 setStateCast handle newState = GS.cast handle
-       \_state -> pure $ NoReply newState
+       \_state -> pure $ GS.return newState

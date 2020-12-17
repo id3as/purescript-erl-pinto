@@ -13,7 +13,7 @@ import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Erl.Atom (atom)
-import Pinto.GenServer (CallResult(..), CastResult(..), ServerRunning(..))
+import Pinto.GenServer (CallResult(..), ReturnResult(..), ServerRunning(..))
 import Pinto.GenServer as GS
 import Pinto.Types (InstanceRef(..), RegistryName(..), ServerPid, crashIfNotStarted)
 
@@ -51,17 +51,20 @@ getValue :: Effect Int
 getValue =
   GS.call (ByName serverName) impl
   where
-    impl _from state@{value} = pure $ CallReply value state
+    impl _from state@{value}
+      = pure $ GS.reply value state
 
 setValue :: Int -> Effect Int
 setValue n =
   GS.call (ByName serverName) impl
   where
-    impl _from state@{value} = pure $ CallReply value state{value = n}
+    impl _from state@{value}
+      = pure $ GS.reply value state{value = n}
 
 
 setValueAsync :: Int -> Effect Unit
 setValueAsync n =
   GS.cast (ByName serverName) impl
   where
-    impl state@{value} = pure $ NoReply state{value = n}
+    impl state@{value}
+      = pure $ GS.return state{value = n}

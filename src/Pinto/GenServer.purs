@@ -4,20 +4,30 @@ module Pinto.GenServer
   , CallFn
   , CallResult(..)
   , CastFn
-  , CastResult(..)
   , InfoFn
-  , InfoResult(..)
   , From
+  , ReturnResult(..)
   , ResultT
   , ServerRunning(..)
   , ServerNotRunning(..)
   , Context
+  , Action(..)
   , mkSpec
   , startLink
   , call
   , cast
+
   , reply
+  , replyWithAction
+  , noReply
+  , noReplyWithAction
+
+  , return
+  , returnWithAction
+
+  , replyTo
   , self
+
   , module Exports
   ) where
 
@@ -39,44 +49,43 @@ import Pinto.Types (InstanceRef, RegistryName, ServerPid, StartLinkResult)
 --------------------------------------------------------------------------------
 -- Public types
 --------------------------------------------------------------------------------
-data CallResult reply cont stop state
-  = CallReply reply state
-  | CallReplyWithTimeout reply Int state
-  | CallReplyHibernate reply state
-  | CallReplyContinue reply cont state
-  | CallNoReply state
-  | CallNoReplyWithTimeout Int state
-  | CallNoReplyHibernate state
-  | CallNoReplyContinue cont state
-  | CallStopReply reply stop state
-  | CallStopNoReply stop state
+data Action cont stop
+  = Timeout Int
+  | Hibernate
+  | Continue cont
+  | Stop stop
 
+data CallResult reply cont stop state = CallResult (Maybe reply) (Maybe (Action cont stop)) state
 instance mapCallResult :: Functor (CallResult reply cont stop) where
-  map f (CallReply reply state) = CallReply reply (f state)
-  map f (CallReplyWithTimeout reply timeout state) = CallReplyWithTimeout reply timeout (f state)
-  map f (CallReplyHibernate reply state) = CallReplyHibernate reply (f state)
-  map f (CallReplyContinue reply cont state) = CallReplyContinue reply cont (f state)
-  map f (CallNoReply state) = CallNoReply (f state)
-  map f (CallNoReplyWithTimeout timeout state) = CallNoReplyWithTimeout timeout (f state)
-  map f (CallNoReplyHibernate state) = CallNoReplyHibernate (f state)
-  map f (CallNoReplyContinue cont state) = CallNoReplyContinue cont (f state)
-  map f (CallStopReply reply stop state) = CallStopReply reply stop (f state)
-  map f (CallStopNoReply stop state) = CallStopNoReply stop (f state)
+  map f (CallResult mReply mAction state) = CallResult mReply mAction (f state)
+
+data ReturnResult cont stop state = ReturnResult (Maybe (Action cont stop)) state
+instance mapReturnResult :: Functor (ReturnResult cont stop) where
+  map f (ReturnResult mAction state) = ReturnResult mAction (f state)
 
 
-data CastResult state
-  = NoReply state
-  -- | NoReplyTimeout state Int
-  -- | NoReplyHibernate state
-  -- | NoReplyContinue state cont
-  -- | Stop stop state
+reply :: forall reply cont stop state. reply -> state -> CallResult reply cont stop state
+reply theReply state = CallResult (Just theReply) Nothing state
 
-instance mapCastResult :: Functor CastResult where
-  map f (NoReply state) = NoReply (f state)
+replyWithAction :: forall reply cont stop state. reply -> Action cont stop -> state -> CallResult reply cont stop state
+replyWithAction theReply action state = CallResult (Just theReply) (Just action) state
+
+noReply :: forall reply cont stop state. state -> CallResult reply cont stop state
+noReply state = CallResult Nothing Nothing state
+
+noReplyWithAction :: forall reply cont stop state. Action cont stop -> state -> CallResult reply cont stop state
+noReplyWithAction action state = CallResult Nothing (Just action) state
+
+return :: forall cont stop state. state -> ReturnResult cont stop state
+return state = ReturnResult Nothing state
+
+returnWithAction :: forall cont stop state. Action cont stop -> state -> ReturnResult cont stop state
+returnWithAction action state = ReturnResult (Just action) state
 
 
-type InfoResult state = CastResult state
-type ContinueResult state = CastResult state
+-- noReply...
+-- return state
+-- returnWithAction (Timeout 10) state
 
 type ResultT result cont stop msg state = ReaderT (Context cont stop msg state) Effect result
 
@@ -85,12 +94,13 @@ foreign import data FromForeign :: Type
 newtype From reply = From FromForeign
 
 
+-- reply cont stop msg [Timeout] state
 -- TODO make order of type variables consistent
 type InitFn cont stop msg state = ResultT (InitResult cont state) cont stop msg state
 type CallFn reply cont stop msg state = From reply -> state -> ResultT (CallResult reply cont stop state) cont stop msg state
-type CastFn cont stop msg state = state -> ResultT (CastResult state) cont stop msg state
-type ContinueFn cont stop msg state = cont -> state -> ResultT (ContinueResult state) cont stop msg state
-type InfoFn cont stop msg state = msg -> state -> ResultT (InfoResult state) cont stop msg state
+type CastFn cont stop msg state = state -> ResultT (ReturnResult cont stop state) cont stop msg state
+type ContinueFn cont stop msg state = cont -> state -> ResultT (ReturnResult cont stop state) cont stop msg state
+type InfoFn cont stop msg state = msg -> state -> ResultT (ReturnResult cont stop state) cont stop msg state
 
 -- -- | Type of the callback invoked during a gen_server:handle_cast
 -- type Cast state msg = ResultT (CastResult state) state msg
@@ -146,10 +156,10 @@ newtype Context cont stop msg state
     , handleContinue :: Maybe (WrappedContinueFn cont stop msg state)
     }
 
-type WrappedInfoFn cont stop msg state = Fn2 msg (OuterState cont stop msg state) (Effect (InfoResult (OuterState cont stop msg state)))
+type WrappedInfoFn cont stop msg state = Fn2 msg (OuterState cont stop msg state) (Effect (ReturnResult cont stop (OuterState cont stop msg state)))
 type WrappedCallFn reply cont stop msg state = Fn2 (From reply) (OuterState cont stop msg state) (Effect (CallResult reply cont stop (OuterState cont stop msg state)))
-type WrappedCastFn cont stop msg state = Fn1 (OuterState cont stop msg state) (Effect (CastResult (OuterState cont stop msg state)))
-type WrappedContinueFn cont stop msg state = Fn2 cont (OuterState cont stop msg state) (Effect (CastResult (OuterState cont stop msg state)))
+type WrappedCastFn cont stop msg state = Fn1 (OuterState cont stop msg state) (Effect (ReturnResult cont stop (OuterState cont stop msg state)))
+type WrappedContinueFn cont stop msg state = Fn2 cont (OuterState cont stop msg state) (Effect (ReturnResult cont stop (OuterState cont stop msg state)))
 
 mkSpec :: forall cont stop msg state. InitFn cont stop msg state -> ServerSpec cont stop msg state
 mkSpec initFn =
@@ -174,7 +184,7 @@ call instanceRef callFn =
       in
         mkFn2 handler
 
-foreign import reply :: forall reply. From reply -> reply -> Effect Unit
+foreign import replyTo :: forall reply. From reply -> reply -> Effect Unit
 
 
 foreign import castFFI :: forall cont stop msg state. InstanceRef state msg -> WrappedCastFn cont stop msg state -> Effect Unit

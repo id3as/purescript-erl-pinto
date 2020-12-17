@@ -6,7 +6,7 @@
         , startLinkFFI/2
         , callFFI/2
         , castFFI/2
-        , reply/2
+        , replyTo/2
         ]).
 
 -export([ init/1
@@ -51,7 +51,7 @@ callFFI(ServerRef, CallFn) ->
       gen_server:call(instance_ref_from_ps(ServerRef), {do_call, CallFn})
   end.
 
-reply(From, Reply) ->
+replyTo(From, Reply) ->
   fun() ->
       gen_server:reply(From, Reply)
   end.
@@ -83,44 +83,39 @@ handle_call({do_call, CallFn}, From, State) ->
   CallResult = CallEffect(),
 
   case CallResult of
-    {callReply, Reply, NewState}                     -> {reply, Reply, NewState};
-    {callReplyWithTimeout, Reply, Timeout, NewState} -> {reply, Reply, NewState, Timeout};
-    {callReplyHibernate, Reply, NewState}            -> {reply, Reply, NewState, hibernate};
-    {callReplyContinue, Reply, Continue, NewState}   -> {reply, Reply, NewState, {continue, Continue}};
+    {callResult, {just, Reply}, {nothing}, NewState}                    -> {reply, Reply, NewState};
+    {callResult, {just, Reply}, {just, {timeout, Timeout}}, NewState}   -> {reply, Reply, NewState, Timeout};
+    {callResult, {just, Reply}, {just, {hibernate}}, NewState}          -> {reply, Reply, NewState, hibernate};
+    {callResult, {just, Reply}, {just, {continue, Continue}}, NewState} -> {reply, Reply, NewState, {continue, Continue}};
+    {callResult, {just, Reply}, {just, {stop, StopReason}}, NewState}   -> {stop, StopReason, Reply, NewState};
 
-    {callNoReply, NewState}                          -> {noreply, NewState};
-    {callNoReplyWithTimeout, Timeout, NewState}      -> {noreply, NewState, Timeout};
-    {callNoReplyHibernate, NewState}                 -> {noreply, NewState, hibernate};
-    {callNoReplyContinue, Continue, NewState}        -> {noreply, NewState, {continue, Continue}};
-
-    {callStopReply, Reply, StopReason, NewState}     -> {stop, StopReason, Reply, NewState};
-    {callStopNoReply, Reason, NewState}              -> {stop, Reason, NewState}
+    {callResult, {nothing}, {nothing}, NewState}                        -> {noreply, NewState};
+    {callResult, {nothing}, {just, {timeout, Timeout}}, NewState}       -> {noreply, NewState, Timeout};
+    {callResult, {nothing}, {just, {hibernate}}, NewState}              -> {noreply, NewState, hibernate};
+    {callResult, {nothing}, {just, {continue, Continue}}, NewState}     -> {noreply, NewState, {continue, Continue}};
+    {callResult, {noreply}, {just, {stop, StopReason}}, NewState}       -> {stop, StopReason, NewState}
   end.
 
 handle_cast({do_cast, CastFn}, State) ->
-
-  CastEffect = CastFn(State),
-  CastResult = CastEffect(),
-
-  cast_result_to_ps(CastResult).
-
-
+  ResultEffect = CastFn(State),
+  Result = ResultEffect(),
+  return_result_to_ps(Result).
 
 handle_info(Msg, #{ context := #{ handleInfo := {just, WrappedHandler } } } = State) ->
   ResultEffect = WrappedHandler(Msg, State),
   Result = ResultEffect(),
-  cast_result_to_ps(Result).
+  return_result_to_ps(Result).
 
 handle_continue(Msg, #{ context := #{ handleContinue := {just, WrappedHandler } } } = State) ->
   ResultEffect = WrappedHandler(Msg, State),
   Result = ResultEffect(),
-  cast_result_to_ps(Result).
+  return_result_to_ps(Result).
 
-cast_result_to_ps(CastResult) ->
-  case CastResult of
-    {noReply, NewState}                   -> {noreply, NewState};
-    {noReplyTimeout, NewState, Timeout}   -> {noreply, NewState, Timeout};
-    {noReplyHibernate, NewState}          -> {noreply, NewState, hibernate};
-    {noReplyContinue, NewState, Continue} -> {noreply, NewState, {continue, Continue}};
-    {stop, Reason, NewState}              -> {stop, Reason, NewState}
+return_result_to_ps(ReturnResult) ->
+  case ReturnResult of
+    {returnResult, {nothing}, NewState}                             -> {noreply, NewState};
+    {returnResult, {just, {timeout, Timeout}}, NewState}            -> {noreply, NewState, Timeout};
+    {returnResult, {just, {hibernate}}, NewState}                   -> {noreply, NewState, hibernate};
+    {returnResult, {just, {continue, Continue}}, NewState}          -> {noreply, NewState, {continue, Continue}};
+    {returnResult, {noreply}, {just, {stop, StopReason}}, NewState} -> {stop, StopReason, NewState}
   end.

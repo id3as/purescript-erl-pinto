@@ -10,7 +10,7 @@ import Effect.Unsafe (unsafePerformEffect)
 import Erl.Atom (atom)
 import Erl.Data.List (nil, (:))
 import Erl.Test.EUnit (TestF, runTests, suite, test)
-import Pinto.GenServer (CallResult(..), CastResult(..), ServerRunning(..))
+import Pinto.GenServer (CallResult(..), ServerRunning(..))
 import Pinto.GenServer as GS
 import Pinto.Sup (ChildShutdownTimeoutStrategy(..), ChildSpec, ChildType(..), RestartStrategy(..), Strategy(..), SupervisorSpec, mkErlChildSpec)
 import Pinto.Sup as Sup
@@ -102,14 +102,19 @@ mkChildSpec id  = { id
 ---------------------------------------------------------------------------------
 getState :: forall state msg. InstanceRef state msg -> Effect state
 getState handle = GS.call handle
-       \_from state -> pure $ CallReply state state
+       \_from state ->
+         let reply = state
+         in pure $ GS.reply reply state
+
 
 
 setState :: forall state msg. InstanceRef state msg -> state ->  Effect state
 setState handle newState = GS.call handle
-       \_from state -> pure $ CallReply state newState
+       \_from state ->
+         let reply = state
+         in pure $ GS.reply reply newState
 
 
 setStateCast :: forall state msg. InstanceRef state msg -> state ->  Effect Unit
 setStateCast handle newState = GS.cast handle
-       \_state -> pure $ NoReply newState
+       \_state -> pure $ GS.return newState
