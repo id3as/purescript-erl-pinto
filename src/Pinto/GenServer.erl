@@ -77,16 +77,16 @@ handle_call({do_call, CallFn}, _From, State) ->
 
   case CallResult of
     {callReply, Reply, NewState}                     -> {reply, Reply, NewState};
-    {callReplyWithTimeout, Reply, NewState, Timeout} -> {reply, Reply, NewState, Timeout};
+    {callReplyWithTimeout, Reply, Timeout, NewState} -> {reply, Reply, NewState, Timeout};
     {callReplyHibernate, Reply, NewState}            -> {reply, Reply, NewState, hibernate};
-    {callReplyContinue, Reply, NewState, Continue}   -> {reply, Reply, NewState, {continue, Continue}};
+    {callReplyContinue, Reply, Continue, NewState}   -> {reply, Reply, NewState, {continue, Continue}};
 
     {callNoReply, NewState}                          -> {noreply, NewState};
-    {callNoReplyWithTimeout, NewState, Timeout}      -> {noreply, NewState, Timeout};
+    {callNoReplyWithTimeout, Timeout, NewState}      -> {noreply, NewState, Timeout};
     {callNoReplyHibernate, NewState}                 -> {noreply, NewState, hibernate};
-    {callNoReplyContinue, NewState, Continue}        -> {noreply, NewState, {continue, Continue}};
+    {callNoReplyContinue, Continue, NewState}        -> {noreply, NewState, {continue, Continue}};
 
-    {callStopReply, Reason, Reply, NewState}         -> {stop, Reason, Reply, NewState};
+    {callStopReply, Reply, StopReason, NewState}     -> {stop, StopReason, Reply, NewState};
     {callStopNoReply, Reason, NewState}              -> {stop, Reason, NewState}
   end.
 

@@ -30,32 +30,33 @@ import Foreign (Foreign)
 import Pinto.Types (InstanceRef, RegistryName, ServerPid, StartLinkResult)
 
 
-
+-- Sequence of types
+-- reply cont stop msg [Timeout] state
 --------------------------------------------------------------------------------
 -- Public types
 --------------------------------------------------------------------------------
 data CallResult reply cont stop state
   = CallReply reply state
-  | CallReplyWithTimeout reply state Int
+  | CallReplyWithTimeout reply Int state
   | CallReplyHibernate reply state
-  | CallReplyContinue reply state cont
+  | CallReplyContinue reply cont state
   | CallNoReply state
-  | CallNoReplyWithTimeout state Int
+  | CallNoReplyWithTimeout Int state
   | CallNoReplyHibernate state
-  | CallNoReplyContinue state cont
-  | CallStopReply stop reply state
+  | CallNoReplyContinue cont state
+  | CallStopReply reply stop state
   | CallStopNoReply stop state
 
 instance mapCallResult :: Functor (CallResult reply cont stop) where
-  map f (CallReply reply state) = (CallReply reply (f state))
-  map f (CallReplyWithTimeout reply state n) = CallReplyWithTimeout reply (f state) n
+  map f (CallReply reply state) = CallReply reply (f state)
+  map f (CallReplyWithTimeout reply timeout state) = CallReplyWithTimeout reply timeout (f state)
   map f (CallReplyHibernate reply state) = CallReplyHibernate reply (f state)
-  map f (CallReplyContinue reply state cont) = CallReplyContinue reply (f state) cont
+  map f (CallReplyContinue reply cont state) = CallReplyContinue reply cont (f state)
   map f (CallNoReply state) = CallNoReply (f state)
-  map f (CallNoReplyWithTimeout state n) = CallNoReplyWithTimeout (f state) n
+  map f (CallNoReplyWithTimeout timeout state) = CallNoReplyWithTimeout timeout (f state)
   map f (CallNoReplyHibernate state) = CallNoReplyHibernate (f state)
-  map f (CallNoReplyContinue state cont) = CallNoReplyContinue (f state) cont
-  map f (CallStopReply stop reply state) = CallStopReply stop reply (f state)
+  map f (CallNoReplyContinue cont state) = CallNoReplyContinue cont (f state)
+  map f (CallStopReply reply stop state) = CallStopReply reply stop (f state)
   map f (CallStopNoReply stop state) = CallStopNoReply stop (f state)
 
 

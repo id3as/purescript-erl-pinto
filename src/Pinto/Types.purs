@@ -1,26 +1,25 @@
 module Pinto.Types
-       ( -- Names and handles
-         RegistryName(..)
-         -- Result Types -- TODO - move these to Gen and Sup?
-       , TerminateReason(..)
-       , StartLinkResult(..)
-       , NotStartedReason(..)
-       , InstanceRef(..)
-         -- Opaque types
-       , ServerPid
-       , GlobalName
+  ( -- Names and handles
+    RegistryName(..)
+    -- Result Types -- TODO - move these to Gen and Sup?
+  , TerminateReason(..)
+  , StartLinkResult(..)
+  , NotStartedReason(..)
+  , InstanceRef(..)
+    -- Opaque types
+  , ServerPid
 
-       , maybeStarted
-       , maybeRunning
+  , maybeStarted
+  , maybeRunning
 
-       , crashIfNotStarted
-       , crashIfNotRunning
+  , crashIfNotStarted
+  , crashIfNotRunning
 
-       -- , class StartOk
-       -- , startOk
-       -- , startOkAS
-       )
-       where
+  -- , class StartOk
+  -- , startOk
+  -- , startOkAS
+  )
+  where
 
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
@@ -31,8 +30,6 @@ import Foreign (Foreign)
 import Partial.Unsafe (unsafePartial)
 
 
-foreign import data GlobalName :: Type
-
 -- | Defines the server name for a gen server, along with the 'state' that the gen server
 -- | will be using internally and the 'msg' type that will be received in the handleInfo calls
 -- | this will be supplied to every call to the gen server API in order
@@ -42,7 +39,7 @@ foreign import data GlobalName :: Type
 
 data RegistryName state msg
   = Local Atom
-  | Global GlobalName
+  | Global Foreign
   | Via NativeModuleName Foreign
 
 
