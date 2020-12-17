@@ -16,12 +16,15 @@ module Pinto.GenServer
   , startLink
   , call
   , cast
+  , reply
   , self
+  , module Exports
   ) where
 
 import Prelude
 
 import Control.Monad.Reader (ReaderT, runReaderT)
+import Control.Monad.Reader (lift) as Exports
 import Control.Monad.Reader as Reader
 import Data.Either (Either(..))
 import Data.Function.Uncurried (Fn1, Fn2, mkFn1, mkFn2)
@@ -121,6 +124,7 @@ type ServerSpec cont stop msg state =
   { name :: Maybe (RegistryName state msg)
   , init :: InitFn cont stop msg state
   , handleInfo :: Maybe (InfoFn cont stop msg state)
+  , handleContinue :: Maybe (ContinueFn cont stop msg state)
   }
 
 
@@ -139,17 +143,20 @@ mkOuterState context innerState = {context, innerState}
 newtype Context cont stop msg state
   = Context
     { handleInfo :: Maybe (WrappedInfoFn cont stop msg state)
+    , handleContinue :: Maybe (WrappedContinueFn cont stop msg state)
     }
 
 type WrappedInfoFn cont stop msg state = Fn2 msg (OuterState cont stop msg state) (Effect (InfoResult (OuterState cont stop msg state)))
 type WrappedCallFn reply cont stop msg state = Fn2 (From reply) (OuterState cont stop msg state) (Effect (CallResult reply cont stop (OuterState cont stop msg state)))
 type WrappedCastFn cont stop msg state = Fn1 (OuterState cont stop msg state) (Effect (CastResult (OuterState cont stop msg state)))
+type WrappedContinueFn cont stop msg state = Fn2 cont (OuterState cont stop msg state) (Effect (CastResult (OuterState cont stop msg state)))
 
 mkSpec :: forall cont stop msg state. InitFn cont stop msg state -> ServerSpec cont stop msg state
 mkSpec initFn =
   { name: Nothing
   , init: initFn
   , handleInfo: Nothing
+  , handleContinue: Nothing
   }
 
 foreign import callFFI :: forall reply cont stop msg state. InstanceRef state msg -> WrappedCallFn reply cont stop msg state -> Effect reply
@@ -166,6 +173,8 @@ call instanceRef callFn =
           pure $ (mkOuterState handlerContext) <$> innerResult
       in
         mkFn2 handler
+
+foreign import reply :: forall reply. From reply -> reply -> Effect Unit
 
 
 foreign import castFFI :: forall cont stop msg state. InstanceRef state msg -> WrappedCastFn cont stop msg state -> Effect Unit
@@ -184,14 +193,16 @@ cast instanceRef castFn =
         mkFn1 handler
 
 
+
 startLink :: forall cont stop msg state. (ServerSpec cont stop msg state) -> Effect (StartLinkResult state msg)
-startLink { name: maybeName, init: initFn, handleInfo: maybeHandleInfo } =
+startLink { name: maybeName, init: initFn, handleInfo: maybeHandleInfo , handleContinue: maybeHandleContinue } =
   startLinkFFI maybeName initEffect
 
   where
     context =
       Context
       { handleInfo: wrapHandleInfo <$> maybeHandleInfo
+      , handleContinue: wrapContinue <$> maybeHandleContinue
       }
 
     initEffect :: Effect (InitResult cont (OuterState cont stop msg state))
@@ -204,6 +215,15 @@ startLink { name: maybeName, init: initFn, handleInfo: maybeHandleInfo } =
       let
         handler msg state@{ innerState, context: handlerContext } = do
           innerResult <- (runReaderT $ handleInfo msg innerState) handlerContext
+          pure $ (mkOuterState handlerContext) <$> innerResult
+      in
+        mkFn2 handler
+
+    wrapContinue :: ContinueFn cont stop msg state -> WrappedContinueFn cont stop msg state
+    wrapContinue continueFn =
+      let
+        handler cont state@{ innerState, context: handlerContext } = do
+          innerResult <- (runReaderT $ continueFn cont innerState) handlerContext
           pure $ (mkOuterState handlerContext) <$> innerResult
       in
         mkFn2 handler

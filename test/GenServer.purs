@@ -22,7 +22,7 @@ import Erl.ModuleName (NativeModuleName(..))
 import Erl.Process (Process, (!))
 import Erl.Test.EUnit (TestF, suite, test)
 import Foreign (unsafeToForeign)
-import Pinto.GenServer (CallResult(..), CastResult(..), ServerRunning(..))
+import Pinto.GenServer (CallResult(..), CastResult(..), From, ServerRunning(..))
 import Pinto.GenServer as GS
 import Pinto.Types (InstanceRef(..), RegistryName(..), crashIfNotStarted)
 import Test.Assert (assertEqual)
@@ -52,7 +52,9 @@ derive instance eqTestState :: Eq TestState
 instance showTestState :: Show TestState where
   show (TestState x) = "TestState: " <> show x
 
-data TestCont = TestCont
+data TestCont
+  = TestCont
+  | TestContFrom (From TestState)
 data TestMsg = TestMsg
 
 testStartLinkAnonymous :: Free TestF Unit
@@ -167,33 +169,55 @@ testValueServer =
 
     pure unit
 
-
-
 ---------------------------------------------------------------------------------
 -- Internal
 ---------------------------------------------------------------------------------
+testStartGetSet :: RegistryName TestState TestMsg -> Effect Unit
 testStartGetSet registryName = do
   let
     instanceRef = ByName registryName
-  void $ crashIfNotStarted <$> (GS.startLink $ (GS.mkSpec init) { name = Just registryName })
-  state1 <- getState instanceRef
-  state2 <- setState instanceRef (TestState 1)
-  state3 <- getState instanceRef
+  serverPid <- crashIfNotStarted <$> (GS.startLink $ (GS.mkSpec init)
+                                { name = Just registryName
+                                , handleInfo = Just handleInfo
+                                , handleContinue = Just handleContinue
+                                })
+  getState instanceRef               >>= expect  0
+  setState instanceRef (TestState 1) >>= expect  0
+  getState instanceRef               >>= expect  1
   setStateCast instanceRef (TestState 2)
-  state4 <- getState instanceRef
-
-  assertEqual { actual: state1, expected: TestState 0 }
-  assertEqual { actual: state2, expected: TestState 0 }
-  assertEqual { actual: state3, expected: TestState 1 }
-  assertEqual { actual: state4, expected: TestState 2 }
+  getState instanceRef               >>= expect  2
+  (unsafeCoerce serverPid :: Process TestMsg) ! TestMsg
+  getState instanceRef               >>= expect  102
+  callContinueReply instanceRef      >>= expect  102
+  getState instanceRef               >>= expect  202
+  callContinueNoReply instanceRef    >>= expect  202
+  getState instanceRef               >>= expect  302
   pure unit
 
   where
     init = do
       pure $ Right $ InitOk (TestState 0)
 
+    handleInfo TestMsg (TestState x) = do
+      pure $ NoReply $ TestState $ x + 100
 
+    handleContinue cont (TestState x) = GS.lift do
+      case cont of
+        TestCont ->
+          pure $ NoReply $ TestState $ x + 100
+        TestContFrom from -> do
+          GS.reply from (TestState x)
+          pure $ NoReply $ TestState $ x + 100
 
+    callContinueReply handle = GS.call handle
+           \from state -> pure $ CallReplyContinue state TestCont state
+
+    callContinueNoReply handle = GS.call handle
+           \from state -> pure $ CallNoReplyContinue (TestContFrom from) state
+
+    expect :: Int -> TestState -> Effect Unit
+    expect expected actual =
+      assertEqual { actual, expected: TestState expected }
 
 
 getState :: forall state msg. InstanceRef state msg -> Effect state

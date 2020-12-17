@@ -6,12 +6,14 @@
         , startLinkFFI/2
         , callFFI/2
         , castFFI/2
+        , reply/2
         ]).
 
 -export([ init/1
-        , handle_info/2
         , handle_call/3
         , handle_cast/2
+        , handle_info/2
+        , handle_continue/2
         ]).
 
 -import('pinto_types@foreign',
@@ -47,6 +49,11 @@ castFFI(ServerRef, CastFn) ->
 callFFI(ServerRef, CallFn) ->
   fun() ->
       gen_server:call(instance_ref_from_ps(ServerRef), {do_call, CallFn})
+  end.
+
+reply(From, Reply) ->
+  fun() ->
+      gen_server:reply(From, Reply)
   end.
 
 selfFFI() ->
@@ -99,11 +106,15 @@ handle_cast({do_cast, CastFn}, State) ->
 
 
 
-handle_info(Msg, #{ context := #{ handleInfo := {just, WrappedHandleInfo } } } = State) ->
-  InfoResultEffect = WrappedHandleInfo(Msg, State),
-  InfoResult = InfoResultEffect(),
-  cast_result_to_ps(InfoResult).
+handle_info(Msg, #{ context := #{ handleInfo := {just, WrappedHandler } } } = State) ->
+  ResultEffect = WrappedHandler(Msg, State),
+  Result = ResultEffect(),
+  cast_result_to_ps(Result).
 
+handle_continue(Msg, #{ context := #{ handleContinue := {just, WrappedHandler } } } = State) ->
+  ResultEffect = WrappedHandler(Msg, State),
+  Result = ResultEffect(),
+  cast_result_to_ps(Result).
 
 cast_result_to_ps(CastResult) ->
   case CastResult of
