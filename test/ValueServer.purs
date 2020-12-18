@@ -1,9 +1,9 @@
 module Test.ValueServer
-  ( ValueServerPid
-  , startLink
+  ( startLink
   , getValue
   , setValue
   , setValueAsync
+  , Msg
   )
   where
 
@@ -13,7 +13,7 @@ import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Erl.Atom (atom)
-import Pinto.GenServer (ServerRunning(..))
+import Pinto.GenServer (ServerRunning(..), ServerType)
 import Pinto.GenServer as GS
 import Pinto.Types (InstanceRef(..), RegistryName(..), ServerPid, crashIfNotStarted)
 
@@ -22,23 +22,17 @@ type Stop = Void
 data Msg
   = SetValue Int
 
-type State =
-  { value :: Int }
+type State = { value :: Int }
 
 
+type ValueServerType = ServerType Cont Stop Msg State
 
-newtype ValueServerPid = ValueServerPid (ServerPid State Msg)
--- instance toRawPid :: ToRawPid ValueServerPid
---   rawPid (ValueServerPid serverPid) = rawPid serverPid
-
-
-serverName :: RegistryName State Msg
+serverName :: RegistryName ValueServerType
 serverName = Local $ atom "valueServer"
 
-startLink :: Effect ValueServerPid
+startLink :: Effect (ServerPid ValueServerType)
 startLink = do
-  ValueServerPid
-    <$> crashIfNotStarted
+  crashIfNotStarted
     <$> (GS.startLink $ (GS.mkSpec init) { name = Just serverName })
   where
     init =

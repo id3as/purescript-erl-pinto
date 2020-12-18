@@ -35,29 +35,26 @@ import Partial.Unsafe (unsafePartial)
 -- | this will be supplied to every call to the gen server API in order
 -- | to enforce type safety across calls
 
-
-
-data RegistryName state msg
+data RegistryName serverType
   = Local Atom
   | Global Foreign
   | Via NativeModuleName Foreign
 
 
-newtype ServerPid state msg = ServerPid Pid
+newtype ServerPid serverType = ServerPid Pid
 
-data InstanceRef state msg
-  = ByName (RegistryName state msg)
-  | ByPid (ServerPid state msg)
+data InstanceRef serverType
+  = ByName (RegistryName serverType)
+  | ByPid (ServerPid serverType)
 
 
-data NotStartedReason state msg
+data NotStartedReason serverType
   = Ignore
-  | AlreadyStarted (ServerPid state msg)
+  | AlreadyStarted (ServerPid serverType)
   | Failed Foreign
 
-
-type StartLinkResult state msg
-  = Either (NotStartedReason state msg) (ServerPid state msg)
+type StartLinkResult serverType
+  = Either (NotStartedReason serverType) (ServerPid serverType)
 
 data TerminateReason
   = Normal
@@ -65,28 +62,27 @@ data TerminateReason
   | ShutdownWithCustom Foreign
   | Custom Foreign
 
-
-maybeStarted :: forall state msg. StartLinkResult state msg -> Maybe (ServerPid state msg)
+maybeStarted :: forall serverType. StartLinkResult serverType -> Maybe (ServerPid serverType)
 maybeStarted slr = case slr of
-    Right serverPid -> Just serverPid
+    Right serverType -> Just serverType
     _ -> Nothing
 
-maybeRunning :: forall state msg. StartLinkResult state msg -> Maybe (ServerPid state msg)
+maybeRunning :: forall serverType. StartLinkResult serverType -> Maybe (ServerPid serverType)
 maybeRunning slr = case slr of
     Right serverPid -> Just serverPid
     Left (AlreadyStarted serverPid) -> Just serverPid
     _ -> Nothing
 
 
-crashIfNotStarted :: forall state msg. StartLinkResult state msg -> ServerPid state msg
+crashIfNotStarted :: forall serverType. StartLinkResult serverType -> ServerPid serverType
 crashIfNotStarted = unsafePartial \slr ->
   case maybeStarted slr of
-     Just serverPid -> serverPid
+     Just serverType -> serverType
 
-crashIfNotRunning :: forall state msg. StartLinkResult state msg -> ServerPid state msg
+crashIfNotRunning :: forall serverType. StartLinkResult serverType -> ServerPid serverType
 crashIfNotRunning = unsafePartial \slr ->
   case maybeRunning slr of
-     Just serverPid -> serverPid
+     Just serverType -> serverType
 
 -- class StartOk a state msg where
 --   startOk :: a -> Maybe (ServerPid state msg)

@@ -17,31 +17,28 @@ module Pinto.Sup
   , startLink
  ) where
 
-import Prelude
 
 import Data.Either (Either)
 import Data.Maybe (Maybe)
 import Effect (Effect)
 import Erl.Data.List (List)
 import Foreign (Foreign)
-import Pinto.Types (InstanceRef, RegistryName, ServerPid, StartLinkResult)
+import Pinto.Types (InstanceRef, RegistryName, StartLinkResult)
 
-
-type ChildStarted state msg
-  = { pid :: ServerPid state msg
+type ChildStarted childType
+  = { pid :: childType
     , info :: Maybe Foreign
     }
 
-data ChildNotStartedReason state msg
+data ChildNotStartedReason childType
   = ChildAlreadyPresent
-  | ChildAlreadyStarted (ServerPid state msg)
+  | ChildAlreadyStarted childType
   | ChildStartReturnedIgnore
   | ChildFailed Foreign
 
 
-type StartChildResult state msg
-  = Either (ChildNotStartedReason state msg) (ChildStarted state msg)
-
+type StartChildResult childType
+  = Either (ChildNotStartedReason childType) (ChildStarted childType)
 
 -- maps to transient | permanent | temporary
 data RestartStrategy = RestartNever | RestartAlways | RestartOnCrash
@@ -62,9 +59,9 @@ data ChildType
 
 type ChildId id state msg = id
 
-type ChildSpec id state msg
-  = { id :: ChildId id state msg
-    , start :: Effect (StartLinkResult state msg)
+type ChildSpec serverType
+  = { id :: String
+    , start :: Effect (StartLinkResult serverType)
     , restartStrategy :: RestartStrategy
     , shutdownStrategy :: ChildShutdownTimeoutStrategy
     , childType :: ChildType
@@ -86,9 +83,9 @@ type SupervisorSpec
     , childSpecs :: List ErlChildSpec
     }
 
-foreign import startLink :: forall supState. Maybe (RegistryName supState Void) -> Effect SupervisorSpec -> Effect (StartLinkResult supState Void)
+foreign import startLink :: forall supType. Maybe (RegistryName supType) -> Effect SupervisorSpec -> Effect (StartLinkResult supType)
 
 foreign import data ErlChildSpec :: Type
-foreign import mkErlChildSpec :: forall id state msg. ChildSpec id state msg -> ErlChildSpec
+foreign import mkErlChildSpec :: forall serverType. ChildSpec serverType -> ErlChildSpec
 
-foreign import startChild :: forall supState childId childState childMsg. InstanceRef supState Void -> ChildSpec childId childState childMsg -> StartChildResult childState childMsg
+foreign import startChild :: forall supType childServerType. InstanceRef supType -> ChildSpec childServerType -> StartChildResult childServerType

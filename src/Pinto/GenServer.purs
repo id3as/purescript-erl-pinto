@@ -3,6 +3,8 @@ module Pinto.GenServer
   , InitResult(..)
 
   , ServerSpec
+  , ServerType
+
   , CallFn
   , CallResult(..)
   , CastFn
@@ -134,9 +136,10 @@ mapInitResult _ (Left InitIgnore) = Left InitIgnore
 
 
 
+data ServerType cont stop msg state = ServerType
 
 type ServerSpec cont stop msg state =
-  { name :: Maybe (RegistryName state msg)
+  { name :: Maybe (RegistryName (ServerType cont stop msg state))
   , init :: InitFn cont stop msg state
   , handleInfo :: Maybe (InfoFn cont stop msg state)
   , handleContinue :: Maybe (ContinueFn cont stop msg state)
@@ -174,8 +177,9 @@ mkSpec initFn =
   , handleContinue: Nothing
   }
 
-foreign import callFFI :: forall reply cont stop msg state. InstanceRef state msg -> WrappedCallFn reply cont stop msg state -> Effect reply
-call :: forall reply cont stop msg state. InstanceRef state msg -> CallFn reply cont stop msg state -> Effect reply
+foreign import callFFI :: forall reply cont stop msg state. InstanceRef (ServerType cont stop msg state) -> WrappedCallFn reply cont stop msg state -> Effect reply
+
+call :: forall reply cont stop msg state. InstanceRef (ServerType cont stop msg state) -> CallFn reply cont stop msg state -> Effect reply
 call instanceRef callFn =
   callFFI instanceRef wrappedCallFn
 
@@ -192,8 +196,9 @@ call instanceRef callFn =
 foreign import replyTo :: forall reply. From reply -> reply -> Effect Unit
 
 
-foreign import castFFI :: forall cont stop msg state. InstanceRef state msg -> WrappedCastFn cont stop msg state -> Effect Unit
-cast :: forall cont stop msg state. InstanceRef state msg -> CastFn cont stop msg state -> Effect Unit
+foreign import castFFI :: forall cont stop msg state. InstanceRef (ServerType cont stop msg state) -> WrappedCastFn cont stop msg state -> Effect Unit
+
+cast :: forall cont stop msg state. InstanceRef (ServerType cont stop msg state) -> CastFn cont stop msg state -> Effect Unit
 cast instanceRef castFn =
   castFFI instanceRef wrappedCastFn
 
@@ -209,7 +214,7 @@ cast instanceRef castFn =
 
 
 
-startLink :: forall cont stop msg state. (ServerSpec cont stop msg state) -> Effect (StartLinkResult state msg)
+startLink :: forall cont stop msg state. (ServerSpec cont stop msg state) -> Effect (StartLinkResult (ServerType cont stop msg state))
 startLink { name: maybeName, init: initFn, handleInfo: maybeHandleInfo , handleContinue: maybeHandleContinue } =
   startLinkFFI maybeName initEffect
 
@@ -248,9 +253,12 @@ startLink { name: maybeName, init: initFn, handleInfo: maybeHandleInfo , handleC
 
 
 
-foreign import startLinkFFI :: forall cont stop msg state. Maybe (RegistryName state msg) -> Effect (InitResult cont (OuterState cont stop msg state)) -> Effect (StartLinkResult state msg)
+foreign import startLinkFFI :: forall cont stop msg state.
+  Maybe (RegistryName (ServerType cont stop msg state)) ->
+  Effect (InitResult cont (OuterState cont stop msg state)) ->
+  Effect (StartLinkResult ((ServerType cont stop msg state)))
 
-self :: forall cont stop msg state. ReaderT (Context cont stop msg state) Effect (ServerPid state msg)
+self :: forall cont stop msg state. ReaderT (Context cont stop msg state) Effect (ServerPid (ServerType cont stop state msg))
 self = Reader.lift selfFFI
 
-foreign import selfFFI :: forall state msg. Effect (ServerPid state msg)
+foreign import selfFFI :: forall serverType. Effect (ServerPid serverType)

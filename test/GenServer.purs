@@ -1,12 +1,5 @@
 module Test.GenServer
   (  genServerSuite
---  ,  testStartLinkAnonymous
-  , testStartLinkLocal
-  , testHandleInfo
-  , testCall
-  , testCast
-  , testValueServer
-  , sleep
   ) where
 
 
@@ -21,9 +14,9 @@ import Erl.Atom (atom)
 import Erl.Process (Process, (!))
 import Erl.Test.EUnit (TestF, suite, test)
 import Foreign (unsafeToForeign)
-import Pinto.GenServer (Action(..), From, ServerRunning(..), ServerSpec)
+import Pinto.GenServer (Action(..), From, ServerRunning(..), ServerSpec, ServerType)
 import Pinto.GenServer as GS
-import Pinto.Types (InstanceRef(..), NotStartedReason(..), RegistryName(..), crashIfNotStarted)
+import Pinto.Types (InstanceRef(..), NotStartedReason(..), RegistryName(..), StartLinkResult, crashIfNotStarted)
 import Test.Assert (assertEqual)
 import Test.ValueServer as ValueServer
 import Unsafe.Coerce (unsafeCoerce)
@@ -32,6 +25,9 @@ import Unsafe.Coerce (unsafeCoerce)
 
 foreign import startGprocFFI :: Effect Unit
 foreign import sleep :: Int -> Effect Unit
+
+type TestServerType = ServerType TestCont TestStop TestMsg TestState
+
 
 genServerSuite :: Free TestF Unit
 genServerSuite =
@@ -187,7 +183,7 @@ testValueServer =
 ---------------------------------------------------------------------------------
 -- Internal
 ---------------------------------------------------------------------------------
-testStartGetSet :: RegistryName TestState TestMsg -> Effect Unit
+testStartGetSet :: RegistryName TestServerType -> Effect Unit
 testStartGetSet registryName = do
   let
     gsSpec :: ServerSpec TestCont TestStop TestMsg TestState
@@ -238,7 +234,7 @@ testStartGetSet registryName = do
     castContinue handle = GS.cast handle
       \state -> pure $ GS.returnWithAction (Continue TestCont) state
 
-testStopNormal  :: RegistryName TestState TestMsg -> Effect Unit
+testStopNormal :: RegistryName TestServerType -> Effect Unit
 testStopNormal registryName = do
   let
     gsSpec :: ServerSpec TestCont TestStop TestMsg TestState
@@ -262,7 +258,6 @@ testStopNormal registryName = do
   triggerStopCallReply instanceRef >>= expect 42 -- New instance starts with initial state 0
   void $ crashIfNotStarted <$> (GS.startLink gsSpec)
   getState instanceRef               >>= expect  0 -- New instance starts with initial state 0
-
 
   -- TODO trigger stop from a handle_info
 
@@ -299,6 +294,7 @@ testStopNormal registryName = do
       \from state -> pure $ GS.replyWithAction (TestState 42) StopNormal state
 
 
+isAlreadyRunning :: forall serverType. StartLinkResult serverType -> Boolean
 isAlreadyRunning = case _ of
     Left (AlreadyStarted _) -> true
     _ -> false
@@ -313,23 +309,19 @@ expectBool :: Boolean -> Boolean -> Effect Unit
 expectBool expected actual =
   assertEqual { actual, expected: expected }
 
-
-
-getState :: forall state msg. InstanceRef state msg -> Effect state
+getState :: forall cont stop msg state. InstanceRef (ServerType cont stop msg state) ->  Effect state
 getState handle = GS.call handle
   \_from state ->
     let reply = state
     in pure $ GS.reply reply state
 
-
-
-setState :: forall state msg. InstanceRef state msg -> state ->  Effect state
+setState :: forall cont stop msg state. InstanceRef (ServerType cont stop msg state) -> state ->  Effect state
 setState handle newState = GS.call handle
   \_from state ->
     let reply = state
     in pure $ GS.reply reply newState
 
 
-setStateCast :: forall state msg. InstanceRef state msg -> state ->  Effect Unit
+setStateCast :: forall cont stop msg state. InstanceRef (ServerType cont stop msg state) -> state ->  Effect Unit
 setStateCast handle newState = GS.cast handle
   \_state -> pure $ GS.return newState

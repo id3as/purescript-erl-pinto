@@ -5,7 +5,7 @@ module Pinto ( isRegistered
              -- , okAlreadyStarted'
              , node
              , self
-             , module PintoTypeExports
+--             , module PintoTypeExports
              )
 where
 
@@ -18,7 +18,7 @@ import Erl.ModuleName (NativeModuleName(..))
 import Erl.Process.Raw (Pid)
 import Foreign (Foreign, unsafeToForeign)
 import Pinto.Types (RegistryName(..))
-import Pinto.Types as PintoTypeExports
+--import Pinto.Types as PintoTypeExports
 
 -- import Pinto.Types (class StartOk, ServerName(..), startOk, startOkAS)
 
@@ -27,7 +27,7 @@ foreign import self :: Effect Pid
 foreign import isRegisteredImpl :: Foreign -> Effect Boolean
 foreign import alreadyStartedImpl :: Foreign -> Effect Pid
 
-isRegistered :: forall state msg. RegistryName state msg -> Effect Boolean
+isRegistered :: forall serverType. RegistryName serverType -> Effect Boolean
 isRegistered (Local name) = isRegisteredImpl $ unsafeToForeign $ tuple2 (atom "local") name
 isRegistered (Global name) = isRegisteredImpl $ unsafeToForeign $ tuple2 (atom "global") name
 isRegistered (Via (NativeModuleName m) name) = isRegisteredImpl $ unsafeToForeign $ tuple3 (atom "via") m name

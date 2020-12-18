@@ -10,7 +10,7 @@ import Effect.Unsafe (unsafePerformEffect)
 import Erl.Atom (atom)
 import Erl.Data.List (nil, (:))
 import Erl.Test.EUnit (TestF, runTests, suite, test)
-import Pinto.GenServer (CallResult(..), ServerRunning(..))
+import Pinto.GenServer (CallResult(..), ServerRunning(..), ServerType)
 import Pinto.GenServer as GS
 import Pinto.Sup (ChildShutdownTimeoutStrategy(..), ChildSpec, ChildType(..), RestartStrategy(..), Strategy(..), SupervisorSpec, mkErlChildSpec)
 import Pinto.Sup as Sup
@@ -80,19 +80,14 @@ testStartWithNamedChild =
 
       childName = Local $ atom "testNamedChild"
 
-      myChild :: ChildSpec String TestState TestMsg
-      myChild = (mkChildSpec "myChildId")
-                  { start = GS.startLink $ (GS.mkSpec childInit) { name = Just childName }
-                  }
+      --myChild :: ChildSpec String TestState TestMsg
+      myChild = mkChildSpec "myChildId" (GS.startLink $ (GS.mkSpec childInit) { name = Just childName })
 
 
-data SupStateExample = SupStateExample
-
-
-mkChildSpec :: forall childState childMsg. String -> ChildSpec String childState childMsg
-mkChildSpec id  = { id
+--mkChildSpec :: forall childType. String -> ChildSpec childType
+mkChildSpec id start  = { id
                   , childType : Worker
-                  , start : unsafeCoerce unit
+                  , start
                   , restartStrategy: RestartOnCrash
                   , shutdownStrategy: KillAfter 5000
                   }
@@ -100,21 +95,19 @@ mkChildSpec id  = { id
 ---------------------------------------------------------------------------------
 -- Internal
 ---------------------------------------------------------------------------------
-getState :: forall state msg. InstanceRef state msg -> Effect state
+getState :: forall cont stop msg state. InstanceRef (ServerType cont stop msg state) ->  Effect state
 getState handle = GS.call handle
-       \_from state ->
-         let reply = state
-         in pure $ GS.reply reply state
+  \_from state ->
+    let reply = state
+    in pure $ GS.reply reply state
 
-
-
-setState :: forall state msg. InstanceRef state msg -> state ->  Effect state
+setState :: forall cont stop msg state. InstanceRef (ServerType cont stop msg state) -> state ->  Effect state
 setState handle newState = GS.call handle
-       \_from state ->
-         let reply = state
-         in pure $ GS.reply reply newState
+  \_from state ->
+    let reply = state
+    in pure $ GS.reply reply newState
 
 
-setStateCast :: forall state msg. InstanceRef state msg -> state ->  Effect Unit
+setStateCast :: forall cont stop msg state. InstanceRef (ServerType cont stop msg state) -> state ->  Effect Unit
 setStateCast handle newState = GS.cast handle
-       \_state -> pure $ GS.return newState
+  \_state -> pure $ GS.return newState
