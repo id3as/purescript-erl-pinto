@@ -1,9 +1,13 @@
 module Pinto.GenStatem
        ( StatemType
        , StateEnterResult(..)
-       , StateEnterAction(..)
+       , StateEnterAction
+       , HandleEventResult(..)
+       , EventAction(..)
+       , CommonAction(..)
        , TimeoutAction(..)
        , Timeout(..)
+       , Event(..)
        , From
        , Reply
        , mkReply
@@ -11,6 +15,7 @@ module Pinto.GenStatem
        , mkSpec
        , Running(..)
        , Spec
+       , call
        )
        where
 
@@ -38,31 +43,55 @@ type Spec state stateData =
 --     , handleContinue :: Maybe (WrappedContinueFn cont stop msg state)
 --     }
 
-data StateEnterResult timerName timerEventContent state stateData
-  = KeepState stateData
-  | KeepStateWithActions (List (StateEnterAction timerName timerEventContent)) stateData
-  | KeepStateAndData
-  | KeepStateAndDataWithActions (List (StateEnterAction timerName timerEventContent))
+data StateEnterResult timerName timerContent state stateData
+  = StateEnterKeepState stateData
+  | StateEnterKeepStateWithActions (List (StateEnterAction timerName timerContent)) stateData
+  | StateEnterKeepStateAndData
+  | StateEnterKeepStateAndDataWithActions (List (StateEnterAction timerName timerContent))
+
+type StateEnterAction timerName timerContent = CommonAction timerName timerContent
+
+data HandleEventResult info internal timerName timerContent state stateData
+  = HandleEventKeepState stateData
+  | HandleEventKeepStateWithActions (List (EventAction info internal timerName timerContent)) stateData
+  | HandleEventKeepStateAndData
+  | HandleEventKeepStateAndDataWithActions (List (EventAction info internal timerName timerContent))
+
+  | HandleEventNextState state stateData
+  | HandleEventNextStateWithActions state stateData (List (EventAction info internal timerName timerContent))
+
+data EventAction info internal timerName timerContent
+  = CommonAction (CommonAction timerName timerContent)
+  | Postpone
+  | NextEvent (Event info internal timerName timerContent)
+
+data Event info internal timerName timerContent
+  = EventInfo info
+  | EventInternal internal
+  | EventTimeout timerContent
+  | EventNamedTimeout timerName timerContent
+  | EventStateTimeout timerContent
 
 data Running state stateData
   = InitOk state stateData
 
-data StateEnterAction timerName timerEventContent
+data CommonAction timerName timerContent
   = Hibernate
-  | TimeoutAction (TimeoutAction timerName timerEventContent)
+  | TimeoutAction (TimeoutAction timerName timerContent)
   | ReplyAction Reply
 
-data TimeoutAction timerName timerEventContent
-  = SetTimeout (Timeout timerEventContent)
-  | SetNamedTimeout timerName (Timeout timerEventContent)
-  | SetStateTimeout (Timeout timerEventContent)
-  | UpdateTimeout timerEventContent
-  | UpdateNamedTimeout timerName timerEventContent
-  | UpdateStateTimeout timerEventContent
 
-data Timeout timerEventContent
-  = At Int (Maybe timerEventContent)
-  | After Int (Maybe timerEventContent)
+data TimeoutAction timerName timerContent
+  = SetTimeout (Timeout timerContent)
+  | SetNamedTimeout timerName (Timeout timerContent)
+  | SetStateTimeout (Timeout timerContent)
+  | UpdateTimeout timerContent
+  | UpdateNamedTimeout timerName timerContent
+  | UpdateStateTimeout timerContent
+
+data Timeout timerContent
+  = At Int timerContent
+  | After Int timerContent
   | Cancel
 
 foreign import data Reply :: Type
@@ -77,3 +106,5 @@ startLink _ = unsafeCoerce unit
 
 mkSpec :: forall state stateData. Spec state stateData
 mkSpec = unsafeCoerce unit
+
+call _ _ = unsafeCoerce unit
