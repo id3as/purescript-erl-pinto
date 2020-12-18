@@ -1,20 +1,33 @@
 module Pinto.GenStatem
        ( StatemType
-       , StateEnterResult(..)
-       , StateEnterAction
+       , Context
+       , ResultT
+
+       , InitFn
+       , InitResult
+
+       , CallFn
        , HandleEventResult(..)
+
+       , StateEnterResult(..)
+
+       , StateEnterAction
        , EventAction(..)
        , CommonAction(..)
        , TimeoutAction(..)
+
        , Timeout(..)
        , Event(..)
+       , Running(..)
+       , NotRunning(..)
+       , Spec
+
        , From
        , Reply
        , mkReply
+
        , startLink
        , mkSpec
-       , Running(..)
-       , Spec
        , call
        )
        where
@@ -22,26 +35,40 @@ module Pinto.GenStatem
 import Prelude
 
 import Control.Monad.Reader (ReaderT(..))
-import Data.Maybe (Maybe)
+import Data.Either (Either)
+import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Erl.Data.List (List)
-import Pinto.Types (RegistryName, ServerPid, StartLinkResult)
+import Foreign (Foreign)
+import Pinto.Types (InstanceRef, RegistryName, ServerPid, StartLinkResult)
 import Unsafe.Coerce (unsafeCoerce)
 
-newtype StatemType state stateData = StatemType Void
+newtype StatemType info internal timerName timerContent state stateData = StatemType Void
 
-type Spec state stateData =
-  { name :: Maybe (RegistryName (StatemType state stateData))
+type Spec info internal timerName timerContent state stateData =
+  { name :: Maybe (RegistryName (StatemType info internal timerName timerContent state stateData))
+  , init :: InitFn info internal timerName timerContent state stateData
   }
 
--- type InitFn state stateData = ResultT (InitResult state stateData) state stateData
--- type ResultT result state stateData = ReaderT (Context state stateData)  Effect result
---
--- newtype Context cont stop msg state
---   = Context
---     { handleInfo :: Maybe (WrappedInfoFn cont stop msg state)
---     , handleContinue :: Maybe (WrappedContinueFn cont stop msg state)
---     }
+type InitFn info internal timerName timerContent state stateData = ResultT (InitResult info internal timerName timerContent state stateData) info internal timerName timerContent state stateData
+type InitResult info internal timerName timerContent state stateData = Either NotRunning (Running info internal timerName timerContent state stateData)
+type CallFn reply info internal timerName timerContent state stateData = From reply -> state -> stateData -> ResultT (HandleEventResult info internal timerName timerContent state stateData) info internal timerName timerContent state stateData
+
+data Running info internal timerName timerContent state stateData
+  = Init state stateData
+  | InitWithActions state stateData (List (EventAction info internal timerName timerContent))
+  | InitWithHibernate state
+
+data NotRunning
+  = InitStop Foreign
+  | InitIgnore
+
+type ResultT result info internal timerName timerContent state stateData = ReaderT (Context info internal timerName timerContent state stateData) Effect result
+
+newtype Context info internal timerName timerContent state stateData =
+  Context
+  {
+  }
 
 data StateEnterResult timerName timerContent state stateData
   = StateEnterKeepState stateData
@@ -72,14 +99,10 @@ data Event info internal timerName timerContent
   | EventNamedTimeout timerName timerContent
   | EventStateTimeout timerContent
 
-data Running state stateData
-  = InitOk state stateData
-
 data CommonAction timerName timerContent
   = Hibernate
   | TimeoutAction (TimeoutAction timerName timerContent)
   | ReplyAction Reply
-
 
 data TimeoutAction timerName timerContent
   = SetTimeout (Timeout timerContent)
@@ -101,10 +124,14 @@ newtype From reply = From FromForeign
 foreign import mkReply :: forall reply. From reply -> reply -> Reply
 
 
-startLink :: forall state stateData. Spec state stateData -> Effect (StartLinkResult (StatemType state stateData))
+startLink :: forall info internal timerName timerContent state stateData. Spec info internal timerName timerContent state stateData -> Effect (StartLinkResult (StatemType info internal timerName timerContent state stateData))
 startLink _ = unsafeCoerce unit
 
-mkSpec :: forall state stateData. Spec state stateData
-mkSpec = unsafeCoerce unit
+mkSpec :: forall info internal timerName timerContent state stateData. InitFn info internal timerName timerContent state stateData -> Spec info internal timerName timerContent state stateData
+mkSpec initFn =
+  { name: Nothing
+  , init: initFn
+  }
 
-call _ _ = unsafeCoerce unit
+call :: forall reply info internal timerName timerContent state stateData. InstanceRef (StatemType info internal timerName timerContent state stateData) -> CallFn reply info internal timerName timerContent state stateData -> Effect reply
+call _instanceRef _callFn = unsafeCoerce unit

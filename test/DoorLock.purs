@@ -34,7 +34,12 @@ type Data =
   , attempts :: Int
   }
 
-type DoorLockType = StatemType State Data
+type Info = Void
+type Internal = Void
+type TimerName = Void
+type TimerContent = Void
+
+type DoorLockType = StatemType Info Internal TimerName TimerContent State Data
 
 data AuditEvent
   = AuditDoorUnlocked
@@ -53,17 +58,17 @@ startLink :: Effect (ServerPid DoorLockType)
 startLink = do
   crashIfNotStarted <$> statem
   where
-    spec :: Statem.Spec State Data
-    spec = Statem.mkSpec
+    spec = Statem.mkSpec init
 
     statem :: Effect (StartLinkResult DoorLockType)
     statem = Statem.startLink spec
-    -- init =
-    --   let
-    --     initialState = Locked
-    --     initialData = { }
-    --   in
-    --     pure $ Right $ InitOk initialState initialData
+
+    init =
+      let
+        initialState = Locked
+        initialData = { code: "1234", attempts: 0 }
+      in
+        pure $ Right $ Init initialState initialData
 
     handleEnter Locked UnlockedClosed currentData = do
       audit AuditDoorUnlocked
