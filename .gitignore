@@ -1,4 +1,5 @@
 .psc-ide-port
 .psc-package/
+.spago/
 output/
 *beam
