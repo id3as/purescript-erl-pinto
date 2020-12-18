@@ -255,15 +255,16 @@ testStopNormal registryName = do
   -- Try to start the server again - should fail with already running
   (GS.startLink gsSpec) <#> isAlreadyRunning >>= expectBool true
   triggerStopCast instanceRef
-  sleep 1
+  sleep 1 -- allow the async cast to execute -- TODO maybe use a monitor with timeout
   void $ crashIfNotStarted <$> (GS.startLink gsSpec)
 
   (GS.startLink gsSpec) <#> isAlreadyRunning >>= expectBool true
   triggerStopCallReply instanceRef >>= expect 42 -- New instance starts with initial state 0
-  sleep 1
   void $ crashIfNotStarted <$> (GS.startLink gsSpec)
   getState instanceRef               >>= expect  0 -- New instance starts with initial state 0
 
+
+  -- TODO trigger stop from a handle_info
 
   pure unit
 
