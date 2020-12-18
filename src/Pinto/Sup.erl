@@ -12,7 +12,7 @@
 %%------------------------------------------------------------------------------
 %% Runtime supervisor stubs
 %%------------------------------------------------------------------------------
--export([ start_stub/1
+-export([ start_proxy/1
         , init/1
         ]).
 
@@ -44,7 +44,7 @@ mkErlChildSpec(#{ id := ChildId
                 , childType := ChildType
                 }) ->
   #{ id => ChildId
-   , start => {?MODULE, start_stub, [StartFn]}
+   , start => {?MODULE, start_proxy, [StartFn]}
    , restart => restart_from_ps(RestartStrategy)
    , shutdown => shutdown_from_ps(ChildShutdownTimeoutStrategy)
    , type => type_from_ps(ChildType)
@@ -116,6 +116,6 @@ shutdown_from_ps({killAfter, Ms}) ->  Ms.
 type_from_ps({supervisor}) -> supervisor;
 type_from_ps({worker}) -> worker.
 
-start_stub(StartEffect) ->
+start_proxy(StartEffect) ->
   StartResult = StartEffect(),
   start_link_result_from_ps(StartResult).

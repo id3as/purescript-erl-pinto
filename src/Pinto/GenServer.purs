@@ -136,7 +136,7 @@ mapInitResult _ (Left InitIgnore) = Left InitIgnore
 
 
 
-data ServerType cont stop msg state = ServerType
+newtype ServerType cont stop msg state = ServerType Void
 
 type ServerSpec cont stop msg state =
   { name :: Maybe (RegistryName (ServerType cont stop msg state))
