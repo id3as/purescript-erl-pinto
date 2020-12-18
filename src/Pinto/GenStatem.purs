@@ -10,6 +10,7 @@ module Pinto.GenStatem
        , EventFn
        , HandleEventResult(..)
 
+       , EnterFn
        , StateEnterResult(..)
 
        , StateEnterAction
@@ -53,12 +54,14 @@ type Spec info internal timerName timerContent state stateData =
   { name :: Maybe (RegistryName (StatemType info internal timerName timerContent state stateData))
   , init :: InitFn info internal timerName timerContent state stateData
   , handleEvent :: EventFn info internal timerName timerContent state stateData
+  , handleEnter :: Maybe (EnterFn info internal timerName timerContent state stateData)
   }
 
 type InitFn info internal timerName timerContent state stateData = ResultT (InitResult info internal timerName timerContent state stateData) info internal timerName timerContent state stateData
 type InitResult info internal timerName timerContent state stateData = Either NotRunning (Running info internal timerName timerContent state stateData)
 type CallFn reply info internal timerName timerContent state stateData = From reply -> state -> stateData -> ResultT (HandleEventResult info internal timerName timerContent state stateData) info internal timerName timerContent state stateData
 type EventFn info internal timerName timerContent state stateData = (Event info internal timerName timerContent) -> state -> stateData -> ResultT (HandleEventResult info internal timerName timerContent state stateData) info internal timerName timerContent state stateData
+type EnterFn info internal timerName timerContent state stateData = state -> state -> stateData -> ResultT (StateEnterResult timerName timerContent state stateData) info internal timerName timerContent state stateData
 
 data Running info internal timerName timerContent state stateData
   = Init state stateData
@@ -143,6 +146,7 @@ mkSpec initFn handleEventFn =
   { name: Nothing
   , init: initFn
   , handleEvent: handleEventFn
+  , handleEnter: Nothing
   }
 
 call :: forall reply info internal timerName timerContent state stateData. InstanceRef (StatemType info internal timerName timerContent state stateData) -> CallFn reply info internal timerName timerContent state stateData -> Effect reply

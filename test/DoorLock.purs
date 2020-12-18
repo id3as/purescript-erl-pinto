@@ -55,7 +55,7 @@ name = Local $ atom "doorLock"
 
 startLink :: Effect (ServerPid DoorLockType)
 startLink = do
-  crashIfNotStarted <$> (Statem.startLink $ Statem.mkSpec init handleEvent)
+  crashIfNotStarted <$> (Statem.startLink $ ((Statem.mkSpec init handleEvent) { handleEnter = Just handleEnter }))
   where
     init =
       let
@@ -64,24 +64,24 @@ startLink = do
       in
         pure $ Right $ Init initialState initialData
 
-    -- handleEnter Locked UnlockedClosed currentData = Statem.lift do
-    --   audit AuditDoorUnlocked
-    --   pure $ Right $ StateEnterKeepState (currentData { attempts = 0 })
+    handleEnter Locked UnlockedClosed currentData = Statem.lift do
+      audit AuditDoorUnlocked
+      pure $ StateEnterKeepState (currentData { attempts = 0 })
 
-    -- handleEnter UnlockedOpen UnlockedClosed currentData = Statem.lift do
-    --   audit AuditDoorClosed
-    --   pure $ Right $ StateEnterKeepStateAndData
+    handleEnter UnlockedOpen UnlockedClosed currentData = Statem.lift do
+      audit AuditDoorClosed
+      pure $ StateEnterKeepStateAndData
 
-    -- handleEnter _previousState UnlockedOpen currentData = Statem.lift do
-    --   audit AuditDoorOpened
-    --   pure $ Right $ StateEnterKeepStateAndDataWithActions (auditIfOpenTooLong : nil)
+    handleEnter _previousState UnlockedOpen currentData = Statem.lift do
+      audit AuditDoorOpened
+      pure $ StateEnterKeepStateAndDataWithActions (auditIfOpenTooLong : nil)
 
-    -- handleEnter _previousState Locked currentData = Statem.lift do
-    --   audit AuditDoorLocked
-    --   pure $ Right $ StateEnterKeepStateAndData
+    handleEnter _previousState Locked currentData = Statem.lift do
+      audit AuditDoorLocked
+      pure $ StateEnterKeepStateAndData
 
-    -- handleEnter _previousState _currentState _currentData = Statem.lift do
-    --   pure $ Right $ StateEnterKeepStateAndData
+    handleEnter _previousState _currentState _currentData = Statem.lift do
+      pure $ StateEnterKeepStateAndData
 
     handleEvent (EventStateTimeout DoorOpenTooLong) _state _stateData = Statem.lift do
       audit AuditDoorOpenTooLong
