@@ -5,7 +5,6 @@ module Test.DoorLock
        )
        where
 
-
 import Prelude
 
 import Data.Either (Either(..))
@@ -13,14 +12,9 @@ import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Data.List (nil, (:))
-import Pinto.GenStatem (CommonAction(..), Event(..), EventAction(..), HandleEventResult(..), Running(..), StateEnterAction(..), StateEnterResult(..), StatemType, Timeout(..), TimeoutAction(..))
+import Pinto.GenStatem (CommonAction(..), Event(..), EventAction(..), HandleEventResult(..), Running(..), StateEnterResult(..), StatemType, Timeout(..), TimeoutAction(..))
 import Pinto.GenStatem as Statem
-import Pinto.Types (InstanceRef(..), RegistryName(..), ServerPid, StartLinkResult, crashIfNotStarted)
-import Unsafe.Coerce (unsafeCoerce)
-
--- type Cont = Void
--- type Stop = Void
--- data Msg = SetValue Int
+import Pinto.Types (InstanceRef(..), RegistryName(..), ServerPid, crashIfNotStarted)
 
 data State
   = Locked
