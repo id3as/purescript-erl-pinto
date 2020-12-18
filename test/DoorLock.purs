@@ -102,14 +102,15 @@ data UnlockResult
   | InvalidCode
   | InvalidState
 
--- unlock code =
---   Statem.call name impl
---   where
---     impl from Locked stateData@{ code: actualCode } =
---       if actualCode == code then
---         pure $ HandleEventNextStateWithActions UnlockedClosed stateData ((CommonAction $ ReplyAction (Statem.mkReply from UnlockSuccess)) : nil)
---       else
---         pure $ HandleEventKeepStateWithActions ((CommonAction $ ReplyAction (Statem.mkReply from InvalidCode)) : nil) (stateData { attempts = stateData.attempts + 1 })
---
---     impl from _invalidState _data =
---       pure $ HandleEventKeepStateAndDataWithActions ((CommonAction $ ReplyAction (Statem.mkReply from InvalidState)) : nil)
+unlock :: String -> Effect UnlockResult
+unlock code =
+  Statem.call (ByName name) impl
+  where
+    impl from Locked stateData@{ code: actualCode } =
+      if actualCode == code then
+        pure $ HandleEventNextStateWithActions UnlockedClosed stateData ((CommonAction $ ReplyAction (Statem.mkReply from UnlockSuccess)) : nil)
+      else
+        pure $ HandleEventKeepStateWithActions ((CommonAction $ ReplyAction (Statem.mkReply from InvalidCode)) : nil) (stateData { attempts = stateData.attempts + 1 })
+
+    impl from _invalidState _data =
+      pure $ HandleEventKeepStateAndDataWithActions ((CommonAction $ ReplyAction (Statem.mkReply from InvalidState)) : nil)
