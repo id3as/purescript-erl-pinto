@@ -1,6 +1,7 @@
 module Test.DoorLock
        ( startLink
        , State
+       , TimerContent
        )
        where
 
@@ -21,9 +22,6 @@ import Unsafe.Coerce (unsafeCoerce)
 -- type Stop = Void
 -- data Msg = SetValue Int
 
-data EventContent
-  = DoorOpenTooLong
-
 data State
   = Locked
   | UnlockedClosed
@@ -37,7 +35,8 @@ type Data =
 type Info = Void
 type Internal = Void
 type TimerName = Void
-type TimerContent = Void
+data TimerContent
+  = DoorOpenTooLong
 
 type DoorLockType = StatemType Info Internal TimerName TimerContent State Data
 
@@ -56,13 +55,8 @@ name = Local $ atom "doorLock"
 
 startLink :: Effect (ServerPid DoorLockType)
 startLink = do
-  crashIfNotStarted <$> statem
+  crashIfNotStarted <$> (Statem.startLink $ Statem.mkSpec init handleEvent)
   where
-    spec = Statem.mkSpec init
-
-    statem :: Effect (StartLinkResult DoorLockType)
-    statem = Statem.startLink spec
-
     init =
       let
         initialState = Locked
@@ -70,33 +64,33 @@ startLink = do
       in
         pure $ Right $ Init initialState initialData
 
-    handleEnter Locked UnlockedClosed currentData = do
-      audit AuditDoorUnlocked
-      pure $ Right $ StateEnterKeepState (currentData { attempts = 0 })
+    -- handleEnter Locked UnlockedClosed currentData = Statem.lift do
+    --   audit AuditDoorUnlocked
+    --   pure $ Right $ StateEnterKeepState (currentData { attempts = 0 })
 
-    handleEnter UnlockedOpen UnlockedClosed currentData = do
-      audit AuditDoorClosed
-      pure $ Right $ StateEnterKeepStateAndData
+    -- handleEnter UnlockedOpen UnlockedClosed currentData = Statem.lift do
+    --   audit AuditDoorClosed
+    --   pure $ Right $ StateEnterKeepStateAndData
 
-    handleEnter _previousState UnlockedOpen currentData = do
-      audit AuditDoorOpened
-      pure $ Right $ StateEnterKeepStateAndDataWithActions (auditIfOpenTooLong : nil)
+    -- handleEnter _previousState UnlockedOpen currentData = Statem.lift do
+    --   audit AuditDoorOpened
+    --   pure $ Right $ StateEnterKeepStateAndDataWithActions (auditIfOpenTooLong : nil)
 
-    handleEnter _previousState Locked currentData = do
-      audit AuditDoorLocked
-      pure $ Right $ StateEnterKeepStateAndData
+    -- handleEnter _previousState Locked currentData = Statem.lift do
+    --   audit AuditDoorLocked
+    --   pure $ Right $ StateEnterKeepStateAndData
 
-    handleEnter _previousState _currentState _currentData = do
-      pure $ Right $ StateEnterKeepStateAndData
+    -- handleEnter _previousState _currentState _currentData = Statem.lift do
+    --   pure $ Right $ StateEnterKeepStateAndData
 
-    handleEvent (EventStateTimeout DoorOpenTooLong) _state _stateData = do
+    handleEvent (EventStateTimeout DoorOpenTooLong) _state _stateData = Statem.lift do
       audit AuditDoorOpenTooLong
-      pure $ Right $ StateEnterKeepStateAndData
+      pure $ HandleEventKeepStateAndData
 
-    handleEvent event _state _stateData = do
+    handleEvent event _state _stateData = Statem.lift do
       -- TODO: log bad event
       audit AuditUnexpectedEventInState
-      pure $ Right $ StateEnterKeepStateAndData
+      pure $ HandleEventKeepStateAndData
 
     auditIfOpenTooLong = TimeoutAction (SetStateTimeout (After 300_000 DoorOpenTooLong))
 
