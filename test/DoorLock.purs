@@ -7,12 +7,10 @@ module Test.DoorLock
 
 import Prelude
 
-import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Erl.Atom (atom)
-import Erl.Data.List (nil, (:))
-import Pinto.GenStatem (CommonAction(..), Event(..), EventAction(..), HandleEventResult(..), Running(..), StateEnterResult(..), StatemType, Timeout(..), TimeoutAction(..))
+import Pinto.GenStatem (Event(..), InitResult(..), StatemType, Timeout(..), TimeoutAction(..))
 import Pinto.GenStatem as Statem
 import Pinto.Types (InstanceRef(..), RegistryName(..), ServerPid, crashIfNotStarted)
 
@@ -24,6 +22,7 @@ data State
 type Data =
   { code :: String
   , attempts :: Int
+  , unknownEvents :: Int
   }
 
 type Info = Void
@@ -54,39 +53,47 @@ startLink = do
     init =
       let
         initialState = Locked
-        initialData = { code: "1234", attempts: 0 }
+        initialData =
+          { code: "1234"
+          , attempts: 0
+          , unknownEvents: 0
+          }
       in
-        pure $ Right $ Init initialState initialData
+        pure $ Init initialState initialData
 
-    handleEnter Locked UnlockedClosed currentData = Statem.lift do
-      audit AuditDoorUnlocked
-      pure $ StateEnterKeepState (currentData { attempts = 0 })
+    handleEnter Locked UnlockedClosed currentData = do
+      audit AuditDoorUnlocked # Statem.lift
+      Statem.changeStateData (currentData { attempts = 0 })
+      pure unit
 
-    handleEnter UnlockedOpen UnlockedClosed currentData = Statem.lift do
-      audit AuditDoorClosed
-      pure $ StateEnterKeepStateAndData
+    handleEnter UnlockedOpen UnlockedClosed currentData = do
+      audit AuditDoorClosed # Statem.lift
+      pure unit
 
-    handleEnter _previousState UnlockedOpen currentData = Statem.lift do
-      audit AuditDoorOpened
-      pure $ StateEnterKeepStateAndDataWithActions (auditIfOpenTooLong : nil)
+    handleEnter _previousState UnlockedOpen currentData = do
+      audit AuditDoorOpened # Statem.lift
+      auditIfOpenTooLong
+      pure unit
 
-    handleEnter _previousState Locked currentData = Statem.lift do
-      audit AuditDoorLocked
-      pure $ StateEnterKeepStateAndData
+    handleEnter _previousState Locked currentData = do
+      audit AuditDoorLocked # Statem.lift
+      pure unit
 
-    handleEnter _previousState _currentState _currentData = Statem.lift do
-      pure $ StateEnterKeepStateAndData
+    handleEnter _previousState _currentState _currentData = do
+      pure unit
 
-    handleEvent (EventStateTimeout DoorOpenTooLong) _state _stateData = Statem.lift do
-      audit AuditDoorOpenTooLong
-      pure $ HandleEventKeepStateAndData
+    handleEvent (EventStateTimeout DoorOpenTooLong) _state _stateData = do
+      audit AuditDoorOpenTooLong # Statem.lift
+      pure unit
 
-    handleEvent event _state _stateData = Statem.lift do
+    handleEvent event _state stateData@{ unknownEvents } = do
       -- TODO: log bad event
-      audit AuditUnexpectedEventInState
-      pure $ HandleEventKeepStateAndData
+      audit AuditUnexpectedEventInState # Statem.lift
+      Statem.changeStateData (stateData { unknownEvents = unknownEvents + 1 })
+      pure unit
 
-    auditIfOpenTooLong = TimeoutAction (SetStateTimeout (After 300_000 DoorOpenTooLong))
+    auditIfOpenTooLong = do
+      Statem.addTimeoutAction (SetStateTimeout (After 300_000 DoorOpenTooLong))
 
     audit :: AuditEvent -> Effect Unit
     audit _event  = pure unit
@@ -101,10 +108,15 @@ unlock code =
   Statem.call (ByName name) impl
   where
     impl from Locked stateData@{ code: actualCode } =
-      if actualCode == code then
-        pure $ HandleEventNextStateWithActions UnlockedClosed stateData ((CommonAction $ ReplyAction (Statem.mkReply from UnlockSuccess)) : nil)
-      else
-        pure $ HandleEventKeepStateWithActions ((CommonAction $ ReplyAction (Statem.mkReply from InvalidCode)) : nil) (stateData { attempts = stateData.attempts + 1 })
+      if actualCode == code then do
+        Statem.addReply (Statem.mkReply from UnlockSuccess)
+        Statem.changeState UnlockedClosed
+        pure unit
+      else do
+        Statem.addReply (Statem.mkReply from InvalidCode)
+        Statem.changeStateData (stateData { attempts = stateData.attempts + 1 })
+        pure unit
 
-    impl from _invalidState _data =
-      pure $ HandleEventKeepStateAndDataWithActions ((CommonAction $ ReplyAction (Statem.mkReply from InvalidState)) : nil)
+    impl from _invalidState _data = do
+      Statem.addReply (Statem.mkReply from InvalidState)
+      pure unit
