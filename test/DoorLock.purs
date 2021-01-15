@@ -58,10 +58,12 @@ startLink = do
           , attempts: 0
           , unknownEvents: 0
           }
-      in
+      in do
+        _ <- Statem.self
         pure $ Init initialState initialData
 
     handleEnter Locked UnlockedClosed currentData = do
+      _ <- Statem.self
       audit AuditDoorUnlocked # Statem.lift
       Statem.changeStateData (currentData { attempts = 0 })
       pure unit
@@ -88,6 +90,7 @@ startLink = do
 
     handleEvent event _state stateData@{ unknownEvents } = do
       -- TODO: log bad event
+      _ <- Statem.self
       audit AuditUnexpectedEventInState # Statem.lift
       Statem.changeStateData (stateData { unknownEvents = unknownEvents + 1 })
       pure unit

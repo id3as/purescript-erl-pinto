@@ -13,6 +13,9 @@ module Pinto.GenStatem
        , class SupportsChangeStateData
        , changeStateData
 
+       , class SupportsSelf
+       , self
+
        , InitFn
        , InitResult(..)
        , InitT
@@ -54,8 +57,13 @@ import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Erl.Data.List (List, (:))
 import Foreign (Foreign)
-import Pinto.Types (InstanceRef, RegistryName, StartLinkResult)
+import Pinto.Types (InstanceRef, RegistryName, StartLinkResult, ServerPid)
 import Unsafe.Coerce (unsafeCoerce)
+
+-- -----------------------------------------------------------------------------
+-- FFI
+-- -----------------------------------------------------------------------------
+foreign import selfFFI :: forall info internal timerName timerContent state stateData . Effect (ServerPid (StatemType info internal timerName timerContent state stateData))
 
 -- -----------------------------------------------------------------------------
 -- Response Type Classes
@@ -71,6 +79,9 @@ class SupportsChangeState m state where
 
 class SupportsChangeStateData m stateData where
   changeStateData :: stateData -> m Unit
+
+class SupportsSelf m info internal timerName timerContent state stateData where
+  self :: m info internal timerName timerContent state stateData Effect (ServerPid (StatemType info internal timerName timerContent state stateData))
 
 -- -----------------------------------------------------------------------------
 -- InitT
@@ -89,11 +100,14 @@ derive newtype instance bindInit :: Bind (InitT info internal timerName timerCon
 derive newtype instance monadInit :: Monad (InitT info internal timerName timerContent state stateData Effect)
 derive newtype instance monadTransInit :: MonadTrans (InitT info internal timerName timerContent state stateData)
 
-instance canReplyInitT :: SupportsReply (InitT info internal timerName timerContent state stateData Effect) where
+instance supportsReplyInitT :: SupportsReply (InitT info internal timerName timerContent state stateData Effect) where
   addReply reply = InitT (StateM.modify_ (\context@{ actions } -> context { actions = (CommonAction $ ReplyAction reply) : actions }))
 
-instance canAddTimeoutInitT :: SupportsAddTimeout (InitT info internal timerName timerContent state stateData Effect) timerContent where
+instance supportsAddTimeoutInitT :: SupportsAddTimeout (InitT info internal timerName timerContent state stateData Effect) timerContent where
   addTimeoutAction action = InitT (StateM.modify_ (\context@{ actions } -> context { actions = (CommonAction $ TimeoutAction action) : actions }))
+
+instance supportsSelfInitT :: SupportsSelf InitT info internal timerName timerContent state stateData where
+  self = InitT $ Exports.lift $ selfFFI
 
 -- -----------------------------------------------------------------------------
 -- StateEnterT
@@ -102,33 +116,36 @@ instance canAddTimeoutInitT :: SupportsAddTimeout (InitT info internal timerName
 -- because they only admit replies, not other sorts of actions, so do we simply throw away
 -- any actions we've accumulated aside from the replies, or throw them all and have a function which is
 -- specifically for stop_and_reply? or something else
-type StateEnterResponseBuilder timerName timerContent state stateData =
+type StateEnterResponseBuilder info internal timerName timerContent state stateData =
   { actions :: List (StateEnterAction timerName timerContent)
   , newState :: Maybe state
   , newData :: Maybe stateData
   }
 
-newtype StateEnterT timerName timerContent state stateData m a =
-  StateEnterT (StateT (StateEnterResponseBuilder timerName timerContent state stateData) m a)
+newtype StateEnterT info internal timerName timerContent state stateData m a =
+  StateEnterT (StateT (StateEnterResponseBuilder info internal timerName timerContent state stateData) m a)
 
-derive newtype instance functorStateEnter :: Functor (StateEnterT timerName timerContent state stateData Effect)
-derive newtype instance applyStateEnter :: Apply (StateEnterT timerName timerContent state stateData Effect)
-derive newtype instance applicativeStateEnter :: Applicative (StateEnterT timerName timerContent state stateData Effect)
-derive newtype instance bindStateEnter :: Bind (StateEnterT timerName timerContent state stateData Effect)
-derive newtype instance monadStateEnter :: Monad (StateEnterT timerName timerContent state stateData Effect)
-derive newtype instance monadTransStateEnter :: MonadTrans (StateEnterT timerName timerContent state stateData)
+derive newtype instance functorStateEnter :: Functor (StateEnterT info internal timerName timerContent state stateData Effect)
+derive newtype instance applyStateEnter :: Apply (StateEnterT info internal timerName timerContent state stateData Effect)
+derive newtype instance applicativeStateEnter :: Applicative (StateEnterT info internal timerName timerContent state stateData Effect)
+derive newtype instance bindStateEnter :: Bind (StateEnterT info internal timerName timerContent state stateData Effect)
+derive newtype instance monadStateEnter :: Monad (StateEnterT info internal timerName timerContent state stateData Effect)
+derive newtype instance monadTransStateEnter :: MonadTrans (StateEnterT info internal timerName timerContent state stateData)
 
-instance canReplyStateEnterT :: SupportsReply (StateEnterT timerName timerContent state stateData Effect) where
+instance supportsReplyStateEnterT :: SupportsReply (StateEnterT info internal timerName timerContent state stateData Effect) where
   addReply reply = StateEnterT (StateM.modify_ (\context@{ actions } -> context { actions = ReplyAction reply : actions }))
 
-instance canAddTimeoutStateEnterT :: SupportsAddTimeout (StateEnterT timerName timerContent state stateData Effect) timerContent where
+instance supportsAddTimeoutStateEnterT :: SupportsAddTimeout (StateEnterT info internal timerName timerContent state stateData Effect) timerContent where
   addTimeoutAction action = StateEnterT (StateM.modify_ (\context@{ actions } -> context { actions = TimeoutAction action : actions }))
 
-instance canChangeStateStateEnterT :: SupportsChangeState (StateEnterT timerName timerContent state stateData Effect) state where
+instance supportsChangeStateStateEnterT :: SupportsChangeState (StateEnterT info internal timerName timerContent state stateData Effect) state where
   changeState state = StateEnterT (StateM.modify_ (\context@{ actions } -> context { newState = Just state }))
 
-instance canChangeStateDataStateEnterT :: SupportsChangeStateData (StateEnterT timerName timerContent state stateData Effect) stateData where
+instance supportsChangeStateDataStateEnterT :: SupportsChangeStateData (StateEnterT info internal timerName timerContent state stateData Effect) stateData where
   changeStateData stateData = StateEnterT (StateM.modify_ (\context@{ actions } -> context { newData = Just stateData }))
+
+instance supportsSelfStateEnterT :: SupportsSelf StateEnterT info internal timerName timerContent state stateData where
+  self = StateEnterT $ Exports.lift $ selfFFI
 
 -- -----------------------------------------------------------------------------
 -- EventT
@@ -149,14 +166,17 @@ derive newtype instance bindEvent :: Bind (EventT info internal timerName timerC
 derive newtype instance monadEvent :: Monad (EventT info internal timerName timerContent state stateData Effect)
 derive newtype instance monadTransEvent :: MonadTrans (EventT info internal timerName timerContent state stateData)
 
-instance canReplyEventT :: SupportsReply (EventT info internal timerName timerContent state stateData Effect) where
+instance supportsReplyEventT :: SupportsReply (EventT info internal timerName timerContent state stateData Effect) where
   addReply reply = EventT (StateM.modify_ (\context@{ actions } -> context { actions = (CommonAction (ReplyAction reply)) : actions }))
 
-instance canChangeStateEventT :: SupportsChangeState (EventT info internal timerName timerContent state stateData Effect) state where
+instance supportsChangeStateEventT :: SupportsChangeState (EventT info internal timerName timerContent state stateData Effect) state where
   changeState state = EventT (StateM.modify_ (\context@{ actions } -> context { newState = Just state }))
 
-instance canChangeStateDataEventT :: SupportsChangeStateData (EventT info internal timerName timerContent state stateData Effect) stateData where
+instance supportsChangeStateDataEventT :: SupportsChangeStateData (EventT info internal timerName timerContent state stateData Effect) stateData where
   changeStateData stateData = EventT (StateM.modify_ (\context@{ actions } -> context { newData = Just stateData }))
+
+instance supportsSelfEventT :: SupportsSelf EventT info internal timerName timerContent state stateData where
+  self = EventT $ Exports.lift $ selfFFI
 
 -- -----------------------------------------------------------------------------
 -- Other Gubbins
@@ -173,7 +193,7 @@ type Spec info internal timerName timerContent state stateData =
 type InitFn info internal timerName timerContent state stateData = InitT info internal timerName timerContent state stateData Effect (InitResult state stateData)
 type CallFn reply info internal timerName timerContent state stateData = From reply -> state -> stateData -> EventT info internal timerName timerContent state stateData Effect Unit
 type EventFn info internal timerName timerContent state stateData = (Event info internal timerName timerContent) -> state -> stateData -> EventT info internal timerName timerContent state stateData Effect Unit
-type EnterFn info internal timerName timerContent state stateData = state -> state -> stateData -> StateEnterT timerName timerContent state stateData Effect Unit
+type EnterFn info internal timerName timerContent state stateData = state -> state -> stateData -> StateEnterT info internal timerName timerContent state stateData Effect Unit
 
 data InitResult state stateData
   = Init state stateData
