@@ -10,7 +10,7 @@ import Prelude
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Erl.Atom (atom)
-import Pinto.GenStatem (Event(..), InitResult(..), StatemType, Timeout(..), TimeoutAction(..))
+import Pinto.GenStatem (Event(..), InitResult(..), StatemType, Timeout(..), TimeoutAction(..), EventResult(..), CallResult(..), StateEnterResult(..))
 import Pinto.GenStatem as Statem
 import Pinto.Types (InstanceRef(..), RegistryName(..), ServerPid, crashIfNotStarted)
 
@@ -60,43 +60,41 @@ startLink = do
           }
       in do
         _ <- Statem.self
-        pure $ Init initialState initialData
+        pure $ InitOk initialState initialData
 
     handleEnter Locked UnlockedClosed currentData = do
       _ <- Statem.self
       audit AuditDoorUnlocked # Statem.lift
-      Statem.changeStateData (currentData { attempts = 0 })
-      pure unit
+      pure $ StateEnterKeepState (currentData { attempts = 0 })
 
     handleEnter UnlockedOpen UnlockedClosed currentData = do
       audit AuditDoorClosed # Statem.lift
-      pure unit
+      pure $ StateEnterKeepStateAndData
 
     handleEnter _previousState UnlockedOpen currentData = do
       audit AuditDoorOpened # Statem.lift
-      auditIfOpenTooLong
-      pure unit
+      actions <- Statem.newActions <#> auditIfOpenTooLong
+      pure $ StateEnterKeepStateAndDataWithActions actions
 
     handleEnter _previousState Locked currentData = do
       audit AuditDoorLocked # Statem.lift
-      pure unit
+      pure $ StateEnterKeepStateAndData
 
     handleEnter _previousState _currentState _currentData = do
-      pure unit
+      pure $ StateEnterKeepStateAndData
 
     handleEvent (EventStateTimeout DoorOpenTooLong) _state _stateData = do
       audit AuditDoorOpenTooLong # Statem.lift
-      pure unit
+      pure $ EventKeepStateAndData
 
     handleEvent event _state stateData@{ unknownEvents } = do
       -- TODO: log bad event
       _ <- Statem.self
       audit AuditUnexpectedEventInState # Statem.lift
-      Statem.changeStateData (stateData { unknownEvents = unknownEvents + 1 })
-      pure unit
+      pure $ EventKeepState (stateData { unknownEvents = unknownEvents + 1 })
 
-    auditIfOpenTooLong = do
-      Statem.addTimeoutAction (SetStateTimeout (After 300_000 DoorOpenTooLong))
+    auditIfOpenTooLong actions = do
+      Statem.addTimeoutAction (SetStateTimeout (After 300_000 DoorOpenTooLong)) actions
 
     audit :: AuditEvent -> Effect Unit
     audit _event  = pure unit
@@ -112,14 +110,12 @@ unlock code =
   where
     impl from Locked stateData@{ code: actualCode } =
       if actualCode == code then do
-        Statem.addReply (Statem.mkReply from UnlockSuccess)
-        Statem.changeState UnlockedClosed
-        pure unit
+        actions <- Statem.newActions <#> Statem.addReply (Statem.mkReply from UnlockSuccess)
+        pure $ CallNextStateWithActions UnlockedClosed stateData actions
       else do
-        Statem.addReply (Statem.mkReply from InvalidCode)
-        Statem.changeStateData (stateData { attempts = stateData.attempts + 1 })
-        pure unit
+        actions <- Statem.newActions <#> Statem.addReply (Statem.mkReply from InvalidCode)
+        pure $ CallKeepStateWithActions (stateData { attempts = stateData.attempts + 1 }) actions
 
     impl from _invalidState _data = do
-      Statem.addReply (Statem.mkReply from InvalidState)
-      pure unit
+        actions <- Statem.newActions <#> Statem.addReply (Statem.mkReply from InvalidState)
+        pure $ CallKeepStateAndDataWithActions actions

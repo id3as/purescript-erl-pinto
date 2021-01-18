@@ -7,25 +7,28 @@ module Pinto.GenStatem
        , class SupportsAddTimeout
        , addTimeoutAction
 
-       , class SupportsChangeState
-       , changeState
-
-       , class SupportsChangeStateData
-       , changeStateData
-
        , class SupportsSelf
        , self
+
+       , class SupportsNewActions
+       , newActions
 
        , InitFn
        , InitResult(..)
        , InitT
+       , InitActionsBuilder
 
        , CallFn
+       , CallResult(..)
        , EventFn
+       , EventResult(..)
        , EventT
+       , EventActionsBuilder
 
        , EnterFn
+       , StateEnterResult(..)
        , StateEnterT
+       , StateEnterActionsBuilder
 
        , TimeoutAction(..)
        , NamedTimeoutAction(..)
@@ -49,13 +52,12 @@ module Pinto.GenStatem
 import Prelude
 
 import Control.Monad.State (StateT)
-import Control.Monad.State as StateM
 import Control.Monad.Trans.Class (class MonadTrans)
 import Control.Monad.Trans.Class (lift) as Exports
 
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
-import Erl.Data.List (List, (:))
+import Erl.Data.List (List, (:), nil)
 import Foreign (Foreign)
 import Pinto.Types (InstanceRef, RegistryName, StartLinkResult, ServerPid)
 import Unsafe.Coerce (unsafeCoerce)
@@ -68,30 +70,28 @@ foreign import selfFFI :: forall info internal timerName timerContent state stat
 -- -----------------------------------------------------------------------------
 -- Response Type Classes
 -- -----------------------------------------------------------------------------
-class SupportsReply m where
-  addReply :: Reply -> m Unit
+class SupportsReply b where
+  addReply :: Reply -> b -> b
 
-class SupportsAddTimeout m timerContent  where
-  addTimeoutAction :: TimeoutAction timerContent -> m Unit
-
-class SupportsChangeState m state where
-  changeState :: state -> m Unit
-
-class SupportsChangeStateData m stateData where
-  changeStateData :: stateData -> m Unit
+class SupportsAddTimeout b timerContent  where
+  addTimeoutAction :: TimeoutAction timerContent -> b timerContent -> b timerContent
 
 class SupportsSelf m info internal timerName timerContent state stateData where
   self :: m info internal timerName timerContent state stateData Effect (ServerPid (StatemType info internal timerName timerContent state stateData))
 
+class SupportsNewActions m builder where
+  newActions :: m builder
+
 -- -----------------------------------------------------------------------------
 -- InitT
 -- -----------------------------------------------------------------------------
-type InitResponseBuilder info internal timerName timerContent state stateData =
-  { actions :: List (EventAction info internal timerName timerContent)
-  }
+type InitContext info internal timerName timerContent state stateData = {}
+
+newtype InitActionsBuilder info internal timerName timerContent =
+  InitActionsBuilder (List (EventAction info internal timerName timerContent))
 
 newtype InitT info internal timerName timerContent state stateData m a =
-  InitT (StateT (InitResponseBuilder info internal timerName timerContent state stateData) m a)
+  InitT (StateT (InitContext info internal timerName timerContent state stateData) m a)
 
 derive newtype instance functorInit :: Functor (InitT info internal timerName timerContent state stateData Effect)
 derive newtype instance applyInit :: Apply (InitT info internal timerName timerContent state stateData Effect)
@@ -100,14 +100,17 @@ derive newtype instance bindInit :: Bind (InitT info internal timerName timerCon
 derive newtype instance monadInit :: Monad (InitT info internal timerName timerContent state stateData Effect)
 derive newtype instance monadTransInit :: MonadTrans (InitT info internal timerName timerContent state stateData)
 
-instance supportsReplyInitT :: SupportsReply (InitT info internal timerName timerContent state stateData Effect) where
-  addReply reply = InitT (StateM.modify_ (\context@{ actions } -> context { actions = (CommonAction $ ReplyAction reply) : actions }))
-
-instance supportsAddTimeoutInitT :: SupportsAddTimeout (InitT info internal timerName timerContent state stateData Effect) timerContent where
-  addTimeoutAction action = InitT (StateM.modify_ (\context@{ actions } -> context { actions = (CommonAction $ TimeoutAction action) : actions }))
-
 instance supportsSelfInitT :: SupportsSelf InitT info internal timerName timerContent state stateData where
   self = InitT $ Exports.lift $ selfFFI
+
+instance supportsNewActionsInitT :: SupportsNewActions (InitT info internal timerName timerContent state stateData Effect) (InitActionsBuilder info internal timerName timerContent) where
+  newActions = InitT $ Exports.lift $ pure $ InitActionsBuilder nil
+
+instance supportsReplyInitActionsBuilder :: SupportsReply (InitActionsBuilder info internal timerName timerContent) where
+  addReply reply (InitActionsBuilder actions) = InitActionsBuilder $ (CommonAction $ ReplyAction reply) : actions
+
+instance supportsAddTimeoutInitActionsBuilder :: SupportsAddTimeout (InitActionsBuilder info internal timerName) timerContent where
+  addTimeoutAction action (InitActionsBuilder actions) = InitActionsBuilder $ (CommonAction $ TimeoutAction action) : actions
 
 -- -----------------------------------------------------------------------------
 -- StateEnterT
@@ -116,14 +119,13 @@ instance supportsSelfInitT :: SupportsSelf InitT info internal timerName timerCo
 -- because they only admit replies, not other sorts of actions, so do we simply throw away
 -- any actions we've accumulated aside from the replies, or throw them all and have a function which is
 -- specifically for stop_and_reply? or something else
-type StateEnterResponseBuilder info internal timerName timerContent state stateData =
-  { actions :: List (StateEnterAction timerName timerContent)
-  , newState :: Maybe state
-  , newData :: Maybe stateData
-  }
+type StateEnterContext info internal timerName timerContent state stateData = {}
+
+newtype StateEnterActionsBuilder timerName timerContent =
+  StateEnterActionsBuilder (List (StateEnterAction timerName timerContent))
 
 newtype StateEnterT info internal timerName timerContent state stateData m a =
-  StateEnterT (StateT (StateEnterResponseBuilder info internal timerName timerContent state stateData) m a)
+  StateEnterT (StateT (StateEnterContext info internal timerName timerContent state stateData) m a)
 
 derive newtype instance functorStateEnter :: Functor (StateEnterT info internal timerName timerContent state stateData Effect)
 derive newtype instance applyStateEnter :: Apply (StateEnterT info internal timerName timerContent state stateData Effect)
@@ -132,32 +134,28 @@ derive newtype instance bindStateEnter :: Bind (StateEnterT info internal timerN
 derive newtype instance monadStateEnter :: Monad (StateEnterT info internal timerName timerContent state stateData Effect)
 derive newtype instance monadTransStateEnter :: MonadTrans (StateEnterT info internal timerName timerContent state stateData)
 
-instance supportsReplyStateEnterT :: SupportsReply (StateEnterT info internal timerName timerContent state stateData Effect) where
-  addReply reply = StateEnterT (StateM.modify_ (\context@{ actions } -> context { actions = ReplyAction reply : actions }))
-
-instance supportsAddTimeoutStateEnterT :: SupportsAddTimeout (StateEnterT info internal timerName timerContent state stateData Effect) timerContent where
-  addTimeoutAction action = StateEnterT (StateM.modify_ (\context@{ actions } -> context { actions = TimeoutAction action : actions }))
-
-instance supportsChangeStateStateEnterT :: SupportsChangeState (StateEnterT info internal timerName timerContent state stateData Effect) state where
-  changeState state = StateEnterT (StateM.modify_ (\context@{ actions } -> context { newState = Just state }))
-
-instance supportsChangeStateDataStateEnterT :: SupportsChangeStateData (StateEnterT info internal timerName timerContent state stateData Effect) stateData where
-  changeStateData stateData = StateEnterT (StateM.modify_ (\context@{ actions } -> context { newData = Just stateData }))
-
 instance supportsSelfStateEnterT :: SupportsSelf StateEnterT info internal timerName timerContent state stateData where
   self = StateEnterT $ Exports.lift $ selfFFI
+
+instance supportsNewActionsStateEnterT :: SupportsNewActions (StateEnterT info internal timerName timerContent state stateData Effect) (StateEnterActionsBuilder timerName timerContent) where
+  newActions = StateEnterT $ Exports.lift $ pure $ StateEnterActionsBuilder nil
+
+instance supportsReplyStateEnterActionsBuilder :: SupportsReply (StateEnterActionsBuilder timerName timerContent) where
+  addReply reply (StateEnterActionsBuilder actions) = StateEnterActionsBuilder $ (ReplyAction reply) : actions
+
+instance supportsAddTimeoutStateEnterActionsBuilder :: SupportsAddTimeout (StateEnterActionsBuilder timerName) timerContent where
+  addTimeoutAction action (StateEnterActionsBuilder actions) = StateEnterActionsBuilder $ (TimeoutAction action) : actions
 
 -- -----------------------------------------------------------------------------
 -- EventT
 -- -----------------------------------------------------------------------------
-type EventResponseBuilder info internal timerName timerContent state stateData =
-  { actions :: List (EventAction info internal timerName timerContent)
-  , newState :: Maybe state
-  , newData :: Maybe stateData
-  }
+type EventContext info internal timerName timerContent state stateData = {}
+
+newtype EventActionsBuilder info internal timerName timerContent =
+  EventActionsBuilder (List (EventAction info internal timerName timerContent))
 
 newtype EventT info internal timerName timerContent state stateData m a =
-  EventT (StateT (EventResponseBuilder info internal timerName timerContent state stateData) m a)
+  EventT (StateT (EventContext info internal timerName timerContent state stateData) m a)
 
 derive newtype instance functorEvent :: Functor (EventT info internal timerName timerContent state stateData Effect)
 derive newtype instance applyEvent :: Apply (EventT info internal timerName timerContent state stateData Effect)
@@ -166,17 +164,14 @@ derive newtype instance bindEvent :: Bind (EventT info internal timerName timerC
 derive newtype instance monadEvent :: Monad (EventT info internal timerName timerContent state stateData Effect)
 derive newtype instance monadTransEvent :: MonadTrans (EventT info internal timerName timerContent state stateData)
 
-instance supportsReplyEventT :: SupportsReply (EventT info internal timerName timerContent state stateData Effect) where
-  addReply reply = EventT (StateM.modify_ (\context@{ actions } -> context { actions = (CommonAction (ReplyAction reply)) : actions }))
-
-instance supportsChangeStateEventT :: SupportsChangeState (EventT info internal timerName timerContent state stateData Effect) state where
-  changeState state = EventT (StateM.modify_ (\context@{ actions } -> context { newState = Just state }))
-
-instance supportsChangeStateDataEventT :: SupportsChangeStateData (EventT info internal timerName timerContent state stateData Effect) stateData where
-  changeStateData stateData = EventT (StateM.modify_ (\context@{ actions } -> context { newData = Just stateData }))
-
 instance supportsSelfEventT :: SupportsSelf EventT info internal timerName timerContent state stateData where
   self = EventT $ Exports.lift $ selfFFI
+
+instance supportsNewActionsEventT :: SupportsNewActions (EventT info internal timerName timerContent state stateData Effect) (EventActionsBuilder info internal timerName timerContent) where
+  newActions = EventT $ Exports.lift $ pure $ EventActionsBuilder nil
+
+instance supportsReplyEventActionsBuilder :: SupportsReply (EventActionsBuilder info internal timerName timerContent) where
+  addReply reply (EventActionsBuilder actions) = EventActionsBuilder $ (CommonAction (ReplyAction reply)) : actions
 
 -- -----------------------------------------------------------------------------
 -- Other Gubbins
@@ -190,34 +185,62 @@ type Spec info internal timerName timerContent state stateData =
   , handleEnter :: Maybe (EnterFn info internal timerName timerContent state stateData)
   }
 
-type InitFn info internal timerName timerContent state stateData = InitT info internal timerName timerContent state stateData Effect (InitResult state stateData)
-type CallFn reply info internal timerName timerContent state stateData = From reply -> state -> stateData -> EventT info internal timerName timerContent state stateData Effect Unit
-type EventFn info internal timerName timerContent state stateData = (Event info internal timerName timerContent) -> state -> stateData -> EventT info internal timerName timerContent state stateData Effect Unit
-type EnterFn info internal timerName timerContent state stateData = state -> state -> stateData -> StateEnterT info internal timerName timerContent state stateData Effect Unit
+type InitFn info internal timerName timerContent state stateData =
+  InitT info internal timerName timerContent state stateData Effect (InitResult info internal timerName timerContent state stateData)
 
-data InitResult state stateData
-  = Init state stateData
-  | InitWithHibernate state
-  | InitStop Foreign
-  | InitIgnore
+type CallFn reply info internal timerName timerContent state stateData =
+  From reply ->
+  state ->
+  stateData ->
+  EventT info internal timerName timerContent state stateData Effect (CallResult info internal timerName timerContent state stateData)
+
+type EventFn info internal timerName timerContent state stateData =
+  (Event info internal timerName timerContent) ->
+  state ->
+  stateData ->
+  EventT info internal timerName timerContent state stateData Effect (EventResult info internal timerName timerContent state stateData)
+
+type EnterFn info internal timerName timerContent state stateData =
+  state ->
+  state ->
+  stateData ->
+  StateEnterT info internal timerName timerContent state stateData Effect (StateEnterResult timerName timerContent state stateData)
+
+data CallResult info internal timerName timerContent state stateData
+  = CallKeepState stateData
+  | CallKeepStateWithActions stateData (EventActionsBuilder info internal timerName timerContent)
+  | CallKeepStateAndData
+  | CallKeepStateAndDataWithActions (EventActionsBuilder info internal timerName timerContent)
+
+  | CallNextState state stateData
+  | CallNextStateWithActions state stateData (EventActionsBuilder info internal timerName timerContent)
+
+data EventResult info internal timerName timerContent state stateData
+  = EventKeepState stateData
+  | EventKeepStateWithActions stateData (EventActionsBuilder info internal timerName timerContent)
+  | EventKeepStateAndData
+  | EventKeepStateAndDataWithActions (EventActionsBuilder info internal timerName timerContent)
+
+  | EventNextState state stateData
+  | EventNextStateWithActions state stateData (EventActionsBuilder info internal timerName timerContent)
 
 data StateEnterResult timerName timerContent state stateData
   = StateEnterKeepState stateData
-  | StateEnterKeepStateWithActions (List (StateEnterAction timerName timerContent)) stateData
+  | StateEnterKeepStateWithActions (StateEnterActionsBuilder timerName timerContent) stateData
   | StateEnterKeepStateAndData
-  | StateEnterKeepStateAndDataWithActions (List (StateEnterAction timerName timerContent))
+  | StateEnterKeepStateAndDataWithActions (StateEnterActionsBuilder timerName timerContent)
+
+data InitResult info internal timerName timerContent state stateData
+  = InitOk state stateData
+  | InitOkWithActions state stateData (InitActionsBuilder info internal timerName timerContent)
+  | InitStop Foreign
+  | InitIgnore
 
 type StateEnterAction timerName timerContent = CommonAction timerName timerContent
 
-data HandleEventResult info internal timerName timerContent state stateData
-  = HandleEventKeepState stateData
-  | HandleEventKeepStateWithActions (List (EventAction info internal timerName timerContent)) stateData
-  | HandleEventKeepStateAndData
-  | HandleEventKeepStateAndDataWithActions (List (EventAction info internal timerName timerContent))
-
-  | HandleEventNextState state stateData
-  | HandleEventNextStateWithActions state stateData (List (EventAction info internal timerName timerContent))
-
+-- This is what Erlang calls an action, and is supported
+-- for handle_event (not for state enter though) and for
+-- init
 data EventAction info internal timerName timerContent
   = CommonAction (CommonAction timerName timerContent)
   | Postpone
@@ -230,6 +253,8 @@ data Event info internal timerName timerContent
   | EventNamedTimeout timerName timerContent
   | EventStateTimeout timerContent
 
+-- This is what erlang calls a state_enter_action, and is returnable
+-- from state enter, as well as by handle_event and init
 data CommonAction timerName timerContent
   = Hibernate
   | TimeoutAction (TimeoutAction timerContent)
@@ -256,7 +281,6 @@ foreign import data FromForeign :: Type
 newtype From reply = From FromForeign
 
 foreign import mkReply :: forall reply. From reply -> reply -> Reply
-
 
 startLink :: forall info internal timerName timerContent state stateData. Spec info internal timerName timerContent state stateData -> Effect (StartLinkResult (StatemType info internal timerName timerContent state stateData))
 startLink _ = unsafeCoerce unit
