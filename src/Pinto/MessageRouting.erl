@@ -39,21 +39,25 @@ maybeStartRouterImpl(Ref, RegisterListener, DeregisterListener, Callback) ->
               end
            end,
   fun() ->
-    Pid = spawn(fun() ->
-                    MaybeHandle = RegisterListener(),
-                    case MaybeHandle of
-                      {just, Handle} ->
-                        Recipient ! { start_result, Handle },
-                        MonitorRef = monitor(process, Recipient),
-                        Fun(Handle, MonitorRef);
-                      {nothing} ->
-                        Recipient ! { start_result, undefined }
-                    end
-                end),
+    {Pid, MonitorRef} = spawn_monitor(fun() ->
+                                          MaybeHandle = RegisterListener(),
+                                          case MaybeHandle of
+                                            {just, Handle} ->
+                                              Recipient ! { start_result, Handle },
+                                              MonitorRef = monitor(process, Recipient),
+                                              Fun(Handle, MonitorRef);
+                                            {nothing} ->
+                                              Recipient ! { start_result, undefined }
+                                          end
+                                      end),
     receive
+      {'DOWN', MonitorRef, _, _, _} ->
+        {nothing};
       { start_result, undefined } ->
+        erlang:demonitor(MonitorRef, [flush]),
         {nothing};
       { start_result, Result } ->
+        erlang:demonitor(MonitorRef, [flush]),
         {just, (Ref(Result))(Pid) }
     end
   end.
