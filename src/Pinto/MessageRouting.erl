@@ -73,9 +73,12 @@ stopRouterFromCallback() ->
 stopRouter({_, _, Pid}) ->
   fun() ->
       Ref = make_ref(),
+      MRef = erlang:monitor(process, Pid),
       Pid ! {stop, self(), Ref},
       receive
-        {stopped, Ref} -> ok
+        {stopped, Ref} -> ok;
+        {'DOWN', MRef, _, _, _} -> ok
       end,
+      erlang:demonitor(MRef, [flush]),
       ok
   end.
