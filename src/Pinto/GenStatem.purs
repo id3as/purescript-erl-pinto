@@ -79,8 +79,8 @@ class SupportsAddTimeout b timerContent  where
 class SupportsSelf m info internal timerName timerContent state stateData where
   self :: m info internal timerName timerContent state stateData Effect (ServerPid (StatemType info internal timerName timerContent state stateData))
 
-class SupportsNewActions m builder where
-  newActions :: m builder
+class SupportsNewActions builder where
+  newActions :: builder
 
 -- -----------------------------------------------------------------------------
 -- InitT
@@ -103,8 +103,8 @@ derive newtype instance monadTransInit :: MonadTrans (InitT info internal timerN
 instance supportsSelfInitT :: SupportsSelf InitT info internal timerName timerContent state stateData where
   self = InitT $ Exports.lift $ selfFFI
 
-instance supportsNewActionsInitT :: SupportsNewActions (InitT info internal timerName timerContent state stateData Effect) (InitActionsBuilder info internal timerName timerContent) where
-  newActions = InitT $ Exports.lift $ pure $ InitActionsBuilder nil
+instance supportsNewActionsInitActionsBuilder :: SupportsNewActions (InitActionsBuilder info internal timerName timerContent) where
+  newActions = InitActionsBuilder nil
 
 instance supportsReplyInitActionsBuilder :: SupportsReply (InitActionsBuilder info internal timerName timerContent) where
   addReply reply (InitActionsBuilder actions) = InitActionsBuilder $ (CommonAction $ ReplyAction reply) : actions
@@ -137,8 +137,8 @@ derive newtype instance monadTransStateEnter :: MonadTrans (StateEnterT info int
 instance supportsSelfStateEnterT :: SupportsSelf StateEnterT info internal timerName timerContent state stateData where
   self = StateEnterT $ Exports.lift $ selfFFI
 
-instance supportsNewActionsStateEnterT :: SupportsNewActions (StateEnterT info internal timerName timerContent state stateData Effect) (StateEnterActionsBuilder timerName timerContent) where
-  newActions = StateEnterT $ Exports.lift $ pure $ StateEnterActionsBuilder nil
+instance supportsNewActionsStateEnterActionsBuilder :: SupportsNewActions (StateEnterActionsBuilder timerName timerContent) where
+  newActions = StateEnterActionsBuilder nil
 
 instance supportsReplyStateEnterActionsBuilder :: SupportsReply (StateEnterActionsBuilder timerName timerContent) where
   addReply reply (StateEnterActionsBuilder actions) = StateEnterActionsBuilder $ (ReplyAction reply) : actions
@@ -167,8 +167,8 @@ derive newtype instance monadTransEvent :: MonadTrans (EventT info internal time
 instance supportsSelfEventT :: SupportsSelf EventT info internal timerName timerContent state stateData where
   self = EventT $ Exports.lift $ selfFFI
 
-instance supportsNewActionsEventT :: SupportsNewActions (EventT info internal timerName timerContent state stateData Effect) (EventActionsBuilder info internal timerName timerContent) where
-  newActions = EventT $ Exports.lift $ pure $ EventActionsBuilder nil
+instance supportsNewActionsEventActionsBuilder :: SupportsNewActions (EventActionsBuilder info internal timerName timerContent) where
+  newActions = EventActionsBuilder nil
 
 instance supportsReplyEventActionsBuilder :: SupportsReply (EventActionsBuilder info internal timerName timerContent) where
   addReply reply (EventActionsBuilder actions) = EventActionsBuilder $ (CommonAction (ReplyAction reply)) : actions

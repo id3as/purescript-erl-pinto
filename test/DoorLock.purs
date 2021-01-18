@@ -73,7 +73,7 @@ startLink = do
 
     handleEnter _previousState UnlockedOpen currentData = do
       audit AuditDoorOpened # Statem.lift
-      actions <- Statem.newActions <#> auditIfOpenTooLong
+      let actions = Statem.newActions # auditIfOpenTooLong
       pure $ StateEnterKeepStateAndDataWithActions actions
 
     handleEnter _previousState Locked currentData = do
@@ -110,12 +110,12 @@ unlock code =
   where
     impl from Locked stateData@{ code: actualCode } =
       if actualCode == code then do
-        actions <- Statem.newActions <#> Statem.addReply (Statem.mkReply from UnlockSuccess)
+        let actions = Statem.newActions # Statem.addReply (Statem.mkReply from UnlockSuccess)
         pure $ CallNextStateWithActions UnlockedClosed stateData actions
       else do
-        actions <- Statem.newActions <#> Statem.addReply (Statem.mkReply from InvalidCode)
+        let actions = Statem.newActions # Statem.addReply (Statem.mkReply from InvalidCode)
         pure $ CallKeepStateWithActions (stateData { attempts = stateData.attempts + 1 }) actions
 
     impl from _invalidState _data = do
-        actions <- Statem.newActions <#> Statem.addReply (Statem.mkReply from InvalidState)
+        let actions = Statem.newActions # Statem.addReply (Statem.mkReply from InvalidState)
         pure $ CallKeepStateAndDataWithActions actions
