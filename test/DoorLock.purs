@@ -1,6 +1,7 @@
 module Test.DoorLock
        ( startLink
        , State
+       , StateId
        , TimerContent
        )
        where
@@ -10,28 +11,36 @@ import Prelude
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Erl.Atom (atom)
-import Pinto.GenStatem (Event(..), InitResult(..), StatemType, Timeout(..), TimeoutAction(..), EventResult(..), CallResult(..), StateEnterResult(..))
+import Pinto.GenStatem (class HasStateId, Event(..), InitResult(..), StatemType, Timeout(..), TimeoutAction(..), EventResult(..), CallResult(..), StateEnterResult(..))
 import Pinto.GenStatem as Statem
 import Pinto.Types (InstanceRef(..), RegistryName(..), ServerPid, crashIfNotStarted)
 
+data StateId
+  = StateIdLocked
+  | StateIdUnlockedClosed
+  | StateIdUnlockedOpen
+
 data State
-  = Locked
-  | UnlockedClosed
-  | UnlockedOpen
+  = Locked { failedAttempts :: Int }
+  | UnlockedClosed { failedAttemptsBeforeUnlock :: Int }
+  | UnlockedOpen { failedAttemptsBeforeUnlock :: Int }
 
 type Data =
   { code :: String
-  , attempts :: Int
   , unknownEvents :: Int
   }
+
+instance stateHasStateId :: HasStateId StateId State where
+  getStateId (Locked _) = StateIdLocked
+  getStateId (UnlockedClosed _) = StateIdUnlockedClosed
+  getStateId (UnlockedOpen _) = StateIdUnlockedOpen
 
 type Info = Void
 type Internal = Void
 type TimerName = Void
-data TimerContent
-  = DoorOpenTooLong
+data TimerContent = DoorOpenTooLong
 
-type DoorLockType = StatemType Info Internal TimerName TimerContent State Data
+type DoorLockType = StatemType Info Internal TimerName TimerContent Data StateId State
 
 data AuditEvent
   = AuditDoorUnlocked
@@ -52,46 +61,45 @@ startLink = do
   where
     init =
       let
-        initialState = Locked
+        initialState = Locked { failedAttempts: 0 }
         initialData =
           { code: "1234"
-          , attempts: 0
           , unknownEvents: 0
           }
       in do
         _ <- Statem.self
         pure $ InitOk initialState initialData
 
-    handleEnter Locked UnlockedClosed currentData = do
+    handleEnter (Locked _) (UnlockedClosed _) _commonData = do
       _ <- Statem.self
       audit AuditDoorUnlocked # Statem.lift
-      pure $ StateEnterKeepState (currentData { attempts = 0 })
+      pure $ StateEnterKeepData
 
-    handleEnter UnlockedOpen UnlockedClosed currentData = do
+    handleEnter (UnlockedOpen _) (UnlockedClosed _) _commonData = do
       audit AuditDoorClosed # Statem.lift
-      pure $ StateEnterKeepStateAndData
+      pure $ StateEnterKeepData
 
-    handleEnter _previousState UnlockedOpen currentData = do
+    handleEnter _previousState (UnlockedOpen _) _commonData = do
       audit AuditDoorOpened # Statem.lift
       let actions = Statem.newActions # auditIfOpenTooLong
-      pure $ StateEnterKeepStateAndDataWithActions actions
+      pure $ StateEnterKeepDataWithActions actions
 
-    handleEnter _previousState Locked currentData = do
+    handleEnter _previousState (Locked _) _commonData = do
       audit AuditDoorLocked # Statem.lift
-      pure $ StateEnterKeepStateAndData
+      pure $ StateEnterKeepData
 
-    handleEnter _previousState _currentState _currentData = do
-      pure $ StateEnterKeepStateAndData
+    handleEnter _previousState _currentState _commonData = do
+      pure $ StateEnterKeepData
 
-    handleEvent (EventStateTimeout DoorOpenTooLong) _state _stateData = do
+    handleEvent (EventStateTimeout DoorOpenTooLong) _state _commonData = do
       audit AuditDoorOpenTooLong # Statem.lift
       pure $ EventKeepStateAndData
 
-    handleEvent event _state stateData@{ unknownEvents } = do
+    handleEvent event state commonData@{ unknownEvents } = do
       -- TODO: log bad event
       _ <- Statem.self
       audit AuditUnexpectedEventInState # Statem.lift
-      pure $ EventKeepState (stateData { unknownEvents = unknownEvents + 1 })
+      pure $ EventKeepState (commonData { unknownEvents = unknownEvents + 1 })
 
     auditIfOpenTooLong actions = do
       Statem.addTimeoutAction (SetStateTimeout (After 300_000 DoorOpenTooLong)) actions
@@ -108,14 +116,14 @@ unlock :: String -> Effect UnlockResult
 unlock code =
   Statem.call (ByName name) impl
   where
-    impl from Locked stateData@{ code: actualCode } =
+    impl from (Locked stateData) commonData@{ code: actualCode } =
       if actualCode == code then do
         let actions = Statem.newActions # Statem.addReply (Statem.mkReply from UnlockSuccess)
-        pure $ CallNextStateWithActions UnlockedClosed stateData actions
+        pure $ CallNextStateWithActions (UnlockedClosed { failedAttemptsBeforeUnlock: stateData.failedAttempts }) commonData actions
       else do
         let actions = Statem.newActions # Statem.addReply (Statem.mkReply from InvalidCode)
-        pure $ CallKeepStateWithActions (stateData { attempts = stateData.attempts + 1 }) actions
+        pure $ CallNextStateWithActions (Locked (stateData { failedAttempts = stateData.failedAttempts + 1 })) commonData actions
 
-    impl from _invalidState _data = do
+    impl from _invalidState _commonData = do
         let actions = Statem.newActions # Statem.addReply (Statem.mkReply from InvalidState)
         pure $ CallKeepStateAndDataWithActions actions
