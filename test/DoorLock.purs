@@ -105,25 +105,25 @@ startLink = do
         _ <- Statem.self
         pure $ InitOk initialState initialData
 
-    handleEnter (Locked _) (UnlockedClosed _) _commonData = do
+    handleEnter StateIdLocked StateIdUnlockedClosed _state _commonData = do
       _ <- Statem.self
       audit AuditDoorUnlocked # Statem.lift
       pure $ StateEnterKeepData
 
-    handleEnter (UnlockedOpen _) (UnlockedClosed _) _commonData = do
+    handleEnter StateIdUnlockedOpen StateIdUnlockedClosed _state _commonData = do
       audit AuditDoorClosed # Statem.lift
       pure $ StateEnterKeepData
 
-    handleEnter _previousState (UnlockedOpen _) _commonData = do
+    handleEnter _previousStateId StateIdUnlockedOpen _state _commonData = do
       audit AuditDoorOpened # Statem.lift
       let actions = Statem.newActions # auditIfOpenTooLong
       pure $ StateEnterKeepDataWithActions actions
 
-    handleEnter _previousState (Locked _) _commonData = do
+    handleEnter _previousStateId StateIdLocked _state _commonData = do
       audit AuditDoorLocked # Statem.lift
       pure $ StateEnterKeepData
 
-    handleEnter _previousState _currentState _commonData = do
+    handleEnter _previousStateId _currentStateId _state _commonData = do
       pure $ StateEnterKeepData
 
     handleEvent (EventStateTimeout DoorOpenTooLong) _state _commonData = do

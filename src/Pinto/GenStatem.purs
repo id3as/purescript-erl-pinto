@@ -59,6 +59,7 @@ import Control.Monad.State.Trans as StateT
 import Control.Monad.Trans.Class (class MonadTrans)
 import Control.Monad.Trans.Class (lift) as Exports
 
+import Data.Function.Uncurried (Fn1, Fn2, Fn3, Fn4, mkFn1, mkFn2, mkFn3, mkFn4)
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Erl.Data.List (List, (:), nil)
@@ -206,7 +207,8 @@ type EventFn info internal timerName timerContent commonData stateId state =
   EventT info internal timerName timerContent commonData stateId state Effect (EventResult info internal timerName timerContent commonData state)
 
 type EnterFn info internal timerName timerContent commonData stateId state =
-  state ->
+  stateId ->
+  stateId ->
   state ->
   commonData ->
   StateEnterT info internal timerName timerContent commonData stateId state Effect (StateEnterResult timerName timerContent commonData)
@@ -227,7 +229,6 @@ data EventResult info internal timerName timerContent commonData state
   | EventNextState state commonData
   | EventNextStateWithActions state commonData (EventActionsBuilder info internal timerName timerContent)
 
--- we need a side-channel data thingy
 data StateEnterResult timerName timerContent commonData
   = StateEnterOk commonData
   | StateEnterOkWithActions commonData (StateEnterActionsBuilder timerName timerContent)
@@ -283,16 +284,30 @@ data Timeout timerContent
 -- -----------------------------------------------------------------------------
 -- FFI
 -- -----------------------------------------------------------------------------
-type OuterData commonData state =
+newtype OuterData info internal timerName timerContent commonData stateId state = OuterData
   { state :: state
   , commonData :: commonData
+  , handleEnter :: WrappedEnterFn info internal timerName timerContent commonData stateId state
   }
 
+type WrappedEnterFn info internal timerName timerContent commonData stateId state =
+  Fn3
+    stateId
+    stateId
+    (OuterData info internal timerName timerContent commonData stateId state)
+    (Effect (OuterStateEnterResult info internal timerName timerContent commonData stateId state))
+
 data OuterInitResult info internal timerName timerContent commonData stateId state
-  = OuterInitOk stateId (OuterData commonData state)
-  | OuterInitOkWithActions stateId (OuterData commonData state) (InitActionsBuilder info internal timerName timerContent)
+  = OuterInitOk stateId (OuterData info internal timerName timerContent commonData stateId state)
+  | OuterInitOkWithActions stateId (OuterData info internal timerName timerContent commonData stateId state) (InitActionsBuilder info internal timerName timerContent)
   | OuterInitStop Foreign
   | OuterInitIgnore
+
+data OuterStateEnterResult info internal timerName timerContent commonData stateId state
+  = OuterStateEnterOk (OuterData info internal timerName timerContent commonData stateId state)
+  | OuterStateEnterOkWithActions (OuterData info internal timerName timerContent commonData stateId state) (StateEnterActionsBuilder timerName timerContent)
+  | OuterStateEnterKeepData
+  | OuterStateEnterKeepDataWithActions (StateEnterActionsBuilder timerName timerContent)
 
 foreign import data Reply :: Type
 foreign import data FromForeign :: Type
@@ -318,21 +333,52 @@ startLink ::
   forall info internal timerName timerContent commonData stateId state. HasStateId stateId state =>
   Spec info internal timerName timerContent commonData stateId state ->
   Effect (StartLinkResult (StatemType info internal timerName timerContent commonData stateId state))
-startLink { name: maybeName, init: (InitT init) } =
+startLink
+  { name: maybeName
+  , init: (InitT init)
+  , handleEnter: maybeHandleEnter
+  } =
   startLinkFFI maybeName initEffect
 
   where
     initEffect :: Effect (OuterInitResult info internal timerName timerContent commonData stateId state)
     initEffect = do
-      let initContext = {}
-      initResult <- (StateT.evalStateT init) initContext
-      let outerStateId = getStateId
-      pure $ mapInitResult initResult
+      let context = {}
+      result <- StateT.evalStateT init context
 
-    mapInitResult (InitOk state commonData) = OuterInitOk (getStateId state) ({ state, commonData })
-    mapInitResult (InitOkWithActions state commonData actions) = OuterInitOkWithActions (getStateId state) ({ state, commonData }) actions
-    mapInitResult (InitStop error) = OuterInitStop error
-    mapInitResult (InitIgnore) = OuterInitIgnore
+      case result of
+        (InitOk state commonData) ->
+          pure $  OuterInitOk (getStateId state) (OuterData { state, commonData, handleEnter: mkFn3 wrappedHandleEnter })
+        (InitOkWithActions state commonData actions) ->
+          pure $  OuterInitOkWithActions (getStateId state) (OuterData { state, commonData, handleEnter: mkFn3 wrappedHandleEnter }) actions
+        (InitStop error) ->
+          pure $  OuterInitStop error
+        (InitIgnore) ->
+          pure $  OuterInitIgnore
+
+    wrappedHandleEnter oldStateId newStateId (OuterData currentData@{ state, commonData }) =
+      case maybeHandleEnter of
+        Just handleEnter -> do
+            let context = {}
+            let StateEnterT stateT = handleEnter oldStateId newStateId state commonData
+
+            result <- StateT.evalStateT stateT context
+
+            case result of
+              StateEnterOk newData ->
+                pure $ OuterStateEnterOk (OuterData $ currentData { commonData = newData })
+
+              StateEnterOkWithActions newData actions ->
+                pure $ OuterStateEnterOkWithActions (OuterData $ currentData { commonData = newData }) actions
+
+              StateEnterKeepData ->
+                pure $ OuterStateEnterKeepData
+
+              StateEnterKeepDataWithActions actions ->
+                pure $ OuterStateEnterKeepDataWithActions actions
+
+        Nothing ->
+            pure $ OuterStateEnterKeepData
 
 mkSpec ::
   forall info internal timerName timerContent commonData stateId state. HasStateId stateId state =>

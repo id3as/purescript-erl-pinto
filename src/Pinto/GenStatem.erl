@@ -70,10 +70,18 @@ init(InitEffect) ->
     {outerInitIgnore} -> ignore
   end.
 
-handle_event(enter, OldState, NewState, Data) ->
+handle_event(enter, OldState, NewState, #{ handleEnter := HandleEnter } = Data) ->
   io:format(user, "Got state enter ~p -> ~p (~p)~n", [OldState, NewState, Data]),
-  keep_state_and_data;
+  HandleEnterEffect = HandleEnter(OldState, NewState, Data),
+  HandleEnterResult = HandleEnterEffect(),
+  io:format(user, "Enter result: ~p~n", [HandleEnterResult]),
+  case HandleEnterResult of
+    {outerStateEnterOk, Data} -> {keep_state, Data};
+    {outerStateEnterOkWithActions, Data, Actions} -> {keep_state, Data, Actions};
+    {outerStateEnterKeepData} -> keep_state_and_data;
+    {outerStateEnterKeepDataWithActions, Actions} -> {keep_state_and_data, Actions}
+  end;
 
-handle_event(Event, EventContent, State, Data) ->
+handle_event(Event, EventContent, State, #{} = Data) ->
   io:format(user, "Got event ~p:~p in state ~p (~p)~n", [Event, EventContent, State, Data]),
   keep_state_and_data.
