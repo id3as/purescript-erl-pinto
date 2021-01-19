@@ -54,7 +54,8 @@ module Pinto.GenStatem
 
 import Prelude
 
-import Control.Monad.State (StateT)
+import Control.Monad.State.Trans (StateT)
+import Control.Monad.State.Trans as StateT
 import Control.Monad.Trans.Class (class MonadTrans)
 import Control.Monad.Trans.Class (lift) as Exports
 
@@ -64,11 +65,6 @@ import Erl.Data.List (List, (:), nil)
 import Foreign (Foreign)
 import Pinto.Types (InstanceRef, RegistryName, StartLinkResult, ServerPid)
 import Unsafe.Coerce (unsafeCoerce)
-
--- -----------------------------------------------------------------------------
--- FFI
--- -----------------------------------------------------------------------------
-foreign import selfFFI :: forall info internal timerName timerContent commonData stateId state. Effect (ServerPid (StatemType info internal timerName timerContent commonData stateId state))
 
 -- -----------------------------------------------------------------------------
 -- States
@@ -284,17 +280,59 @@ data Timeout timerContent
   | After Int timerContent
   | Cancel
 
+-- -----------------------------------------------------------------------------
+-- FFI
+-- -----------------------------------------------------------------------------
+type OuterData commonData state =
+  { state :: state
+  , commonData :: commonData
+  }
+
+data OuterInitResult info internal timerName timerContent commonData stateId state
+  = OuterInitOk stateId (OuterData commonData state)
+  | OuterInitOkWithActions stateId (OuterData commonData state) (InitActionsBuilder info internal timerName timerContent)
+  | OuterInitStop Foreign
+  | OuterInitIgnore
+
 foreign import data Reply :: Type
 foreign import data FromForeign :: Type
 newtype From reply = From FromForeign
 
+foreign import startLinkFFI ::
+  forall info internal timerName timerContent commonData stateId state.
+  Maybe (RegistryName (StatemType info internal timerName timerContent commonData stateId state)) ->
+  Effect (OuterInitResult info internal timerName timerContent commonData stateId state) ->
+  Effect (StartLinkResult (StatemType info internal timerName timerContent commonData stateId state))
+
+foreign import selfFFI :: forall info internal timerName timerContent commonData stateId state. Effect (ServerPid (StatemType info internal timerName timerContent commonData stateId state))
+
 foreign import mkReply :: forall reply. From reply -> reply -> Reply
+
+-- type StatemData = {
+--   spec :: Spec info internal timerName timerContent commonData stateId state
+--   state :: state
+--   commonData :: commonData
+--   }
 
 startLink ::
   forall info internal timerName timerContent commonData stateId state. HasStateId stateId state =>
   Spec info internal timerName timerContent commonData stateId state ->
   Effect (StartLinkResult (StatemType info internal timerName timerContent commonData stateId state))
-startLink _ = unsafeCoerce unit
+startLink { name: maybeName, init: (InitT init) } =
+  startLinkFFI maybeName initEffect
+
+  where
+    initEffect :: Effect (OuterInitResult info internal timerName timerContent commonData stateId state)
+    initEffect = do
+      let initContext = {}
+      initResult <- (StateT.evalStateT init) initContext
+      let outerStateId = getStateId
+      pure $ mapInitResult initResult
+
+    mapInitResult (InitOk state commonData) = OuterInitOk (getStateId state) ({ state, commonData })
+    mapInitResult (InitOkWithActions state commonData actions) = OuterInitOkWithActions (getStateId state) ({ state, commonData }) actions
+    mapInitResult (InitStop error) = OuterInitStop error
+    mapInitResult (InitIgnore) = OuterInitIgnore
 
 mkSpec ::
   forall info internal timerName timerContent commonData stateId state. HasStateId stateId state =>

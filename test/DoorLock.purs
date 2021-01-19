@@ -1,5 +1,6 @@
 module Test.DoorLock
-       ( startLink
+       ( testSuite
+       , startLink
        , State
        , StateId
        , TimerContent
@@ -14,6 +15,40 @@ import Erl.Atom (atom)
 import Pinto.GenStatem (class HasStateId, Event(..), InitResult(..), StatemType, Timeout(..), TimeoutAction(..), EventResult(..), CallResult(..), StateEnterResult(..))
 import Pinto.GenStatem as Statem
 import Pinto.Types (InstanceRef(..), RegistryName(..), ServerPid, crashIfNotStarted)
+
+-- Test-specific imports
+import Control.Monad.Free (Free)
+import Erl.Test.EUnit (TestF, suite, test)
+
+-- -----------------------------------------------------------------------------
+-- Test Implementation
+-- -----------------------------------------------------------------------------
+testSuite :: Free TestF Unit
+testSuite =
+  suite "Pinto GenStatem tests" do
+    testStartLinkAnonymous
+
+testStartLinkAnonymous :: Free TestF Unit
+testStartLinkAnonymous =
+  test "Can start an anonymous GenStatem" do
+    serverPid <- startLink
+    -- let
+    --   instanceRef = ByPid serverPid
+    -- state1 <- getState instanceRef
+    -- state2 <- setState instanceRef (TestState 1)
+    -- state3 <- getState instanceRef
+    -- setStateCast instanceRef (TestState 2)
+    -- state4 <- getState instanceRef
+
+    -- assertEqual { actual: state1, expected: TestState 0 }
+    -- assertEqual { actual: state2, expected: TestState 0 }
+    -- assertEqual { actual: state3, expected: TestState 1 }
+    -- assertEqual { actual: state4, expected: TestState 2 }
+    pure unit
+
+-- -----------------------------------------------------------------------------
+-- Statem Implementation
+-- -----------------------------------------------------------------------------
 
 data StateId
   = StateIdLocked
