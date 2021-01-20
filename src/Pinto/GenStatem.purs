@@ -297,6 +297,12 @@ type WrappedEnterFn info internal timerName timerContent commonData stateId stat
     (OuterData info internal timerName timerContent commonData stateId state)
     (Effect (OuterStateEnterResult info internal timerName timerContent commonData stateId state))
 
+type WrappedCallFn reply info internal timerName timerContent commonData stateId state =
+  Fn2
+    (From reply)
+    (OuterData info internal timerName timerContent commonData stateId state)
+    (Effect (OuterCallResult info internal timerName timerContent commonData stateId state))
+
 data OuterInitResult info internal timerName timerContent commonData stateId state
   = OuterInitOk stateId (OuterData info internal timerName timerContent commonData stateId state)
   | OuterInitOkWithActions stateId (OuterData info internal timerName timerContent commonData stateId state) (InitActionsBuilder info internal timerName timerContent)
@@ -308,6 +314,14 @@ data OuterStateEnterResult info internal timerName timerContent commonData state
   | OuterStateEnterOkWithActions (OuterData info internal timerName timerContent commonData stateId state) (StateEnterActionsBuilder timerName timerContent)
   | OuterStateEnterKeepData
   | OuterStateEnterKeepDataWithActions (StateEnterActionsBuilder timerName timerContent)
+
+data OuterCallResult info internal timerName timerContent commonData stateId state
+  = OuterCallKeepStateAndData
+  | OuterCallKeepStateAndDataWithActions (EventActionsBuilder info internal timerName timerContent)
+  | OuterCallKeepState (OuterData info internal timerName timerContent commonData stateId state)
+  | OuterCallKeepStateWithActions (OuterData info internal timerName timerContent commonData stateId state) (EventActionsBuilder info internal timerName timerContent)
+  | OuterCallNextState stateId (OuterData info internal timerName timerContent commonData stateId state)
+  | OuterCallNextStateWithActions stateId (OuterData info internal timerName timerContent commonData stateId state) (EventActionsBuilder info internal timerName timerContent)
 
 foreign import data Reply :: Type
 foreign import data FromForeign :: Type
@@ -322,6 +336,12 @@ foreign import startLinkFFI ::
 foreign import selfFFI :: forall info internal timerName timerContent commonData stateId state. Effect (ServerPid (StatemType info internal timerName timerContent commonData stateId state))
 
 foreign import mkReply :: forall reply. From reply -> reply -> Reply
+
+foreign import callFFI ::
+  forall reply info internal timerName timerContent commonData stateId state.
+  InstanceRef (StatemType info internal timerName timerContent commonData stateId state) ->
+  WrappedCallFn reply info internal timerName timerContent commonData stateId state ->
+  Effect reply
 
 -- type StatemData = {
 --   spec :: Spec info internal timerName timerContent commonData stateId state
@@ -393,5 +413,40 @@ mkSpec initFn handleEventFn =
   , handleEnter: Nothing
   }
 
-call :: forall reply info internal timerName timerContent commonData stateId state. InstanceRef (StatemType info internal timerName timerContent commonData stateId state) -> CallFn reply info internal timerName timerContent commonData stateId state -> Effect reply
-call _instanceRef _callFn = unsafeCoerce unit
+call ::
+  forall reply info internal timerName timerContent commonData stateId state. HasStateId stateId state =>
+  InstanceRef (StatemType info internal timerName timerContent commonData stateId state) ->
+  CallFn reply info internal timerName timerContent commonData stateId state ->
+  Effect reply
+call instanceRef callFn =
+  callFFI instanceRef (mkFn2 wrappedCall)
+
+  where
+    wrappedCall from (OuterData currentData@{ state, commonData }) = do
+      let context = {}
+      let EventT stateT = callFn from state commonData
+
+      result <- StateT.evalStateT stateT context
+
+      case result of
+        CallKeepStateAndData ->
+          pure $ OuterCallKeepStateAndData
+
+        CallKeepStateAndDataWithActions actions ->
+          pure $ OuterCallKeepStateAndDataWithActions actions
+
+        CallKeepState newData ->
+          pure $ OuterCallKeepState (OuterData $ currentData { commonData = newData })
+
+        CallKeepStateWithActions newData actions ->
+          pure $ OuterCallKeepStateWithActions (OuterData $ currentData { commonData = newData }) actions
+
+        CallNextState newState newData ->
+          -- NOTE: we don't need to check whether the new state id matches the old one, Erlang does that, it treats things
+          -- like keep_state_and_data as a synonym for {next_state, OldState, OldData}
+          pure $ OuterCallNextState (getStateId newState) (OuterData $ currentData { state = newState, commonData = newData })
+
+        CallNextStateWithActions newState newData actions ->
+          -- NOTE: we don't need to check whether the new state id matches the old one, Erlang does that, it treats things
+          -- like keep_state_and_data as a synonym for {next_state, OldState, OldData}
+          pure $ OuterCallNextStateWithActions (getStateId newState) (OuterData $ currentData { state = newState, commonData = newData }) actions

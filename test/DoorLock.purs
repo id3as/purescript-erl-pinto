@@ -19,32 +19,33 @@ import Pinto.Types (InstanceRef(..), RegistryName(..), ServerPid, crashIfNotStar
 -- Test-specific imports
 import Control.Monad.Free (Free)
 import Erl.Test.EUnit (TestF, suite, test)
+import Test.Assert (assertEqual)
 
 -- -----------------------------------------------------------------------------
 -- Test Implementation
 -- -----------------------------------------------------------------------------
 testSuite :: Free TestF Unit
 testSuite =
-  suite "Pinto GenStatem tests" do
-    testStartLinkAnonymous
+  suite "Pinto 'DoorLock' GenStatem Tests" do
+    test "Can create a DoorLock and interact with it" do
+        serverPid <- startLink
 
-testStartLinkAnonymous :: Free TestF Unit
-testStartLinkAnonymous =
-  test "Can start an anonymous GenStatem" do
-    serverPid <- startLink
-    -- let
-    --   instanceRef = ByPid serverPid
-    -- state1 <- getState instanceRef
-    -- state2 <- setState instanceRef (TestState 1)
-    -- state3 <- getState instanceRef
-    -- setStateCast instanceRef (TestState 2)
-    -- state4 <- getState instanceRef
+        failedUnlockResult <- unlock "NOT_THE_CODE"
 
-    -- assertEqual { actual: state1, expected: TestState 0 }
-    -- assertEqual { actual: state2, expected: TestState 0 }
-    -- assertEqual { actual: state3, expected: TestState 1 }
-    -- assertEqual { actual: state4, expected: TestState 2 }
-    pure unit
+        assertEqual { actual: failedUnlockResult, expected: InvalidCode }
+        -- let
+        --   instanceRef = ByPid serverPid
+        -- state1 <- getState instanceRef
+        -- state2 <- setState instanceRef (TestState 1)
+        -- state3 <- getState instanceRef
+        -- setStateCast instanceRef (TestState 2)
+        -- state4 <- getState instanceRef
+
+        -- assertEqual { actual: state1, expected: TestState 0 }
+        -- assertEqual { actual: state2, expected: TestState 0 }
+        -- assertEqual { actual: state3, expected: TestState 1 }
+        -- assertEqual { actual: state4, expected: TestState 2 }
+        pure unit
 
 -- -----------------------------------------------------------------------------
 -- Statem Implementation
@@ -54,6 +55,8 @@ data StateId
   = StateIdLocked
   | StateIdUnlockedClosed
   | StateIdUnlockedOpen
+
+derive instance eqStateId :: Eq StateId
 
 data State
   = Locked { failedAttempts :: Int }
@@ -92,7 +95,7 @@ name = Local $ atom "doorLock"
 
 startLink :: Effect (ServerPid DoorLockType)
 startLink = do
-  crashIfNotStarted <$> (Statem.startLink $ ((Statem.mkSpec init handleEvent) { handleEnter = Just handleEnter }))
+  crashIfNotStarted <$> (Statem.startLink $ ((Statem.mkSpec init handleEvent) { name = Just name, handleEnter = Just handleEnter }))
   where
     init =
       let
@@ -146,6 +149,13 @@ data UnlockResult
   = UnlockSuccess
   | InvalidCode
   | InvalidState
+
+derive instance eqUnlockResult :: Eq UnlockResult
+
+instance showUnlockResult :: Show UnlockResult where
+  show UnlockSuccess = "Success"
+  show InvalidCode = "Invalid Code"
+  show InvalidState = "Invalid State"
 
 unlock :: String -> Effect UnlockResult
 unlock code =
