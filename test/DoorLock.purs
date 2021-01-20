@@ -79,15 +79,15 @@ data State
   | UnlockedClosed { failedAttemptsBeforeUnlock :: Int }
   | UnlockedOpen { failedAttemptsBeforeUnlock :: Int }
 
-type Data =
-  { code :: String
-  , unknownEvents :: Int
-  }
-
 instance stateHasStateId :: HasStateId StateId State where
   getStateId (Locked _) = StateIdLocked
   getStateId (UnlockedClosed _) = StateIdUnlockedClosed
   getStateId (UnlockedOpen _) = StateIdUnlockedOpen
+
+type Data =
+  { code :: String
+  , unknownEvents :: Int
+  }
 
 type Info = Void
 type Internal = Void

@@ -60,14 +60,13 @@ import Control.Monad.State.Trans as StateT
 import Control.Monad.Trans.Class (class MonadTrans)
 import Control.Monad.Trans.Class (lift) as Exports
 
-import Data.Function.Uncurried (Fn1, Fn2, Fn3, Fn4, mkFn1, mkFn2, mkFn3, mkFn4)
+import Data.Function.Uncurried (Fn1, Fn2, Fn3, mkFn1, mkFn2, mkFn3)
 import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype, un)
 import Effect (Effect)
 import Erl.Data.List (List, (:), nil)
 import Foreign (Foreign)
 import Pinto.Types (InstanceRef, RegistryName, StartLinkResult, ServerPid)
-import Unsafe.Coerce (unsafeCoerce)
 
 -- -----------------------------------------------------------------------------
 -- States
@@ -480,6 +479,12 @@ cast instanceRef castFn =
 
       StateT.evalStateT stateT context
         <#> mkOuterEventResult outerData
+
+mkOuterEventResult ::
+  forall info internal timerName timerContent commonData stateId state. HasStateId stateId state =>
+  OuterData info internal timerName timerContent commonData stateId state ->
+  EventResult info internal timerName timerContent commonData state ->
+  OuterEventResult info internal timerName timerContent commonData stateId state
 
 mkOuterEventResult (OuterData currentData) result =
   case result of
