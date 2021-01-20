@@ -12,7 +12,7 @@ import Prelude
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Erl.Atom (atom)
-import Pinto.GenStatem (class HasStateId, Event(..), InitResult(..), StatemType, Timeout(..), TimeoutAction(..), EventResult(..), CallResult(..), StateEnterResult(..))
+import Pinto.GenStatem (class HasStateId, Event(..), InitResult(..), StatemType, Timeout(..), TimeoutAction(..), EventResult(..), StateEnterResult(..))
 import Pinto.GenStatem as Statem
 import Pinto.Types (InstanceRef(..), RegistryName(..), ServerPid, crashIfNotStarted)
 import Debug.Trace (spy)
@@ -156,7 +156,7 @@ startLink = do
       pure $ EventKeepState (commonData { unknownEvents = unknownEvents + 1 })
 
     auditIfOpenTooLong actions = do
-      Statem.addTimeoutAction (SetStateTimeout (After 10 DoorOpenTooLong)) actions
+      Statem.addTimeoutAction (SetStateTimeout (After 0 DoorOpenTooLong)) actions
 
     audit :: AuditEvent -> Effect Unit
     audit event = do
@@ -185,14 +185,14 @@ unlock code =
     impl from (Locked stateData) commonData@{ code: actualCode } =
       if actualCode == code then do
         let actions = Statem.newActions # Statem.addReply (Statem.mkReply from UnlockSuccess)
-        pure $ CallNextStateWithActions (UnlockedClosed { failedAttemptsBeforeUnlock: stateData.failedAttempts }) commonData actions
+        pure $ EventNextStateWithActions (UnlockedClosed { failedAttemptsBeforeUnlock: stateData.failedAttempts }) commonData actions
       else do
         let actions = Statem.newActions # Statem.addReply (Statem.mkReply from InvalidCode)
-        pure $ CallNextStateWithActions (Locked (stateData { failedAttempts = stateData.failedAttempts + 1 })) commonData actions
+        pure $ EventNextStateWithActions (Locked (stateData { failedAttempts = stateData.failedAttempts + 1 })) commonData actions
 
     impl from _invalidState _commonData = do
         let actions = Statem.newActions # Statem.addReply (Statem.mkReply from InvalidState)
-        pure $ CallKeepStateAndDataWithActions actions
+        pure $ EventKeepStateAndDataWithActions actions
 
 -- -----------------------------------------------------------------------------
 -- Door Open
@@ -215,10 +215,10 @@ open =
       let
         actions = Statem.newActions # Statem.addReply (Statem.mkReply from OpenSuccess)
       in
-        pure $ CallNextStateWithActions (UnlockedOpen { failedAttemptsBeforeUnlock }) commonData actions
+        pure $ EventNextStateWithActions (UnlockedOpen { failedAttemptsBeforeUnlock }) commonData actions
 
     impl from _invalidState _commonData =
       let
         actions = Statem.newActions # Statem.addReply (Statem.mkReply from OpenFailedInvalidState)
       in
-        pure $ CallKeepStateAndDataWithActions actions
+        pure $ EventKeepStateAndDataWithActions actions

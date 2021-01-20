@@ -21,8 +21,8 @@ module Pinto.GenStatem
        , InitT
        , InitActionsBuilder
 
+       , CastFn
        , CallFn
-       , CallResult(..)
        , EventFn
        , EventResult(..)
        , EventT
@@ -47,6 +47,7 @@ module Pinto.GenStatem
        , startLink
        , mkSpec
        , call
+       , cast
 
        , module Exports
        )
@@ -61,6 +62,7 @@ import Control.Monad.Trans.Class (lift) as Exports
 
 import Data.Function.Uncurried (Fn1, Fn2, Fn3, Fn4, mkFn1, mkFn2, mkFn3, mkFn4)
 import Data.Maybe (Maybe(..))
+import Data.Newtype (class Newtype, un)
 import Effect (Effect)
 import Erl.Data.List (List, (:), nil)
 import Foreign (Foreign)
@@ -139,6 +141,7 @@ derive newtype instance applicativeStateEnter :: Applicative (StateEnterT info i
 derive newtype instance bindStateEnter :: Bind (StateEnterT info internal timerName timerContent commonData stateId state Effect)
 derive newtype instance monadStateEnter :: Monad (StateEnterT info internal timerName timerContent commonData stateId state Effect)
 derive newtype instance monadTransStateEnter :: MonadTrans (StateEnterT info internal timerName timerContent commonData stateId state)
+derive instance newtypeStateEnterT :: Newtype (StateEnterT info internal timerName timerContent commonData stateId state m a) _
 
 instance supportsSelfStateEnterT :: SupportsSelf StateEnterT info internal timerName timerContent commonData stateId state where
   self = StateEnterT $ Exports.lift $ selfFFI
@@ -169,6 +172,7 @@ derive newtype instance applicativeEvent :: Applicative (EventT info internal ti
 derive newtype instance bindEvent :: Bind (EventT info internal timerName timerContent commonData stateId state Effect)
 derive newtype instance monadEvent :: Monad (EventT info internal timerName timerContent commonData stateId state Effect)
 derive newtype instance monadTransEvent :: MonadTrans (EventT info internal timerName timerContent commonData stateId state)
+derive instance newtypeEventT :: Newtype (EventT info internal timerName timerContent commonData stateId state m a) _
 
 instance supportsSelfEventT :: SupportsSelf EventT info internal timerName timerContent commonData stateId state where
   self = EventT $ Exports.lift $ selfFFI
@@ -194,11 +198,16 @@ type Spec info internal timerName timerContent commonData stateId state =
 type InitFn info internal timerName timerContent commonData stateId state =
   InitT info internal timerName timerContent commonData stateId state Effect (InitResult info internal timerName timerContent commonData state)
 
+type CastFn info internal timerName timerContent commonData stateId state =
+  state ->
+  commonData ->
+  EventT info internal timerName timerContent commonData stateId state Effect (EventResult info internal timerName timerContent commonData state)
+
 type CallFn reply info internal timerName timerContent commonData stateId state =
   From reply ->
   state ->
   commonData ->
-  EventT info internal timerName timerContent commonData stateId state Effect (CallResult info internal timerName timerContent commonData state)
+  EventT info internal timerName timerContent commonData stateId state Effect (EventResult info internal timerName timerContent commonData state)
 
 type EventFn info internal timerName timerContent commonData stateId state =
   (Event info internal timerName timerContent) ->
@@ -212,14 +221,6 @@ type EnterFn info internal timerName timerContent commonData stateId state =
   state ->
   commonData ->
   StateEnterT info internal timerName timerContent commonData stateId state Effect (StateEnterResult timerName timerContent commonData)
-
-data CallResult info internal timerName timerContent commonData state
-  = CallKeepStateAndData
-  | CallKeepStateAndDataWithActions (EventActionsBuilder info internal timerName timerContent)
-  | CallKeepState commonData
-  | CallKeepStateWithActions commonData (EventActionsBuilder info internal timerName timerContent)
-  | CallNextState state commonData
-  | CallNextStateWithActions state commonData (EventActionsBuilder info internal timerName timerContent)
 
 data EventResult info internal timerName timerContent commonData state
   = EventKeepStateAndData
@@ -288,6 +289,7 @@ newtype OuterData info internal timerName timerContent commonData stateId state 
   { state :: state
   , commonData :: commonData
   , handleEnter :: WrappedEnterFn info internal timerName timerContent commonData stateId state
+  , handleEvent :: WrappedEventFn info internal timerName timerContent commonData stateId state
   }
 
 type WrappedEnterFn info internal timerName timerContent commonData stateId state =
@@ -301,7 +303,18 @@ type WrappedCallFn reply info internal timerName timerContent commonData stateId
   Fn2
     (From reply)
     (OuterData info internal timerName timerContent commonData stateId state)
-    (Effect (OuterCallResult info internal timerName timerContent commonData stateId state))
+    (Effect (OuterEventResult info internal timerName timerContent commonData stateId state))
+
+type WrappedCastFn info internal timerName timerContent commonData stateId state =
+  Fn1
+    (OuterData info internal timerName timerContent commonData stateId state)
+    (Effect (OuterEventResult info internal timerName timerContent commonData stateId state))
+
+type WrappedEventFn info internal timerName timerContent commonData stateId state =
+  Fn2
+    (Event info internal timerName timerContent)
+    (OuterData info internal timerName timerContent commonData stateId state)
+    (Effect (OuterEventResult info internal timerName timerContent commonData stateId state))
 
 data OuterInitResult info internal timerName timerContent commonData stateId state
   = OuterInitOk stateId (OuterData info internal timerName timerContent commonData stateId state)
@@ -315,13 +328,13 @@ data OuterStateEnterResult info internal timerName timerContent commonData state
   | OuterStateEnterKeepData
   | OuterStateEnterKeepDataWithActions (StateEnterActionsBuilder timerName timerContent)
 
-data OuterCallResult info internal timerName timerContent commonData stateId state
-  = OuterCallKeepStateAndData
-  | OuterCallKeepStateAndDataWithActions (EventActionsBuilder info internal timerName timerContent)
-  | OuterCallKeepState (OuterData info internal timerName timerContent commonData stateId state)
-  | OuterCallKeepStateWithActions (OuterData info internal timerName timerContent commonData stateId state) (EventActionsBuilder info internal timerName timerContent)
-  | OuterCallNextState stateId (OuterData info internal timerName timerContent commonData stateId state)
-  | OuterCallNextStateWithActions stateId (OuterData info internal timerName timerContent commonData stateId state) (EventActionsBuilder info internal timerName timerContent)
+data OuterEventResult info internal timerName timerContent commonData stateId state
+  = OuterEventKeepStateAndData
+  | OuterEventKeepStateAndDataWithActions (EventActionsBuilder info internal timerName timerContent)
+  | OuterEventKeepState (OuterData info internal timerName timerContent commonData stateId state)
+  | OuterEventKeepStateWithActions (OuterData info internal timerName timerContent commonData stateId state) (EventActionsBuilder info internal timerName timerContent)
+  | OuterEventNextState stateId (OuterData info internal timerName timerContent commonData stateId state)
+  | OuterEventNextStateWithActions stateId (OuterData info internal timerName timerContent commonData stateId state) (EventActionsBuilder info internal timerName timerContent)
 
 foreign import data Reply :: Type
 foreign import data FromForeign :: Type
@@ -343,6 +356,12 @@ foreign import callFFI ::
   WrappedCallFn reply info internal timerName timerContent commonData stateId state ->
   Effect reply
 
+foreign import castFFI ::
+  forall info internal timerName timerContent commonData stateId state.
+  InstanceRef (StatemType info internal timerName timerContent commonData stateId state) ->
+  WrappedCastFn info internal timerName timerContent commonData stateId state ->
+  Effect Unit
+
 -- type StatemData = {
 --   spec :: Spec info internal timerName timerContent commonData stateId state
 --   state :: state
@@ -357,6 +376,7 @@ startLink
   { name: maybeName
   , init: (InitT init)
   , handleEnter: maybeHandleEnter
+  , handleEvent
   } =
   startLinkFFI maybeName initEffect
 
@@ -368,19 +388,27 @@ startLink
 
       case result of
         (InitOk state commonData) ->
-          pure $  OuterInitOk (getStateId state) (OuterData { state, commonData, handleEnter: mkFn3 wrappedHandleEnter })
+          pure $  OuterInitOk (getStateId state) (mkOuterData state commonData)
         (InitOkWithActions state commonData actions) ->
-          pure $  OuterInitOkWithActions (getStateId state) (OuterData { state, commonData, handleEnter: mkFn3 wrappedHandleEnter }) actions
+          pure $  OuterInitOkWithActions (getStateId state) (mkOuterData state commonData) actions
         (InitStop error) ->
           pure $  OuterInitStop error
         (InitIgnore) ->
           pure $  OuterInitIgnore
 
+    mkOuterData state commonData =
+      OuterData
+      { state
+      , commonData
+      , handleEnter: mkFn3 wrappedHandleEnter
+      , handleEvent: mkFn2 wrappedHandleEvent
+      }
+
     wrappedHandleEnter oldStateId newStateId (OuterData currentData@{ state, commonData }) =
       case maybeHandleEnter of
         Just handleEnter -> do
             let context = {}
-            let StateEnterT stateT = handleEnter oldStateId newStateId state commonData
+            let stateT = un StateEnterT $ handleEnter oldStateId newStateId state commonData
 
             result <- StateT.evalStateT stateT context
 
@@ -399,6 +427,14 @@ startLink
 
         Nothing ->
             pure $ OuterStateEnterKeepData
+
+    wrappedHandleEvent event outerData@(OuterData {state, commonData }) = do
+     let context = {}
+     let stateT = un EventT $ handleEvent event state commonData
+
+     StateT.evalStateT stateT context
+       <#> mkOuterEventResult outerData
+
 
 mkSpec ::
   forall info internal timerName timerContent commonData stateId state. HasStateId stateId state =>
@@ -422,31 +458,49 @@ call instanceRef callFn =
   callFFI instanceRef (mkFn2 wrappedCall)
 
   where
-    wrappedCall from (OuterData currentData@{ state, commonData }) = do
+    wrappedCall from outerData@(OuterData {state, commonData }) = do
       let context = {}
-      let EventT stateT = callFn from state commonData
+      let stateT = un EventT $ callFn from state commonData
 
-      result <- StateT.evalStateT stateT context
+      StateT.evalStateT stateT context
+        <#> mkOuterEventResult outerData
 
-      case result of
-        CallKeepStateAndData ->
-          pure $ OuterCallKeepStateAndData
+cast ::
+  forall info internal timerName timerContent commonData stateId state. HasStateId stateId state =>
+  InstanceRef (StatemType info internal timerName timerContent commonData stateId state) ->
+  CastFn info internal timerName timerContent commonData stateId state ->
+  Effect Unit
+cast instanceRef castFn =
+  castFFI instanceRef (mkFn1 wrappedCast)
 
-        CallKeepStateAndDataWithActions actions ->
-          pure $ OuterCallKeepStateAndDataWithActions actions
+  where
+    wrappedCast outerData@(OuterData {state, commonData }) = do
+      let context = {}
+      let stateT = un EventT $ castFn state commonData
 
-        CallKeepState newData ->
-          pure $ OuterCallKeepState (OuterData $ currentData { commonData = newData })
+      StateT.evalStateT stateT context
+        <#> mkOuterEventResult outerData
 
-        CallKeepStateWithActions newData actions ->
-          pure $ OuterCallKeepStateWithActions (OuterData $ currentData { commonData = newData }) actions
+mkOuterEventResult (OuterData currentData) result =
+  case result of
+    EventKeepStateAndData ->
+      OuterEventKeepStateAndData
 
-        CallNextState newState newData ->
-          -- NOTE: we don't need to check whether the new state id matches the old one, Erlang does that, it treats things
-          -- like keep_state_and_data as a synonym for {next_state, OldState, OldData}
-          pure $ OuterCallNextState (getStateId newState) (OuterData $ currentData { state = newState, commonData = newData })
+    EventKeepStateAndDataWithActions actions ->
+      OuterEventKeepStateAndDataWithActions actions
 
-        CallNextStateWithActions newState newData actions ->
-          -- NOTE: we don't need to check whether the new state id matches the old one, Erlang does that, it treats things
-          -- like keep_state_and_data as a synonym for {next_state, OldState, OldData}
-          pure $ OuterCallNextStateWithActions (getStateId newState) (OuterData $ currentData { state = newState, commonData = newData }) actions
+    EventKeepState newData ->
+      OuterEventKeepState (OuterData $ currentData { commonData = newData })
+
+    EventKeepStateWithActions newData actions ->
+      OuterEventKeepStateWithActions (OuterData $ currentData { commonData = newData }) actions
+
+    EventNextState newState newData ->
+      -- NOTE: we don't need to check whether the new state id matches the old one, Erlang does that, it treats things
+      -- like keep_state_and_data as a synonym for {next_state, OldState, OldData}
+      OuterEventNextState (getStateId newState) (OuterData $ currentData { state = newState, commonData = newData })
+
+    EventNextStateWithActions newState newData actions ->
+      -- NOTE: we don't need to check whether the new state id matches the old one, Erlang does that, it treats things
+      -- like keep_state_and_data as a synonym for {next_state, OldState, OldData}
+      OuterEventNextStateWithActions (getStateId newState) (OuterData $ currentData { state = newState, commonData = newData }) actions
