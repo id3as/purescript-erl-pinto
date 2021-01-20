@@ -15,6 +15,7 @@ import Erl.Atom (atom)
 import Pinto.GenStatem (class HasStateId, Event(..), InitResult(..), StatemType, Timeout(..), TimeoutAction(..), EventResult(..), CallResult(..), StateEnterResult(..))
 import Pinto.GenStatem as Statem
 import Pinto.Types (InstanceRef(..), RegistryName(..), ServerPid, crashIfNotStarted)
+import Debug.Trace (spy)
 
 -- Test-specific imports
 import Control.Monad.Free (Free)
@@ -30,9 +31,24 @@ testSuite =
     test "Can create a DoorLock and interact with it" do
         serverPid <- startLink
 
-        failedUnlockResult <- unlock "NOT_THE_CODE"
+        failedOpenResultLocked <- open
+        assertEqual { actual: failedOpenResultLocked, expected: OpenFailedInvalidState }
 
+        failedUnlockResult <- unlock "NOT_THE_CODE"
         assertEqual { actual: failedUnlockResult, expected: InvalidCode }
+
+        successUnlockResult <- unlock "THE_CODE"
+        assertEqual { actual: successUnlockResult, expected: UnlockSuccess }
+
+        invalidStateUnlockResult <- unlock "NO_LONGER_MATTERS"
+        assertEqual { actual: invalidStateUnlockResult, expected: InvalidState }
+
+        successOpenResult <- open
+        assertEqual { actual: successOpenResult, expected: OpenSuccess }
+
+        failedOpenResultAlreadyOpen <- open
+        assertEqual { actual: failedOpenResultAlreadyOpen, expected: OpenFailedInvalidState }
+
         -- let
         --   instanceRef = ByPid serverPid
         -- state1 <- getState instanceRef
@@ -101,7 +117,7 @@ startLink = do
       let
         initialState = Locked { failedAttempts: 0 }
         initialData =
-          { code: "1234"
+          { code: "THE_CODE"
           , unknownEvents: 0
           }
       in do
@@ -140,11 +156,16 @@ startLink = do
       pure $ EventKeepState (commonData { unknownEvents = unknownEvents + 1 })
 
     auditIfOpenTooLong actions = do
-      Statem.addTimeoutAction (SetStateTimeout (After 300_000 DoorOpenTooLong)) actions
+      Statem.addTimeoutAction (SetStateTimeout (After 10 DoorOpenTooLong)) actions
 
     audit :: AuditEvent -> Effect Unit
-    audit _event  = pure unit
+    audit event = do
+      let _ = spy "Audit" event
+      pure unit
 
+-- -----------------------------------------------------------------------------
+-- Door Unlock
+-- -----------------------------------------------------------------------------
 data UnlockResult
   = UnlockSuccess
   | InvalidCode
@@ -171,4 +192,33 @@ unlock code =
 
     impl from _invalidState _commonData = do
         let actions = Statem.newActions # Statem.addReply (Statem.mkReply from InvalidState)
+        pure $ CallKeepStateAndDataWithActions actions
+
+-- -----------------------------------------------------------------------------
+-- Door Open
+-- -----------------------------------------------------------------------------
+data OpenResult
+  = OpenSuccess
+  | OpenFailedInvalidState
+
+derive instance eqOpenResult :: Eq OpenResult
+
+instance showOpenResult :: Show OpenResult where
+  show OpenSuccess = "Success"
+  show OpenFailedInvalidState = "Invalid State"
+
+open :: Effect OpenResult
+open =
+  Statem.call (ByName name) impl
+  where
+    impl from (UnlockedClosed { failedAttemptsBeforeUnlock }) commonData =
+      let
+        actions = Statem.newActions # Statem.addReply (Statem.mkReply from OpenSuccess)
+      in
+        pure $ CallNextStateWithActions (UnlockedOpen { failedAttemptsBeforeUnlock }) commonData actions
+
+    impl from _invalidState _commonData =
+      let
+        actions = Statem.newActions # Statem.addReply (Statem.mkReply from OpenFailedInvalidState)
+      in
         pure $ CallKeepStateAndDataWithActions actions

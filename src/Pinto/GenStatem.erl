@@ -131,6 +131,18 @@ common_action({timeoutAction, TimeoutAction}) -> timeout_action(TimeoutAction);
 common_action({namedTimeoutAction, NamedTimeoutAction}) -> named_timeout_action(NamedTimeoutAction);
 common_action({replyAction, Reply}) -> Reply.
 
-timeout_action(_Action) -> throw(not_implemented).
+timeout_action({setTimeout, {'at', T, Msg}}) -> {timeout, T, Msg, [{abs, true}]};
+timeout_action({setTimeout, {'after', T, Msg}}) -> {timeout, T, Msg};
+timeout_action({setTimeout, cancel}) -> {timeout, cancel};
+
+timeout_action({setStateTimeout, {'at', T, Msg}}) -> {state_timeout, T, Msg, [{abs, true}]};
+timeout_action({setStateTimeout, {'after', T, Msg}}) -> {state_timeout, T, Msg};
+timeout_action({setStateTimeout, cancel}) -> {state_timeout, cancel};
+
+timeout_action({updateTimeout, Msg}) -> {timeout, update, Msg};
+timeout_action({updateTimeout, cancel}) -> {timeout, cancel};
+
+timeout_action({updateStateTimeout, Msg}) -> {state_timeout, update, Msg};
+timeout_action({updateStateTimeout, cancel}) -> {state_timeout, cancel}.
 
 named_timeout_action(_Action) -> throw(not_implemented).
