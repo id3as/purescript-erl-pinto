@@ -49,7 +49,6 @@ import Effect (Effect)
 import Foreign (Foreign)
 import Pinto.Types (InstanceRef, RegistryName, ServerPid, StartLinkResult)
 
-
 -- Sequence of types
 -- reply cont stop msg [Timeout] state
 --------------------------------------------------------------------------------

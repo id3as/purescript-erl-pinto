@@ -17,6 +17,7 @@ import Pinto.Sup as Sup
 import Pinto.Types (InstanceRef(..), RegistryName(..), crashIfNotStarted)
 import Test.Assert (assertEqual)
 import Test.GenServer as TGS
+import Test.DoorLock as DoorLock
 import Unsafe.Coerce (unsafeCoerce)
 
 foreign import filterSasl :: Effect  Unit
@@ -27,11 +28,12 @@ main =
   in
     void $ runTests do
       TGS.genServerSuite
+      DoorLock.testSuite
       supervisorSuite
 
 supervisorSuite :: Free TestF Unit
 supervisorSuite =
-  suite "Pinto supervisot tests" do
+  suite "Pinto supervisor tests" do
     testStartWithNamedChild
 
 
