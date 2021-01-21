@@ -49,6 +49,25 @@ testSuite =
         failedOpenResultAlreadyOpen <- open
         assertEqual { actual: failedOpenResultAlreadyOpen, expected: OpenFailedInvalidState }
 
+        -- to test
+        -- - cast
+        -- - timeout (door open too long)
+        -- - info messages
+        -- - internal messages
+        -- - regular timeout messages
+        -- - at timeouts?
+        -- - timeout cancelation
+
+        -- - stop
+        -- - ignore
+
+        -- to implement
+        -- - named timeouts
+        -- - postpone (incl not_implemented)
+        -- - next event
+        -- - hibernate
+
+
         -- let
         --   instanceRef = ByPid serverPid
         -- state1 <- getState instanceRef
