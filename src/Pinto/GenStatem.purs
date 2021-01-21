@@ -92,7 +92,7 @@ class SupportsNewActions builder where
 -- -----------------------------------------------------------------------------
 -- InitT
 -- -----------------------------------------------------------------------------
-type InitContext info internal timerName timerContent commonData stateId state = {}
+type InitContext info internal timerName timerContent commonData stateId state = Unit
 
 newtype InitActionsBuilder info internal timerName timerContent =
   InitActionsBuilder (List (EventAction info internal timerName timerContent))
@@ -126,7 +126,7 @@ instance supportsAddTimeoutInitActionsBuilder :: SupportsAddTimeout (InitActions
 -- because they only admit replies, not other sorts of actions, so do we simply throw away
 -- any actions we've accumulated aside from the replies, or throw them all and have a function which is
 -- specifically for stop_and_reply? or something else
-type StateEnterContext info internal timerName timerContent commonData stateId state = {}
+type StateEnterContext info internal timerName timerContent commonData stateId state = Unit
 
 newtype StateEnterActionsBuilder timerName timerContent =
   StateEnterActionsBuilder (List (StateEnterAction timerName timerContent))
@@ -157,7 +157,7 @@ instance supportsAddTimeoutStateEnterActionsBuilder :: SupportsAddTimeout (State
 -- -----------------------------------------------------------------------------
 -- EventT
 -- -----------------------------------------------------------------------------
-type EventContext info internal timerName timerContent commonData stateId state = {}
+type EventContext info internal timerName timerContent commonData stateId state = Unit
 
 newtype EventActionsBuilder info internal timerName timerContent =
   EventActionsBuilder (List (EventAction info internal timerName timerContent))
@@ -382,8 +382,7 @@ startLink
   where
     initEffect :: Effect (OuterInitResult info internal timerName timerContent commonData stateId state)
     initEffect = do
-      let context = {}
-      result <- StateT.evalStateT init context
+      result <- StateT.evalStateT init unit
 
       case result of
         (InitOk state commonData) ->
@@ -406,10 +405,9 @@ startLink
     wrappedHandleEnter oldStateId newStateId (OuterData currentData@{ state, commonData }) =
       case maybeHandleEnter of
         Just handleEnter -> do
-            let context = {}
             let stateT = un StateEnterT $ handleEnter oldStateId newStateId state commonData
 
-            result <- StateT.evalStateT stateT context
+            result <- StateT.evalStateT stateT unit
 
             case result of
               StateEnterOk newData ->
@@ -428,10 +426,9 @@ startLink
             pure $ OuterStateEnterKeepData
 
     wrappedHandleEvent event outerData@(OuterData {state, commonData }) = do
-     let context = {}
      let stateT = un EventT $ handleEvent event state commonData
 
-     StateT.evalStateT stateT context
+     StateT.evalStateT stateT unit
        <#> mkOuterEventResult outerData
 
 
@@ -458,10 +455,9 @@ call instanceRef callFn =
 
   where
     wrappedCall from outerData@(OuterData {state, commonData }) = do
-      let context = {}
       let stateT = un EventT $ callFn from state commonData
 
-      StateT.evalStateT stateT context
+      StateT.evalStateT stateT unit
         <#> mkOuterEventResult outerData
 
 cast ::
@@ -474,10 +470,9 @@ cast instanceRef castFn =
 
   where
     wrappedCast outerData@(OuterData {state, commonData }) = do
-      let context = {}
       let stateT = un EventT $ castFn state commonData
 
-      StateT.evalStateT stateT context
+      StateT.evalStateT stateT unit
         <#> mkOuterEventResult outerData
 
 mkOuterEventResult ::
