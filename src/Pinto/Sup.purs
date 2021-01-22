@@ -25,20 +25,20 @@ import Erl.Data.List (List)
 import Foreign (Foreign)
 import Pinto.Types (InstanceRef, RegistryName, StartLinkResult)
 
-type ChildStarted childType
-  = { pid :: childType
+type ChildStarted childProcess
+  = { pid :: childProcess
     , info :: Maybe Foreign
     }
 
-data ChildNotStartedReason childType
+data ChildNotStartedReason childProcess
   = ChildAlreadyPresent
-  | ChildAlreadyStarted childType
+  | ChildAlreadyStarted childProcess
   | ChildStartReturnedIgnore
   | ChildFailed Foreign
 
 
-type StartChildResult childType
-  = Either (ChildNotStartedReason childType) (ChildStarted childType)
+type StartChildResult childProcess
+  = Either (ChildNotStartedReason childProcess) (ChildStarted childProcess)
 
 -- maps to transient | permanent | temporary
 data RestartStrategy = RestartNever | RestartAlways | RestartOnCrash
@@ -59,9 +59,9 @@ data ChildType
 
 type ChildId id state msg = id
 
-type ChildSpec serverType
+type ChildSpec childProcess
   = { id :: String
-    , start :: Effect (StartLinkResult serverType)
+    , start :: Effect (StartLinkResult childProcess)
     , restartStrategy :: RestartStrategy
     , shutdownStrategy :: ChildShutdownTimeoutStrategy
     , childType :: ChildType
@@ -83,9 +83,21 @@ type SupervisorSpec
     , childSpecs :: List ErlChildSpec
     }
 
-foreign import startLink :: forall supType. Maybe (RegistryName supType) -> Effect SupervisorSpec -> Effect (StartLinkResult supType)
+foreign import startLink ::
+  forall supType. Maybe (RegistryName supType) ->
+  Effect SupervisorSpec ->
+  Effect (StartLinkResult supType)
 
 foreign import data ErlChildSpec :: Type
-foreign import mkErlChildSpec :: forall serverType. ChildSpec serverType -> ErlChildSpec
+foreign import mkErlChildSpec ::
+  forall childProcess.
+  ChildSpec childProcess ->
+  ErlChildSpec
 
-foreign import startChild :: forall supType childServerType. InstanceRef supType -> ChildSpec childServerType -> StartChildResult childServerType
+-- TODO: this is just returning the type, not the actual pid...
+-- TODO: should we do something with fundeps beween a process and its type?
+foreign import startChild ::
+  forall supProcess supType childProcess.
+  InstanceRef supProcess supType ->
+  ChildSpec childProcess ->
+  StartChildResult childProcess

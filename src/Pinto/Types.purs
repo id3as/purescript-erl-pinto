@@ -1,13 +1,17 @@
 module Pinto.Types
   ( -- Names and handles
     RegistryName(..)
+
     -- Result Types -- TODO - move these to Gen and Sup?
   , TerminateReason(..)
   , StartLinkResult(..)
   , NotStartedReason(..)
   , InstanceRef(..)
-    -- Opaque types
-  , ServerPid
+
+  , class HasRawPid
+  , getRawPid
+  , class HasProcess
+  , getProcess
 
   , maybeStarted
   , maybeRunning
@@ -21,10 +25,12 @@ module Pinto.Types
   )
   where
 
+import Prelude
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Erl.Atom (Atom)
 import Erl.ModuleName (NativeModuleName)
+import Erl.Process (Process(..))
 import Erl.Process.Raw (Pid)
 import Foreign (Foreign)
 import Partial.Unsafe (unsafePartial)
@@ -40,21 +46,32 @@ data RegistryName serverType
   | Global Foreign
   | Via NativeModuleName Foreign
 
+class HasRawPid a where
+  getRawPid :: a -> Pid
 
-newtype ServerPid serverType = ServerPid Pid
+instance pidHasRawPid :: HasRawPid Pid where
+  getRawPid = identity
 
-data InstanceRef serverType
+instance processHasRawPid :: HasRawPid (Process b) where
+  getRawPid (Process pid) = pid
+
+class HasProcess b a where
+  getProcess :: a -> Process b
+
+instance processHasProcess :: HasProcess b (Process b) where
+  getProcess = identity
+
+data InstanceRef serverProcess serverType
   = ByName (RegistryName serverType)
-  | ByPid (ServerPid serverType)
+  | ByPid serverProcess
 
-
-data NotStartedReason serverType
+data NotStartedReason serverProcess
   = Ignore
-  | AlreadyStarted (ServerPid serverType)
+  | AlreadyStarted serverProcess
   | Failed Foreign
 
-type StartLinkResult serverType
-  = Either (NotStartedReason serverType) (ServerPid serverType)
+type StartLinkResult serverProcess
+  = Either (NotStartedReason serverProcess) serverProcess
 
 data TerminateReason
   = Normal
@@ -62,27 +79,27 @@ data TerminateReason
   | ShutdownWithCustom Foreign
   | Custom Foreign
 
-maybeStarted :: forall serverType. StartLinkResult serverType -> Maybe (ServerPid serverType)
+maybeStarted :: forall serverProcess. StartLinkResult serverProcess -> Maybe serverProcess
 maybeStarted slr = case slr of
-    Right serverType -> Just serverType
+    Right serverProcess -> Just serverProcess
     _ -> Nothing
 
-maybeRunning :: forall serverType. StartLinkResult serverType -> Maybe (ServerPid serverType)
+maybeRunning :: forall serverProcess. StartLinkResult serverProcess -> Maybe serverProcess
 maybeRunning slr = case slr of
-    Right serverPid -> Just serverPid
-    Left (AlreadyStarted serverPid) -> Just serverPid
+    Right serverProcess -> Just serverProcess
+    Left (AlreadyStarted serverProcess) -> Just serverProcess
     _ -> Nothing
 
 
-crashIfNotStarted :: forall serverType. StartLinkResult serverType -> ServerPid serverType
+crashIfNotStarted :: forall serverProcess. StartLinkResult serverProcess -> serverProcess
 crashIfNotStarted = unsafePartial \slr ->
   case maybeStarted slr of
-     Just serverType -> serverType
+     Just serverProcess -> serverProcess
 
-crashIfNotRunning :: forall serverType. StartLinkResult serverType -> ServerPid serverType
+crashIfNotRunning :: forall serverProcess. StartLinkResult serverProcess -> serverProcess
 crashIfNotRunning = unsafePartial \slr ->
   case maybeRunning slr of
-     Just serverType -> serverType
+     Just serverProcess -> serverProcess
 
 -- class StartOk a state msg where
 --   startOk :: a -> Maybe (ServerPid state msg)

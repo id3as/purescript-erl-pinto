@@ -1,5 +1,6 @@
 module Pinto.GenStatem
        ( StatemType
+       , StatemPid
 
        , class HasStateId
        , getStateId
@@ -65,8 +66,9 @@ import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype, un)
 import Effect (Effect)
 import Erl.Data.List (List, (:), nil)
+import Erl.Process (Process)
 import Foreign (Foreign)
-import Pinto.Types (InstanceRef, RegistryName, StartLinkResult, ServerPid)
+import Pinto.Types (InstanceRef, RegistryName, StartLinkResult, class HasRawPid, class HasProcess)
 
 -- -----------------------------------------------------------------------------
 -- States
@@ -84,7 +86,7 @@ class SupportsAddTimeout b timerContent  where
   addTimeoutAction :: TimeoutAction timerContent -> b timerContent -> b timerContent
 
 class SupportsSelf m info internal timerName timerContent commonData stateId state where
-  self :: m info internal timerName timerContent commonData stateId state Effect (ServerPid (StatemType info internal timerName timerContent commonData stateId state))
+  self :: m info internal timerName timerContent commonData stateId state Effect (StatemPid info internal timerName timerContent commonData stateId state)
 
 class SupportsNewActions builder where
   newActions :: builder
@@ -186,6 +188,10 @@ instance supportsReplyEventActionsBuilder :: SupportsReply (EventActionsBuilder 
 -- Other Gubbins
 -- -----------------------------------------------------------------------------
 newtype StatemType info internal timerName timerContent commonData stateId state = StatemType Void
+newtype StatemPid info internal timerName timerContent commonData stateId state = StatemPid (Process info)
+
+derive newtype instance statemPidHasRawPid :: HasRawPid (StatemPid info internal timerName timerContent commonData stateId state)
+derive newtype instance statemPidHasProcess :: HasProcess info (StatemPid info internal timerName timerContent commonData stateId state)
 
 type Spec info internal timerName timerContent commonData stateId state =
   { name :: Maybe (RegistryName (StatemType info internal timerName timerContent commonData stateId state))
@@ -343,21 +349,23 @@ foreign import startLinkFFI ::
   forall info internal timerName timerContent commonData stateId state.
   Maybe (RegistryName (StatemType info internal timerName timerContent commonData stateId state)) ->
   Effect (OuterInitResult info internal timerName timerContent commonData stateId state) ->
-  Effect (StartLinkResult (StatemType info internal timerName timerContent commonData stateId state))
+  Effect (StartLinkResult (StatemPid info internal timerName timerContent commonData stateId state))
 
-foreign import selfFFI :: forall info internal timerName timerContent commonData stateId state. Effect (ServerPid (StatemType info internal timerName timerContent commonData stateId state))
+foreign import selfFFI ::
+  forall info internal timerName timerContent commonData stateId state.
+  Effect (StatemPid info internal timerName timerContent commonData stateId state)
 
 foreign import mkReply :: forall reply. From reply -> reply -> Reply
 
 foreign import callFFI ::
   forall reply info internal timerName timerContent commonData stateId state.
-  InstanceRef (StatemType info internal timerName timerContent commonData stateId state) ->
+  InstanceRef (StatemPid info internal timerName timerContent commonData stateId state) (StatemType info internal timerName timerContent commonData stateId state) ->
   WrappedCallFn reply info internal timerName timerContent commonData stateId state ->
   Effect reply
 
 foreign import castFFI ::
   forall info internal timerName timerContent commonData stateId state.
-  InstanceRef (StatemType info internal timerName timerContent commonData stateId state) ->
+  InstanceRef (StatemPid info internal timerName timerContent commonData stateId state) (StatemType info internal timerName timerContent commonData stateId state) ->
   WrappedCastFn info internal timerName timerContent commonData stateId state ->
   Effect Unit
 
@@ -370,7 +378,7 @@ foreign import castFFI ::
 startLink ::
   forall info internal timerName timerContent commonData stateId state. HasStateId stateId state =>
   Spec info internal timerName timerContent commonData stateId state ->
-  Effect (StartLinkResult (StatemType info internal timerName timerContent commonData stateId state))
+  Effect (StartLinkResult (StatemPid info internal timerName timerContent commonData stateId state))
 startLink
   { name: maybeName
   , init: (InitT init)
@@ -447,7 +455,7 @@ mkSpec initFn handleEventFn =
 
 call ::
   forall reply info internal timerName timerContent commonData stateId state. HasStateId stateId state =>
-  InstanceRef (StatemType info internal timerName timerContent commonData stateId state) ->
+  InstanceRef (StatemPid info internal timerName timerContent commonData stateId state) (StatemType info internal timerName timerContent commonData stateId state) ->
   CallFn reply info internal timerName timerContent commonData stateId state ->
   Effect reply
 call instanceRef callFn =
@@ -462,7 +470,7 @@ call instanceRef callFn =
 
 cast ::
   forall info internal timerName timerContent commonData stateId state. HasStateId stateId state =>
-  InstanceRef (StatemType info internal timerName timerContent commonData stateId state) ->
+  InstanceRef (StatemPid info internal timerName timerContent commonData stateId state) (StatemType info internal timerName timerContent commonData stateId state) ->
   CastFn info internal timerName timerContent commonData stateId state ->
   Effect Unit
 cast instanceRef castFn =

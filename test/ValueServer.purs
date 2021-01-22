@@ -4,6 +4,7 @@ module Test.ValueServer
   , setValue
   , setValueAsync
   , Msg
+  , ValueServerPid
   )
   where
 
@@ -13,9 +14,9 @@ import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Erl.Atom (atom)
-import Pinto.GenServer (ServerRunning(..), ServerType)
+import Pinto.GenServer (ServerRunning(..), ServerType, ServerPid)
 import Pinto.GenServer as GS
-import Pinto.Types (InstanceRef(..), RegistryName(..), ServerPid, crashIfNotStarted)
+import Pinto.Types (InstanceRef(..), RegistryName(..), crashIfNotStarted, class HasRawPid)
 
 type Cont = Void
 type Stop = Void
@@ -26,13 +27,19 @@ type State = { value :: Int }
 
 
 type ValueServerType = ServerType Cont Stop Msg State
+newtype ValueServerPid = ValueServerPid (ServerPid Cont Stop Msg State)
+
+-- Only surface the raw pid, don't implement HasProcess - we don't want folks sending us messages using our Info
+-- type
+derive newtype instance valueServerPidHasRawPid :: HasRawPid ValueServerPid
 
 serverName :: RegistryName ValueServerType
 serverName = Local $ atom "valueServer"
 
-startLink :: Effect (ServerPid ValueServerType)
+startLink :: Effect ValueServerPid
 startLink = do
-  crashIfNotStarted
+  ValueServerPid
+    <$> crashIfNotStarted
     <$> (GS.startLink $ (GS.mkSpec init) { name = Just serverName })
   where
     init =

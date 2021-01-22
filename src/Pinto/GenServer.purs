@@ -4,6 +4,7 @@ module Pinto.GenServer
 
   , ServerSpec
   , ServerType
+  , ServerPid
 
   , CallFn
   , CallResult(..)
@@ -47,7 +48,8 @@ import Data.Function.Uncurried (Fn1, Fn2, mkFn1, mkFn2)
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Foreign (Foreign)
-import Pinto.Types (InstanceRef, RegistryName, ServerPid, StartLinkResult)
+import Pinto.Types (InstanceRef, RegistryName, StartLinkResult, class HasRawPid, class HasProcess)
+import Erl.Process (Process)
 
 -- Sequence of types
 -- reply cont stop msg [Timeout] state
@@ -133,9 +135,11 @@ mapInitResult f (Right (InitOkHibernate state)) = Right (InitOkHibernate $ f sta
 mapInitResult _ (Left (InitStop term)) = Left (InitStop term)
 mapInitResult _ (Left InitIgnore) = Left InitIgnore
 
-
-
 newtype ServerType cont stop msg state = ServerType Void
+newtype ServerPid cont stop msg state = ServerPid (Process msg)
+
+derive newtype instance serverPidHasRawPid :: HasRawPid (ServerPid cont stop msg state)
+derive newtype instance serverPidHasProcess :: HasProcess msg (ServerPid const stop msg state)
 
 type ServerSpec cont stop msg state =
   { name :: Maybe (RegistryName (ServerType cont stop msg state))
@@ -176,9 +180,17 @@ mkSpec initFn =
   , handleContinue: Nothing
   }
 
-foreign import callFFI :: forall reply cont stop msg state. InstanceRef (ServerType cont stop msg state) -> WrappedCallFn reply cont stop msg state -> Effect reply
+foreign import callFFI ::
+  forall reply cont stop msg state.
+  InstanceRef (ServerPid cont stop msg state) (ServerType cont stop msg state) ->
+  WrappedCallFn reply cont stop msg state ->
+  Effect reply
 
-call :: forall reply cont stop msg state. InstanceRef (ServerType cont stop msg state) -> CallFn reply cont stop msg state -> Effect reply
+call ::
+  forall reply cont stop msg state.
+  InstanceRef (ServerPid cont stop msg state) (ServerType cont stop msg state) ->
+  CallFn reply cont stop msg state ->
+  Effect reply
 call instanceRef callFn =
   callFFI instanceRef wrappedCallFn
 
@@ -195,9 +207,17 @@ call instanceRef callFn =
 foreign import replyTo :: forall reply. From reply -> reply -> Effect Unit
 
 
-foreign import castFFI :: forall cont stop msg state. InstanceRef (ServerType cont stop msg state) -> WrappedCastFn cont stop msg state -> Effect Unit
+foreign import castFFI ::
+  forall cont stop msg state.
+  InstanceRef (ServerPid cont stop msg state) (ServerType cont stop msg state) ->
+  WrappedCastFn cont stop msg state ->
+  Effect Unit
 
-cast :: forall cont stop msg state. InstanceRef (ServerType cont stop msg state) -> CastFn cont stop msg state -> Effect Unit
+cast ::
+  forall cont stop msg state.
+  InstanceRef (ServerPid cont stop msg state) (ServerType cont stop msg state) ->
+  CastFn cont stop msg state ->
+  Effect Unit
 cast instanceRef castFn =
   castFFI instanceRef wrappedCastFn
 
@@ -213,7 +233,7 @@ cast instanceRef castFn =
 
 
 
-startLink :: forall cont stop msg state. (ServerSpec cont stop msg state) -> Effect (StartLinkResult (ServerType cont stop msg state))
+startLink :: forall cont stop msg state. (ServerSpec cont stop msg state) -> Effect (StartLinkResult (ServerPid cont stop msg state))
 startLink { name: maybeName, init: initFn, handleInfo: maybeHandleInfo , handleContinue: maybeHandleContinue } =
   startLinkFFI maybeName initEffect
 
@@ -247,17 +267,16 @@ startLink { name: maybeName, init: initFn, handleInfo: maybeHandleInfo , handleC
       in
         mkFn2 handler
 
-
-
-
-
-
 foreign import startLinkFFI :: forall cont stop msg state.
   Maybe (RegistryName (ServerType cont stop msg state)) ->
   Effect (InitResult cont (OuterState cont stop msg state)) ->
-  Effect (StartLinkResult ((ServerType cont stop msg state)))
+  Effect (StartLinkResult (ServerPid cont stop msg state))
 
-self :: forall cont stop msg state. ReaderT (Context cont stop msg state) Effect (ServerPid (ServerType cont stop state msg))
+self ::
+  forall cont stop msg state.
+  ReaderT (Context cont stop msg state) Effect (ServerPid cont stop state msg)
 self = Reader.lift selfFFI
 
-foreign import selfFFI :: forall serverType. Effect (ServerPid serverType)
+foreign import selfFFI ::
+  forall cont stop msg state.
+  Effect (ServerPid cont stop msg state)

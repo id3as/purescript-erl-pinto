@@ -4,6 +4,7 @@ module Test.DoorLock
        , State
        , StateId
        , TimerContent
+       , DoorLockPid
        )
        where
 
@@ -12,9 +13,9 @@ import Prelude
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Erl.Atom (atom)
-import Pinto.GenStatem (class HasStateId, Event(..), InitResult(..), StatemType, Timeout(..), TimeoutAction(..), EventResult(..), StateEnterResult(..))
+import Pinto.GenStatem (class HasStateId, Event(..), InitResult(..), StatemPid, StatemType, Timeout(..), TimeoutAction(..), EventResult(..), StateEnterResult(..))
 import Pinto.GenStatem as Statem
-import Pinto.Types (InstanceRef(..), RegistryName(..), ServerPid, crashIfNotStarted)
+import Pinto.Types (InstanceRef(..), RegistryName(..), crashIfNotStarted, class HasRawPid)
 import Debug.Trace (spy)
 
 -- Test-specific imports
@@ -115,6 +116,12 @@ data TimerContent = DoorOpenTooLong
 
 type DoorLockType = StatemType Info Internal TimerName TimerContent Data StateId State
 
+newtype DoorLockPid = DoorLockPid (StatemPid Info Internal TimerName TimerContent Data StateId State)
+
+-- Only surface the raw pid, don't implement HasProcess - we don't want folks sending us messages using our Info
+-- type
+derive newtype instance doorLockPidHasRawPid :: HasRawPid DoorLockPid
+
 data AuditEvent
   = AuditDoorUnlocked
   | AuditDoorOpened
@@ -128,9 +135,9 @@ name :: RegistryName DoorLockType
 name = Local $ atom "doorLock"
 
 
-startLink :: Effect (ServerPid DoorLockType)
+startLink :: Effect DoorLockPid
 startLink = do
-  crashIfNotStarted <$> (Statem.startLink $ ((Statem.mkSpec init handleEvent) { name = Just name, handleEnter = Just handleEnter }))
+  DoorLockPid <$> crashIfNotStarted <$> (Statem.startLink $ ((Statem.mkSpec init handleEvent) { name = Just name, handleEnter = Just handleEnter }))
   where
     init =
       let
