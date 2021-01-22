@@ -5,6 +5,7 @@ module Pinto.GenServer
   , ServerSpec
   , ServerType
   , ServerPid
+  , ServerRef(..)
 
   , CallFn
   , CallResult(..)
@@ -48,7 +49,7 @@ import Data.Function.Uncurried (Fn1, Fn2, mkFn1, mkFn2)
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Foreign (Foreign)
-import Pinto.Types (InstanceRef, RegistryName, StartLinkResult, class HasRawPid, class HasProcess)
+import Pinto.Types (RegistryName, StartLinkResult, class HasRawPid, class HasProcess)
 import Erl.Process (Process)
 
 -- Sequence of types
@@ -141,6 +142,10 @@ newtype ServerPid cont stop msg state = ServerPid (Process msg)
 derive newtype instance serverPidHasRawPid :: HasRawPid (ServerPid cont stop msg state)
 derive newtype instance serverPidHasProcess :: HasProcess msg (ServerPid const stop msg state)
 
+data ServerRef cont stop msg state
+  = ByName (RegistryName (ServerType cont stop msg state))
+  | ByPid (ServerPid cont stop msg state)
+
 type ServerSpec cont stop msg state =
   { name :: Maybe (RegistryName (ServerType cont stop msg state))
   , init :: InitFn cont stop msg state
@@ -182,13 +187,13 @@ mkSpec initFn =
 
 foreign import callFFI ::
   forall reply cont stop msg state.
-  InstanceRef (ServerPid cont stop msg state) (ServerType cont stop msg state) ->
+  ServerRef cont stop msg state ->
   WrappedCallFn reply cont stop msg state ->
   Effect reply
 
 call ::
   forall reply cont stop msg state.
-  InstanceRef (ServerPid cont stop msg state) (ServerType cont stop msg state) ->
+  ServerRef cont stop msg state ->
   CallFn reply cont stop msg state ->
   Effect reply
 call instanceRef callFn =
@@ -209,13 +214,13 @@ foreign import replyTo :: forall reply. From reply -> reply -> Effect Unit
 
 foreign import castFFI ::
   forall cont stop msg state.
-  InstanceRef (ServerPid cont stop msg state) (ServerType cont stop msg state) ->
+  ServerRef cont stop msg state ->
   WrappedCastFn cont stop msg state ->
   Effect Unit
 
 cast ::
   forall cont stop msg state.
-  InstanceRef (ServerPid cont stop msg state) (ServerType cont stop msg state) ->
+  ServerRef cont stop msg state ->
   CastFn cont stop msg state ->
   Effect Unit
 cast instanceRef castFn =

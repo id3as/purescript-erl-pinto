@@ -1,6 +1,7 @@
 module Pinto.GenStatem
        ( StatemType
        , StatemPid
+       , StatemRef(..)
 
        , class HasStateId
        , getStateId
@@ -68,7 +69,7 @@ import Effect (Effect)
 import Erl.Data.List (List, (:), nil)
 import Erl.Process (Process)
 import Foreign (Foreign)
-import Pinto.Types (InstanceRef, RegistryName, StartLinkResult, class HasRawPid, class HasProcess)
+import Pinto.Types (RegistryName, StartLinkResult, class HasRawPid, class HasProcess)
 
 -- -----------------------------------------------------------------------------
 -- States
@@ -192,6 +193,10 @@ newtype StatemPid info internal timerName timerContent commonData stateId state 
 
 derive newtype instance statemPidHasRawPid :: HasRawPid (StatemPid info internal timerName timerContent commonData stateId state)
 derive newtype instance statemPidHasProcess :: HasProcess info (StatemPid info internal timerName timerContent commonData stateId state)
+
+data StatemRef info internal timerName timerContent commonData stateId state
+  = ByName (RegistryName (StatemType info internal timerName timerContent commonData stateId state))
+  | ByPid (StatemPid info internal timerName timerContent commonData stateId state)
 
 type Spec info internal timerName timerContent commonData stateId state =
   { name :: Maybe (RegistryName (StatemType info internal timerName timerContent commonData stateId state))
@@ -359,13 +364,13 @@ foreign import mkReply :: forall reply. From reply -> reply -> Reply
 
 foreign import callFFI ::
   forall reply info internal timerName timerContent commonData stateId state.
-  InstanceRef (StatemPid info internal timerName timerContent commonData stateId state) (StatemType info internal timerName timerContent commonData stateId state) ->
+  StatemRef info internal timerName timerContent commonData stateId state ->
   WrappedCallFn reply info internal timerName timerContent commonData stateId state ->
   Effect reply
 
 foreign import castFFI ::
   forall info internal timerName timerContent commonData stateId state.
-  InstanceRef (StatemPid info internal timerName timerContent commonData stateId state) (StatemType info internal timerName timerContent commonData stateId state) ->
+  StatemRef info internal timerName timerContent commonData stateId state ->
   WrappedCastFn info internal timerName timerContent commonData stateId state ->
   Effect Unit
 
@@ -455,7 +460,7 @@ mkSpec initFn handleEventFn =
 
 call ::
   forall reply info internal timerName timerContent commonData stateId state. HasStateId stateId state =>
-  InstanceRef (StatemPid info internal timerName timerContent commonData stateId state) (StatemType info internal timerName timerContent commonData stateId state) ->
+  StatemRef info internal timerName timerContent commonData stateId state ->
   CallFn reply info internal timerName timerContent commonData stateId state ->
   Effect reply
 call instanceRef callFn =
@@ -470,7 +475,7 @@ call instanceRef callFn =
 
 cast ::
   forall info internal timerName timerContent commonData stateId state. HasStateId stateId state =>
-  InstanceRef (StatemPid info internal timerName timerContent commonData stateId state) (StatemType info internal timerName timerContent commonData stateId state) ->
+  StatemRef info internal timerName timerContent commonData stateId state ->
   CastFn info internal timerName timerContent commonData stateId state ->
   Effect Unit
 cast instanceRef castFn =

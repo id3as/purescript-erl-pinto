@@ -6,7 +6,6 @@ module Pinto.Types
   , TerminateReason(..)
   , StartLinkResult(..)
   , NotStartedReason(..)
-  , InstanceRef(..)
 
   , class HasRawPid
   , getRawPid
@@ -60,10 +59,6 @@ class HasProcess b a where
 
 instance processHasProcess :: HasProcess b (Process b) where
   getProcess = identity
-
-data InstanceRef serverProcess serverType
-  = ByName (RegistryName serverType)
-  | ByPid serverProcess
 
 data NotStartedReason serverProcess
   = Ignore

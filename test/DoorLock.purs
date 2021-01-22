@@ -13,9 +13,9 @@ import Prelude
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Erl.Atom (atom)
-import Pinto.GenStatem (class HasStateId, Event(..), InitResult(..), StatemPid, StatemType, Timeout(..), TimeoutAction(..), EventResult(..), StateEnterResult(..))
+import Pinto.GenStatem (class HasStateId, Event(..), InitResult(..), StatemPid, StatemType, Timeout(..), TimeoutAction(..), EventResult(..), StateEnterResult(..), StatemRef(..))
 import Pinto.GenStatem as Statem
-import Pinto.Types (InstanceRef(..), RegistryName(..), crashIfNotStarted, class HasRawPid)
+import Pinto.Types (RegistryName(..), crashIfNotStarted, class HasRawPid)
 import Debug.Trace (spy)
 
 -- Test-specific imports

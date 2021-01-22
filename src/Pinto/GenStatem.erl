@@ -19,7 +19,7 @@
 -import('pinto_types@foreign',
         [ start_link_result_to_ps/1
         , registry_name_from_ps/1
-        , instance_ref_from_ps/1
+        , instance_name_from_ps/1
         ]).
 
 %%% ----------------------------------------------------------------------------
@@ -49,16 +49,16 @@ startLinkFFI(MaybeName, InitEffect) ->
       start_link_result_to_ps(Result)
   end.
 
-callFFI(InstanceRef, CallFn) ->
+callFFI(StatemRef, CallFn) ->
   fun() ->
-      io:format(user, "Issuing call to ~p~n", [instance_ref_from_ps(InstanceRef)]),
-      gen_server:call(instance_ref_from_ps(InstanceRef), CallFn)
+      io:format(user, "Issuing call to ~p~n", [statem_ref_from_ps(StatemRef)]),
+      gen_server:call(statem_ref_from_ps(StatemRef), CallFn)
   end.
 
-castFFI(InstanceRef, CastFn) ->
+castFFI(StatemRef, CastFn) ->
   fun() ->
-      io:format(user, "Issuing cast to ~p~n", [instance_ref_from_ps(InstanceRef)]),
-      ok = gen_server:cast(instance_ref_from_ps(InstanceRef), CastFn),
+      io:format(user, "Issuing cast to ~p~n", [statem_ref_from_ps(StatemRef)]),
+      ok = gen_server:cast(statem_ref_from_ps(StatemRef), CastFn),
       unit
   end.
 
@@ -174,3 +174,6 @@ event_result_from_ps(Result) ->
     {outerEventNextState, NewState, NewData} -> {next_state, NewState, NewData};
     {outerEventNextStateWithActions, NewState, NewData, Actions} -> {next_state, NewState, NewData, event_actions(Actions)}
   end.
+
+statem_ref_from_ps({byName, PsCallName})               -> instance_name_from_ps(PsCallName);
+statem_ref_from_ps({byPid, Pid})                       -> Pid.

@@ -9,6 +9,9 @@ module Pinto.Sup
   , RestartStrategy(..)
   , Strategy(..)
   , SupervisorSpec
+  , SupervisorRef(..)
+  , SupervisorPid
+  , SupervisorType
 
   , Millisecond
   , Seconds
@@ -18,12 +21,14 @@ module Pinto.Sup
  ) where
 
 
+import Prelude
 import Data.Either (Either)
 import Data.Maybe (Maybe)
 import Effect (Effect)
 import Erl.Data.List (List)
+import Erl.Process.Raw (Pid)
 import Foreign (Foreign)
-import Pinto.Types (InstanceRef, RegistryName, StartLinkResult)
+import Pinto.Types (RegistryName, StartLinkResult, class HasRawPid)
 
 type ChildStarted childProcess
   = { pid :: childProcess
@@ -78,15 +83,23 @@ type Flags
     , period :: Seconds
     }
 
+newtype SupervisorType = SupervisorType Void
+newtype SupervisorPid = SupervisorPid Pid
+derive newtype instance supervisorPidHasRawPid :: HasRawPid SupervisorPid
+
+data SupervisorRef
+  = ByName (RegistryName SupervisorType)
+  | ByPid SupervisorPid
+
 type SupervisorSpec
   = { flags :: Flags
     , childSpecs :: List ErlChildSpec
     }
 
 foreign import startLink ::
-  forall supType. Maybe (RegistryName supType) ->
+  Maybe (RegistryName SupervisorType) ->
   Effect SupervisorSpec ->
-  Effect (StartLinkResult supType)
+  Effect (StartLinkResult SupervisorPid)
 
 foreign import data ErlChildSpec :: Type
 foreign import mkErlChildSpec ::
@@ -97,7 +110,7 @@ foreign import mkErlChildSpec ::
 -- TODO: this is just returning the type, not the actual pid...
 -- TODO: should we do something with fundeps beween a process and its type?
 foreign import startChild ::
-  forall supProcess supType childProcess.
-  InstanceRef supProcess supType ->
+  forall childProcess.
+  SupervisorRef ->
   ChildSpec childProcess ->
   StartChildResult childProcess

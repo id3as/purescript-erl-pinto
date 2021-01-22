@@ -14,9 +14,9 @@ import Erl.Atom (atom)
 import Erl.Process (Process, (!))
 import Erl.Test.EUnit (TestF, suite, test)
 import Foreign (unsafeToForeign)
-import Pinto.GenServer (Action(..), From, ServerRunning(..), ServerSpec, ServerType)
+import Pinto.GenServer (Action(..), From, ServerRunning(..), ServerSpec, ServerType, ServerRef(..))
 import Pinto.GenServer as GS
-import Pinto.Types (InstanceRef(..), NotStartedReason(..), RegistryName(..), StartLinkResult, crashIfNotStarted)
+import Pinto.Types (NotStartedReason(..), RegistryName(..), StartLinkResult, crashIfNotStarted)
 import Test.Assert (assertEqual)
 import Test.ValueServer as ValueServer
 import Unsafe.Coerce (unsafeCoerce)
@@ -309,19 +309,19 @@ expectBool :: Boolean -> Boolean -> Effect Unit
 expectBool expected actual =
   assertEqual { actual, expected: expected }
 
-getState :: forall cont stop msg state. InstanceRef (ServerType cont stop msg state) ->  Effect state
+getState :: forall cont stop msg state. ServerRef cont stop msg state ->  Effect state
 getState handle = GS.call handle
   \_from state ->
     let reply = state
     in pure $ GS.reply reply state
 
-setState :: forall cont stop msg state. InstanceRef (ServerType cont stop msg state) -> state ->  Effect state
+setState :: forall cont stop msg state. ServerRef cont stop msg state -> state ->  Effect state
 setState handle newState = GS.call handle
   \_from state ->
     let reply = state
     in pure $ GS.reply reply newState
 
 
-setStateCast :: forall cont stop msg state. InstanceRef (ServerType cont stop msg state) -> state ->  Effect Unit
+setStateCast :: forall cont stop msg state. ServerRef cont stop msg state -> state ->  Effect Unit
 setStateCast handle newState = GS.cast handle
   \_state -> pure $ GS.return newState

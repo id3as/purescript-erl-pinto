@@ -19,7 +19,7 @@
 -import('pinto_types@foreign',
         [ start_link_result_to_ps/1
         , registry_name_from_ps/1
-        , instance_ref_from_ps/1
+        , instance_name_from_ps/1
         ]).
 
 %%% ----------------------------------------------------------------------------
@@ -42,13 +42,13 @@ startLinkFFI(MaybeName, InitEffect) ->
 
 castFFI(ServerRef, CastFn) ->
   fun() ->
-      gen_server:cast(instance_ref_from_ps(ServerRef), {do_cast, CastFn})
+      gen_server:cast(server_ref_from_ps(ServerRef), {do_cast, CastFn})
   end.
 
 
 callFFI(ServerRef, CallFn) ->
   fun() ->
-      gen_server:call(instance_ref_from_ps(ServerRef), {do_call, CallFn})
+      gen_server:call(server_ref_from_ps(ServerRef), {do_call, CallFn})
   end.
 
 replyTo(From, Reply) ->
@@ -122,3 +122,6 @@ return_result_to_ps(ReturnResult) ->
     {returnResult, {just, {stopNormal}}, NewState}            -> {stop, normal, NewState};
     {returnResult, {just, {stopOther, StopReason}}, NewState} -> {stop, StopReason, NewState}
   end.
+
+server_ref_from_ps({byName, PsCallName})               -> instance_name_from_ps(PsCallName);
+server_ref_from_ps({byPid, Pid})                       -> Pid.

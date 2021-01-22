@@ -14,9 +14,9 @@ import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Erl.Atom (atom)
-import Pinto.GenServer (ServerRunning(..), ServerType, ServerPid)
+import Pinto.GenServer (ServerRunning(..), ServerType, ServerPid, ServerRef(..))
 import Pinto.GenServer as GS
-import Pinto.Types (InstanceRef(..), RegistryName(..), crashIfNotStarted, class HasRawPid)
+import Pinto.Types (RegistryName(..), crashIfNotStarted, class HasRawPid)
 
 type Cont = Void
 type Stop = Void

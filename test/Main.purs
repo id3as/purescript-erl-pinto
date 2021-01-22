@@ -10,11 +10,11 @@ import Effect.Unsafe (unsafePerformEffect)
 import Erl.Atom (atom)
 import Erl.Data.List (nil, (:))
 import Erl.Test.EUnit (TestF, runTests, suite, test)
-import Pinto.GenServer (CallResult(..), ServerRunning(..), ServerType)
+import Pinto.GenServer (CallResult(..), ServerRunning(..), ServerType, ServerRef(..))
 import Pinto.GenServer as GS
 import Pinto.Sup (ChildShutdownTimeoutStrategy(..), ChildSpec, ChildType(..), RestartStrategy(..), Strategy(..), SupervisorSpec, mkErlChildSpec)
 import Pinto.Sup as Sup
-import Pinto.Types (InstanceRef(..), RegistryName(..), crashIfNotStarted)
+import Pinto.Types (RegistryName(..), crashIfNotStarted)
 import Test.Assert (assertEqual)
 import Test.GenServer as TGS
 import Test.DoorLock as DoorLock
@@ -97,19 +97,19 @@ mkChildSpec id start  = { id
 ---------------------------------------------------------------------------------
 -- Internal
 ---------------------------------------------------------------------------------
-getState :: forall cont stop msg state. InstanceRef (ServerType cont stop msg state) ->  Effect state
+getState :: forall cont stop msg state. ServerRef cont stop msg state ->  Effect state
 getState handle = GS.call handle
   \_from state ->
     let reply = state
     in pure $ GS.reply reply state
 
-setState :: forall cont stop msg state. InstanceRef (ServerType cont stop msg state) -> state ->  Effect state
+setState :: forall cont stop msg state. ServerRef cont stop msg state -> state ->  Effect state
 setState handle newState = GS.call handle
   \_from state ->
     let reply = state
     in pure $ GS.reply reply newState
 
 
-setStateCast :: forall cont stop msg state. InstanceRef (ServerType cont stop msg state) -> state ->  Effect Unit
+setStateCast :: forall cont stop msg state. ServerRef cont stop msg state -> state ->  Effect Unit
 setStateCast handle newState = GS.cast handle
   \_state -> pure $ GS.return newState
