@@ -10,10 +10,12 @@ import Effect.Unsafe (unsafePerformEffect)
 import Erl.Atom (atom)
 import Erl.Data.List (nil, (:))
 import Erl.Test.EUnit (TestF, runTests, suite, test)
-import Pinto.GenServer (CallResult(..), ServerRunning(..), ServerType, ServerRef(..))
+import Pinto.GenServer (CallResult(..), ServerRunning(..), ServerType, ServerRef(..), ServerPid)
 import Pinto.GenServer as GS
 import Pinto.Sup (ChildShutdownTimeoutStrategy(..), ChildSpec, ChildType(..), RestartStrategy(..), Strategy(..), SupervisorSpec, mkErlChildSpec)
 import Pinto.Sup as Sup
+import Pinto.Sup.Dynamic (DynamicSpec, DynamicPid, DynamicType)
+import Pinto.Sup.Dynamic as DynamicSup
 import Pinto.Types (RegistryName(..), crashIfNotStarted)
 import Test.Assert (assertEqual)
 import Test.GenServer as TGS
@@ -35,6 +37,7 @@ supervisorSuite :: Free TestF Unit
 supervisorSuite =
   suite "Pinto supervisor tests" do
     testStartWithNamedChild
+    dynamicSupervisor
 
 
 data TestState = TestState Int
@@ -46,10 +49,8 @@ data TestCont = TestCont
 data TestMsg = TestMsg
 
 
-
-
 --------------------------------------------------------------------------------
--- Supervisor Test
+-- Standard Supervisor Test
 --------------------------------------------------------------------------------
 testStartWithNamedChild :: Free TestF Unit
 testStartWithNamedChild =
@@ -87,12 +88,52 @@ testStartWithNamedChild =
 
 
 --mkChildSpec :: forall childType. String -> ChildSpec childType
-mkChildSpec id start  = { id
-                  , childType : Worker
-                  , start
-                  , restartStrategy: RestartOnCrash
-                  , shutdownStrategy: KillAfter 5000
-                  }
+mkChildSpec id start  =
+  { id
+  , childType : Worker
+  , start
+  , restartStrategy: RestartOnCrash
+  , shutdownStrategy: KillAfter 5000
+  }
+
+
+--------------------------------------------------------------------------------
+-- Dynamic Supervisor Test
+--------------------------------------------------------------------------------
+dynamicSupervisor :: Free TestF Unit
+dynamicSupervisor =
+  test "Can start a supervisor and add a child" do
+    supPid <- crashIfNotStarted <$> DynamicSup.startLink Nothing supInit
+
+    childPid <- Sup.crashIfChildNotStarted <$> DynamicSup.startChild unit (DynamicSup.ByPid supPid)
+
+    childState <- getState (ByPid childPid)
+
+    assertEqual { actual: childState
+                , expected: TestState 0
+                }
+
+
+    pure unit
+
+    where
+      supInit :: Effect (DynamicSpec Unit (ServerPid Void Void Void TestState))
+      supInit =
+        pure { intensity: 1
+             , period: 5
+
+             , childType: Worker
+             , start: childStart
+
+             , restartStrategy: RestartOnCrash
+             , shutdownStrategy: KillAfter 5000
+             }
+
+      childStart unit =
+        GS.startLink $ (GS.mkSpec childInit)
+
+      childInit = do
+        pure $ Right $ InitOk $ TestState 0
 
 ---------------------------------------------------------------------------------
 -- Internal

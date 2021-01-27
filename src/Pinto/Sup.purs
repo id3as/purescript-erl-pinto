@@ -1,9 +1,11 @@
 module Pinto.Sup
-  ( ChildId(..)
-  , ChildStarted(..)
+  ( ChildStarted
   , ChildShutdownTimeoutStrategy(..)
   , ChildSpec(..)
   , ChildType(..)
+  , ChildNotStartedReason(..)
+  , StartChildResult
+
   , ErlChildSpec
   , Flags
   , RestartStrategy(..)
@@ -18,16 +20,23 @@ module Pinto.Sup
 
   , mkErlChildSpec
   , startLink
+
+  , maybeChildStarted
+  , maybeChildRunning
+
+  , crashIfChildNotStarted
+  , crashIfChildNotRunning
  ) where
 
 
 import Prelude
-import Data.Either (Either)
-import Data.Maybe (Maybe)
+import Data.Either (Either(..))
+import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Erl.Data.List (List)
 import Erl.Process.Raw (Pid)
 import Foreign (Foreign)
+import Partial.Unsafe (unsafePartial)
 import Pinto.Types (RegistryName, StartLinkResult, class HasRawPid)
 
 type ChildStarted childProcess
@@ -57,12 +66,9 @@ data ChildShutdownTimeoutStrategy
   | KillNever             -- infinity
   | KillAfter Millisecond -- {timeout, non_neg_integer()}
 
-
 data ChildType
   = Supervisor
   | Worker
-
-type ChildId id state msg = id
 
 type ChildSpec childProcess
   = { id :: String
@@ -102,15 +108,49 @@ foreign import startLink ::
   Effect (StartLinkResult SupervisorPid)
 
 foreign import data ErlChildSpec :: Type
-foreign import mkErlChildSpec ::
+
+foreign import mkErlChildSpecFFI ::
   forall childProcess.
   ChildSpec childProcess ->
   ErlChildSpec
 
--- TODO: this is just returning the type, not the actual pid...
--- TODO: should we do something with fundeps beween a process and its type?
-foreign import startChild ::
+mkErlChildSpec ::
+  forall childProcess. HasRawPid childProcess =>
+  ChildSpec childProcess ->
+  ErlChildSpec
+mkErlChildSpec = mkErlChildSpecFFI
+
+foreign import startChildFFI ::
   forall childProcess.
   SupervisorRef ->
   ChildSpec childProcess ->
   StartChildResult childProcess
+
+startChild ::
+  forall childProcess. HasRawPid childProcess =>
+  SupervisorRef ->
+  ChildSpec childProcess ->
+  StartChildResult childProcess
+startChild = startChildFFI
+
+maybeChildStarted :: forall childProcess. StartChildResult childProcess -> Maybe childProcess
+maybeChildStarted slr = case slr of
+    Right { pid: childProcess } -> Just childProcess
+    _ -> Nothing
+
+maybeChildRunning :: forall childProcess. StartChildResult childProcess -> Maybe childProcess
+maybeChildRunning slr = case slr of
+    Right { pid: childProcess } -> Just childProcess
+    Left (ChildAlreadyStarted childProcess) -> Just childProcess
+    _ -> Nothing
+
+
+crashIfChildNotStarted :: forall childProcess. StartChildResult childProcess -> childProcess
+crashIfChildNotStarted = unsafePartial \slr ->
+  case maybeChildStarted slr of
+     Just childProcess -> childProcess
+
+crashIfChildNotRunning :: forall childProcess. StartChildResult childProcess -> childProcess
+crashIfChildNotRunning = unsafePartial \slr ->
+  case maybeChildRunning slr of
+     Just childProcess -> childProcess

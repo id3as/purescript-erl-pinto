@@ -1,10 +1,9 @@
--module(pinto_sup@foreign).
+-module(pinto_sup_dynamic@foreign).
 
 %%------------------------------------------------------------------------------
 %% FFI API
 %%------------------------------------------------------------------------------
--export([ mkErlChildSpecFFI/1
-        , startLink/2
+-export([ startLinkFFI/2
         , startChildFFI/2
         ]).
 
@@ -12,7 +11,7 @@
 %%------------------------------------------------------------------------------
 %% Runtime supervisor stubs
 %%------------------------------------------------------------------------------
--export([ start_proxy/1
+-export([ start_proxy/2
         , init/1
         ]).
 
@@ -24,57 +23,40 @@
         ]).
 
 init(EffectSupervisorSpec) ->
-  #{ flags := Flags
-   , childSpecs := ChildSpecs
-   } = EffectSupervisorSpec(),
-  io:format(user, "ChildSpecs ~p~n", [ChildSpecs]),
-  io:format(user, "Flags ~p~n", [Flags]),
+  DynamicSpecPS = EffectSupervisorSpec(),
+  DynamicSpec = dynamic_spec_from_ps(DynamicSpecPS),
+  io:format(user, "DynamicSpec ~p~n", [DynamicSpec]),
 
-
-  {ok, {flags_from_ps(Flags), ChildSpecs}}.
+  {ok, DynamicSpec}.
 
 
 %%------------------------------------------------------------------------------
 %% FFI API
 %%------------------------------------------------------------------------------
-mkErlChildSpecFFI(#{ id := ChildId
-                   , start := StartFn
-                   , restartStrategy := RestartStrategy
-                   , shutdownStrategy := ChildShutdownTimeoutStrategy
-                   , childType := ChildType
-                   }) ->
-  #{ id => ChildId
-   , start => {?MODULE, start_proxy, [StartFn]}
-   , restart => restart_from_ps(RestartStrategy)
-   , shutdown => shutdown_from_ps(ChildShutdownTimeoutStrategy)
-   , type => type_from_ps(ChildType)
-   }.
-
-
-startLink(Name, EffectSupervisorSpec) ->
+startLinkFFI(Name, DynamicSpecEffect) ->
   fun() ->
-      startLinkPure(Name, EffectSupervisorSpec)
+      startLinkPure(Name, DynamicSpecEffect)
   end.
 
-startLinkPure({nothing}, EffectSupervisorSpec) ->
-  Result = supervisor:start_link(?MODULE, EffectSupervisorSpec),
+startLinkPure({nothing}, DynamicSpecEffect) ->
+  Result = supervisor:start_link(?MODULE, DynamicSpecEffect),
   start_link_result_to_ps(Result);
-startLinkPure({just, RegistryName}, EffectSupervisorSpec) ->
-  Result = supervisor:start_link(registry_name_from_ps(RegistryName), ?MODULE, EffectSupervisorSpec),
+startLinkPure({just, RegistryName}, DynamicSpecEffect) ->
+  Result = supervisor:start_link(registry_name_from_ps(RegistryName), ?MODULE, DynamicSpecEffect),
   start_link_result_to_ps(Result).
 
-startChildFFI(SupRef, ChildSpec) ->
+startChildFFI(ChildArg, SupRef) ->
   fun() ->
-      startChildPure(SupRef, mkErlChildSpecFFI(ChildSpec))
+      io:format(user, "Starting a child for ~p with ~p~n", [SupRef, ChildArg]),
+      startChildPure(SupRef, ChildArg)
   end.
 
-startChildPure({byPid, Pid}, ChildSpec) ->
-  Result = supervisor:start_child(Pid, ChildSpec),
+startChildPure({byPid, Pid}, ChildArg) ->
+  Result = supervisor:start_child(Pid, [ChildArg]),
   start_child_result_to_ps(Result);
-startChildPure({byName, Name}, ChildSpec) ->
-  Result = supervisor:start_child(registry_name_from_ps(Name), ChildSpec),
+startChildPure({byName, Name}, ChildArg) ->
+  Result = supervisor:start_child(registry_name_from_ps(Name), [ChildArg]),
   start_child_result_to_ps(Result).
-
 
 
 
@@ -91,19 +73,31 @@ start_child_result_to_ps({error, Other})                  -> {left, {childFailed
 %%------------------------------------------------------------------------------
 %% ps -> erlang conversion helpers
 %%------------------------------------------------------------------------------
-flags_from_ps( #{ strategy := Strategy
-                , intensity := Intensity
-                , period := Period
-                }) ->
-  #{ strategy => strategy_from_ps(Strategy)
-   , intensity => Intensity
-   , period => Period
-   }.
+dynamic_spec_from_ps(#{ intensity := Intensity
+                    , period := Period
 
+                    , start := StartFn
+                    , restartStrategy := RestartStrategy
+                    , shutdownStrategy := ChildShutdownTimeoutStrategy
+                    , childType := ChildType
+                    }) ->
 
-strategy_from_ps({oneForAll}) -> one_for_all;
-strategy_from_ps({oneForOne}) -> one_for_one;
-strategy_from_ps({restForOne}) -> rest_for_one.
+  SupFlags =
+    #{ strategy => simple_one_for_one
+     , intensity => Intensity
+     , period => Period
+     },
+
+  ChildSpec =
+    #{ id => dynamic_child
+     , start => {?MODULE, start_proxy, [StartFn]}
+     , restart => restart_from_ps(RestartStrategy)
+     , shutdown => shutdown_from_ps(ChildShutdownTimeoutStrategy)
+     , type => type_from_ps(ChildType)
+     },
+
+    { SupFlags, [ ChildSpec ] }.
+
 
 restart_from_ps({restartNever}) -> transient;
 restart_from_ps({restartAlways}) -> permanent;
@@ -116,6 +110,7 @@ shutdown_from_ps({killAfter, Ms}) ->  Ms.
 type_from_ps({supervisor}) -> supervisor;
 type_from_ps({worker}) -> worker.
 
-start_proxy(StartEffect) ->
+start_proxy(StartFn, StartArg) ->
+  StartEffect = StartFn(StartArg),
   StartResult = StartEffect(),
   start_link_result_from_ps(StartResult).
