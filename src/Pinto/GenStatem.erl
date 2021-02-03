@@ -5,6 +5,8 @@
 %% FFI Exports
 -export([ startLinkFFI/2
         , selfFFI/0
+        , monitorFFI/3
+        , demonitorFFI/2
         , callFFI/2
         , castFFI/2
         , mkReply/1
@@ -67,6 +69,25 @@ selfFFI() ->
       self()
   end.
 
+monitorFFI(Pid, HandlerFn, #{ monitorHandlers := MonitorHandlers } = Context) ->
+  fun() ->
+      MonitorRef = monitor(process, Pid),
+      NewMonitorHandlers = maps:put(MonitorRef, HandlerFn, MonitorHandlers),
+      NewContext = Context#{ monitorHandlers => NewMonitorHandlers },
+
+      #{ monitorRef => MonitorRef
+       , newContext => NewContext
+       }
+  end.
+
+demonitorFFI(MonitorRef, #{ monitorHandlers := MonitorHandlers } = Context) ->
+  fun() ->
+      true = demonitor(MonitorRef, [flush]),
+      NewMonitorHandlers = maps:remove(MonitorRef, MonitorHandlers),
+      NewContext = Context#{ monitorHandlers => NewMonitorHandlers },
+      NewContext
+  end.
+
 %%% ----------------------------------------------------------------------------
 %%% gen_statem API
 %%% ----------------------------------------------------------------------------
@@ -112,6 +133,29 @@ handle_event(cast, Fn, State, Data) ->
   Result = Effect(),
   io:format(user, "Cast result: ~p~n", [Result]),
   event_result_from_ps(Result);
+
+handle_event(info, {'DOWN', Ref, process, Pid, Reason}, State, #{ context := #{ monitorHandlers := Handlers } = Context } = Data)
+  when
+    is_map_key(Ref, Handlers) ->
+
+  io:format(user, "Got monitor down for ~p with reason ~p in state ~p (~p)~n", [Ref, Reason, State, Data]),
+
+  Fn = maps:get(Ref, Handlers),
+
+  NewContext = Context#{ monitorHandlers => maps:remove(Ref, Handlers) },
+  DataWithNewContext = Data#{ context => NewContext },
+
+  Effect = Fn(down_reason_to_ps(Reason), DataWithNewContext),
+  Result = Effect(),
+
+  io:format(user, "Monitor result: ~p~n", [Result]),
+
+  %% We can't just do a normal event_result_from_ps/1 here because we've changed the data
+  event_result_from_ps(Result, DataWithNewContext);
+
+handle_event(info, {'DOWN', Ref, process, Pid, Reason}, State, Data) ->
+  io:format(user, "Got unknown monitor down for ~p with reason ~p in state ~p (~p)~n", [Ref, Reason, State, Data]),
+  keep_state_and_data;
 
 handle_event(Event, EventContent, State, #{ handleEvent := HandleEvent } = Data) ->
   EventPS = event_to_ps(Event, EventContent),
@@ -175,5 +219,19 @@ event_result_from_ps(Result) ->
     {outerEventNextStateWithActions, NewState, NewData, Actions} -> {next_state, NewState, NewData, event_actions(Actions)}
   end.
 
+event_result_from_ps(Result, PreUpdatedData) ->
+  case Result of
+    {outerEventKeepStateAndData} -> {keep_state, PreUpdatedData};
+    {outerEventKeepStateAndDataWithActions, Actions} -> {keep_state, PreUpdatedData, event_actions(Actions)};
+    {outerEventKeepState, NewData} -> {keep_state, NewData};
+    {outerEventKeepStateWithActions, NewData, Actions} -> {keep_state, NewData, event_actions(Actions)};
+    {outerEventNextState, NewState, NewData} -> {next_state, NewState, NewData};
+    {outerEventNextStateWithActions, NewState, NewData, Actions} -> {next_state, NewState, NewData, event_actions(Actions)}
+  end.
+
 statem_ref_from_ps({byName, PsCallName})               -> instance_name_from_ps(PsCallName);
 statem_ref_from_ps({byPid, Pid})                       -> Pid.
+
+down_reason_to_ps(normal) -> {downNormal};
+down_reason_to_ps(noconnection) -> {downNoConnection};
+down_reason_to_ps(Other) -> {downOther}.

@@ -7,6 +7,7 @@
         , callFFI/2
         , castFFI/2
         , replyTo/2
+        , stopFFI/1
         ]).
 
 -export([ init/1
@@ -42,7 +43,8 @@ startLinkFFI(MaybeName, InitEffect) ->
 
 castFFI(ServerRef, CastFn) ->
   fun() ->
-      gen_server:cast(server_ref_from_ps(ServerRef), {do_cast, CastFn})
+      gen_server:cast(server_ref_from_ps(ServerRef), {do_cast, CastFn}),
+      unit
   end.
 
 
@@ -53,12 +55,19 @@ callFFI(ServerRef, CallFn) ->
 
 replyTo(From, Reply) ->
   fun() ->
-      gen_server:reply(From, Reply)
+      gen_server:reply(From, Reply),
+      unit
   end.
 
 selfFFI() ->
   fun() ->
       self()
+  end.
+
+stopFFI(ServerRef) ->
+  fun() ->
+      gen_server:stop(server_ref_from_ps(ServerRef)),
+      unit
   end.
 
 %%% ----------------------------------------------------------------------------

@@ -91,3 +91,17 @@ Unfinished
   - Monitor handling should be the same I think
 
 
+newtype Blah = Blah Void
+
+newtype FooPid statemType = FooPid Void
+
+class HasInfoType statemType infoType | statemType -> infoType
+
+f ::
+  forall statemType infoType. HasInfoType statemType infoType =>
+  FooPid statemType ->
+  infoType ->
+  Effect Unit
+
+f statemPid info = pure unit
+

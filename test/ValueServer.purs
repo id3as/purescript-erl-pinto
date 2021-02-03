@@ -3,6 +3,7 @@ module Test.ValueServer
   , getValue
   , setValue
   , setValueAsync
+  , stop
   , Msg
   , ValueServerPid
   )
@@ -69,3 +70,7 @@ setValueAsync n =
   where
     impl state@{value}
       = pure $ GS.return state{value = n}
+
+stop :: Effect Unit
+stop =
+  GS.stop (ByName serverName)

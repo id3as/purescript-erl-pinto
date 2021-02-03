@@ -24,6 +24,7 @@ module Pinto.GenServer
   , startLink
   , call
   , cast
+  , stop
 
   , reply
   , replyWithAction
@@ -236,7 +237,17 @@ cast instanceRef castFn =
       in
         mkFn1 handler
 
+-- TODO: should we transform the thrown noproc?
+foreign import stopFFI ::
+  forall cont stop msg state.
+  ServerRef cont stop msg state ->
+  Effect Unit
 
+stop ::
+  forall cont stop msg state.
+  ServerRef cont stop msg state ->
+  Effect Unit
+stop = stopFFI
 
 startLink :: forall cont stop msg state. (ServerSpec cont stop msg state) -> Effect (StartLinkResult (ServerPid cont stop msg state))
 startLink { name: maybeName, init: initFn, handleInfo: maybeHandleInfo , handleContinue: maybeHandleContinue } =
