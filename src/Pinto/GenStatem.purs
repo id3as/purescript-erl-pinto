@@ -1,7 +1,8 @@
 module Pinto.GenStatem
-       ( StatemType
-       , StatemPid
+       ( StatemPid
        , StatemRef(..)
+
+       , class IsStatemType
 
        , class HasStateId
        , getStateId
@@ -77,11 +78,11 @@ import Effect (Effect)
 import Erl.Data.List (List, (:), nil)
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
-import Erl.Process (Process)
+import Erl.Process (Process(..))
 import Erl.Process.Raw (Pid)
 import Foreign (Foreign)
 import Pinto.Types (RegistryName, StartLinkResult, class HasRawPid, getRawPid, class HasProcess)
-import Unsafe.Coerce (unsafeCoerce)
+-- import Unsafe.Coerce (unsafeCoerce)
 
 -- -----------------------------------------------------------------------------
 -- States
@@ -98,8 +99,8 @@ class SupportsReply builder where
 class SupportsAddTimeout builder timerContent  where
   addTimeoutAction :: TimeoutAction timerContent -> builder timerContent -> builder timerContent
 
-class SupportsSelf context info internal timerName timerContent commonData stateId state where
-  self :: context info internal timerName timerContent commonData stateId state Effect (StatemPid info internal timerName timerContent commonData stateId state)
+class SupportsSelf context statemType where
+  self :: context statemType Effect (StatemPid statemType)
 
 foreign import data MonitorRef :: Type
 
@@ -129,31 +130,31 @@ class SupportsNewActions builder where
 -- -----------------------------------------------------------------------------
 -- InitT
 -- -----------------------------------------------------------------------------
-type InitContext info internal timerName timerContent commonData stateId state =
-  Context info internal timerName timerContent commonData stateId state
+type InitContext statemType =
+  Context statemType
 
 newtype InitActionsBuilder info internal timerName timerContent =
   InitActionsBuilder (List (EventAction info internal timerName timerContent))
 
-newtype InitT info internal timerName timerContent commonData stateId state m a =
-  InitT (StateT (InitContext info internal timerName timerContent commonData stateId state) m a)
+newtype InitT statemType m a =
+  InitT (StateT (InitContext statemType) m a)
 
-derive newtype instance functorInit :: Functor (InitT info internal timerName timerContent commonData stateId state Effect)
-derive newtype instance applyInit :: Apply (InitT info internal timerName timerContent commonData stateId state Effect)
-derive newtype instance applicativeInit :: Applicative (InitT info internal timerName timerContent commonData stateId state Effect)
-derive newtype instance bindInit :: Bind (InitT info internal timerName timerContent commonData stateId state Effect)
-derive newtype instance monadInit :: Monad (InitT info internal timerName timerContent commonData stateId state Effect)
-derive newtype instance monadTransInit :: MonadTrans (InitT info internal timerName timerContent commonData stateId state)
+derive newtype instance functorInit :: Functor (InitT statemType Effect)
+derive newtype instance applyInit :: Apply (InitT statemType Effect)
+derive newtype instance applicativeInit :: Applicative (InitT statemType Effect)
+derive newtype instance bindInit :: Bind (InitT statemType Effect)
+derive newtype instance monadInit :: Monad (InitT statemType Effect)
+derive newtype instance monadTransInit :: MonadTrans (InitT statemType)
 
-instance supportsSelfInitT :: SupportsSelf InitT info internal timerName timerContent commonData stateId state where
+instance supportsSelfInitT :: SupportsSelf InitT statemType where
   self = InitT $ Exports.lift $ selfFFI
 
-instance supportsMonitorInitT :: (HasStateId stateId state) => SupportsMonitor InitT info internal timerName timerContent commonData stateId state where
+instance supportsMonitorInitT :: (HasStateId stateId state) => SupportsMonitor InitT statemType where
   monitor process handleFn =
     InitT $ monitorImpl
 
     where
-      monitorImpl :: (StateT (InitContext info internal timerName timerContent commonData stateId state) Effect MonitorRef)
+      monitorImpl :: (StateT (InitContext statemType) Effect MonitorRef)
       monitorImpl = do
          context <- StateT.get
          { monitorRef, newContext } <- StateT.lift $ monitorFFI (getRawPid process) (wrapMonitorFn handleFn) context
@@ -164,7 +165,7 @@ instance supportsMonitorInitT :: (HasStateId stateId state) => SupportsMonitor I
     InitT $ demonitorImpl
 
     where
-      demonitorImpl :: (StateT (InitContext info internal timerName timerContent commonData stateId state) Effect Unit)
+      demonitorImpl :: (StateT (InitContext statemType) Effect Unit)
       demonitorImpl = do
          context <- StateT.get
          newContext <- StateT.lift $ demonitorFFI monitorRef context
@@ -298,18 +299,42 @@ instance supportsReplyEventActionsBuilder :: SupportsReply (EventActionsBuilder 
 -- -----------------------------------------------------------------------------
 -- Other Gubbins
 -- -----------------------------------------------------------------------------
-newtype StatemType info internal timerName timerContent commonData stateId state = StatemType Void
-newtype StatemPid info internal timerName timerContent commonData stateId state = StatemPid (Process info)
+class (HasStateId stateId state) <= IsStatemType statemType info internal timerName timerContent commonData stateId state |
+  statemType -> info,
+  statemType -> internal,
+  statemType -> timerName,
+  statemType -> timerContent,
+  statemType -> commonData,
+  statemType -> stateId,
+  statemType -> state
+
+newtype StatemPid statemType = StatemPid Pid
+
+
+-- newtype StatemType info internal timerName timerContent commonData stateId state = StatemType Void
+-- newtype StatemPid info internal timerName timerContent commonData stateId state = StatemPid (Process info)
 
 derive newtype instance statemPidHasRawPid :: HasRawPid (StatemPid info internal timerName timerContent commonData stateId state)
-derive newtype instance statemPidHasProcess :: HasProcess info (StatemPid info internal timerName timerContent commonData stateId state)
 
-data StatemRef info internal timerName timerContent commonData stateId state
-  = ByName (RegistryName (StatemType info internal timerName timerContent commonData stateId state))
-  | ByPid (StatemPid info internal timerName timerContent commonData stateId state)
+--  getProcess ::
+--    forall statemType info internal timerName timerContent commonData stateId state.
+--    IsStatemType statemType info internal timerName timerContent commonData stateId state =>
+--    StatemPid statemType ->
+--    Process info
 
-type Spec info internal timerName timerContent commonData stateId state =
-  { name :: Maybe (RegistryName (StatemType info internal timerName timerContent commonData stateId state))
+instance statemPidHasProcess ::
+  IsStatemType statemType info internal timerName timerContent commonData stateId state =>
+  HasProcess info (StatemPid statemType) where
+
+  getProcess (StatemPid pid) = Process pid
+
+data StatemRef statemType
+  = ByName (RegistryName statemType)
+  | ByPid (StatemPid statemType)
+
+type Spec statemType info internal timerName timerContent commonData stateId state =
+  IsStatemType statemType info internal timerName timerContent commonData stateId state =>
+  { name :: Maybe (statemType)
   , init :: InitFn info internal timerName timerContent commonData stateId state
   , handleEvent :: HandleEventFn info internal timerName timerContent commonData stateId state
   , handleEnter :: Maybe (EnterFn info internal timerName timerContent commonData stateId state)
@@ -404,9 +429,9 @@ data Timeout timerContent
 -- -----------------------------------------------------------------------------
 -- FFI
 -- -----------------------------------------------------------------------------
-type Context info internal timerName timerContent commonData stateId state =
+type Context statemType =
   { -- NOTE: this is managed entirely by FFI
-    monitorHandlers :: Map MonitorRef (WrappedMonitorFn info internal timerName timerContent commonData stateId state)
+    monitorHandlers :: Map MonitorRef (WrappedMonitorFn statemType)
   }
 
 newtype OuterData info internal timerName timerContent commonData stateId state = OuterData
@@ -479,10 +504,10 @@ foreign import data FromForeign :: Type
 newtype From reply = From FromForeign
 
 foreign import startLinkFFI ::
-  forall info internal timerName timerContent commonData stateId state.
-  Maybe (RegistryName (StatemType info internal timerName timerContent commonData stateId state)) ->
+  forall statemType info internal timerName timerContent commonData stateId state.
+  Maybe (RegistryName statemType) ->
   Effect (OuterInitResult info internal timerName timerContent commonData stateId state) ->
-  Effect (StartLinkResult (StatemPid info internal timerName timerContent commonData stateId state))
+  Effect (StartLinkResult (StatemPid statemPid))
 
 foreign import selfFFI ::
   forall info internal timerName timerContent commonData stateId state.
@@ -516,9 +541,10 @@ foreign import castFFI ::
   Effect Unit
 
 startLink ::
-  forall info internal timerName timerContent commonData stateId state. HasStateId stateId state =>
+  forall statemType info internal timerName timerContent commonData stateId state.
+  IsStatemType statemType info internal timerName timerContent commonData stateId state =>
   Spec info internal timerName timerContent commonData stateId state ->
-  Effect (StartLinkResult (StatemPid info internal timerName timerContent commonData stateId state))
+  Effect (StartLinkResult (StatemPid statemType))
 startLink
   { name: maybeName
   , init: (InitT init)

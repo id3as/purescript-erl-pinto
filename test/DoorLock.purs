@@ -13,7 +13,7 @@ import Prelude
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Erl.Atom (atom)
-import Pinto.GenStatem (class HasStateId, Event(..), InitResult(..), StatemPid, StatemType, Timeout(..), TimeoutAction(..), EventResult(..), StateEnterResult(..), StatemRef(..))
+import Pinto.GenStatem (class IsStatemType, class HasStateId, Event(..), InitResult(..), StatemPid, StatemType, Timeout(..), TimeoutAction(..), EventResult(..), StateEnterResult(..), StatemRef(..))
 import Pinto.GenStatem as Statem
 import Pinto.Types (RegistryName(..), crashIfNotStarted, class HasRawPid)
 import Debug.Trace (spy)
@@ -104,17 +104,22 @@ instance stateHasStateId :: HasStateId StateId State where
   getStateId (UnlockedClosed _) = StateIdUnlockedClosed
   getStateId (UnlockedOpen _) = StateIdUnlockedOpen
 
-type Data =
+newtype Data = Data
   { code :: String
   , unknownEvents :: Int
   }
 
-type Info = Void
-type Internal = Void
-type TimerName = Void
+newtype Info = Info Void
+newtype Internal = Internal Void
+newtype TimerName = TimerName Void
 data TimerContent = DoorOpenTooLong
 
 type DoorLockType = StatemType Info Internal TimerName TimerContent Data StateId State
+
+newtype DoorLockStatem = DoorLockStatem Void
+instance doorLockTypeIsStatemType :: IsStatemType DoorLockStatem Info Internal TimerName TimerContent Data StateId State
+
+instance doorLockTypeIsStatemType2 :: IsStatemType DoorLockStatem Info
 
 newtype DoorLockPid = DoorLockPid (StatemPid Info Internal TimerName TimerContent Data StateId State)
 
@@ -142,7 +147,7 @@ startLink = do
     init =
       let
         initialState = Locked { failedAttempts: 0 }
-        initialData =
+        initialData = Data
           { code: "THE_CODE"
           , unknownEvents: 0
           }
@@ -175,11 +180,11 @@ startLink = do
       audit AuditDoorOpenTooLong # Statem.lift
       pure $ EventKeepStateAndData
 
-    handleEvent event state commonData@{ unknownEvents } = do
+    handleEvent event state (Data commonData@{ unknownEvents }) = do
       -- TODO: log bad event
       _ <- Statem.self
       audit AuditUnexpectedEventInState # Statem.lift
-      pure $ EventKeepState (commonData { unknownEvents = unknownEvents + 1 })
+      pure $ EventKeepState (Data $ commonData { unknownEvents = unknownEvents + 1 })
 
     auditIfOpenTooLong actions = do
       Statem.addTimeoutAction (SetStateTimeout (After 0 DoorOpenTooLong)) actions
@@ -208,7 +213,7 @@ unlock :: String -> Effect UnlockResult
 unlock code =
   Statem.call (ByName name) impl
   where
-    impl from (Locked stateData) commonData@{ code: actualCode } =
+    impl from (Locked stateData) commonData@(Data { code: actualCode }) =
       if actualCode == code then do
         let actions = Statem.newActions # Statem.addReply (Statem.mkReply from UnlockSuccess)
         pure $ EventNextStateWithActions (UnlockedClosed { failedAttemptsBeforeUnlock: stateData.failedAttempts }) commonData actions
