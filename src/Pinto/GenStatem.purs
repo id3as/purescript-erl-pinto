@@ -98,8 +98,8 @@ class SupportsReply builder where
 class SupportsAddTimeout builder timerContent  where
   addTimeoutAction :: TimeoutAction timerContent -> builder timerContent -> builder timerContent
 
-class SupportsSelf context info internal timerName timerContent commonData stateId state where
-  self :: context info internal timerName timerContent commonData stateId state Effect (StatemPid info internal timerName timerContent commonData stateId state)
+class SupportsSelf context pid | context -> pid where
+  self :: context Effect pid
 
 foreign import data MonitorRef :: Type
 
@@ -145,7 +145,7 @@ derive newtype instance bindInit :: Bind (InitT info internal timerName timerCon
 derive newtype instance monadInit :: Monad (InitT info internal timerName timerContent commonData stateId state Effect)
 derive newtype instance monadTransInit :: MonadTrans (InitT info internal timerName timerContent commonData stateId state)
 
-instance supportsSelfInitT :: SupportsSelf InitT info internal timerName timerContent commonData stateId state where
+instance supportsSelfInitT :: SupportsSelf (InitT info internal timerName timerContent commonData stateId state) (StatemPid info internal timerName timerContent commonData stateId state) where
   self = InitT $ Exports.lift $ selfFFI
 
 instance supportsMonitorInitT :: (HasStateId stateId state) => SupportsMonitor InitT info internal timerName timerContent commonData stateId state where
@@ -206,7 +206,7 @@ derive newtype instance monadStateEnter :: Monad (StateEnterT info internal time
 derive newtype instance monadTransStateEnter :: MonadTrans (StateEnterT info internal timerName timerContent commonData stateId state)
 derive instance newtypeStateEnterT :: Newtype (StateEnterT info internal timerName timerContent commonData stateId state m a) _
 
-instance supportsSelfStateEnterT :: SupportsSelf StateEnterT info internal timerName timerContent commonData stateId state where
+instance supportsSelfStateEnterT :: SupportsSelf (StateEnterT info internal timerName timerContent commonData stateId state) (StatemPid info internal timerName timerContent commonData stateId state) where
   self = StateEnterT $ Exports.lift $ selfFFI
 
 instance supportsMonitorStateEnterT :: (HasStateId stateId state) => SupportsMonitor StateEnterT info internal timerName timerContent commonData stateId state where
@@ -263,7 +263,7 @@ derive newtype instance monadEvent :: Monad (EventT info internal timerName time
 derive newtype instance monadTransEvent :: MonadTrans (EventT info internal timerName timerContent commonData stateId state)
 derive instance newtypeEventT :: Newtype (EventT info internal timerName timerContent commonData stateId state m a) _
 
-instance supportsSelfEventT :: SupportsSelf EventT info internal timerName timerContent commonData stateId state where
+instance supportsSelfEventT :: SupportsSelf (EventT info internal timerName timerContent commonData stateId state) (StatemPid info internal timerName timerContent commonData stateId state) where
   self = EventT $ Exports.lift $ selfFFI
 
 instance supportsMonitorEventT :: (HasStateId stateId state) => SupportsMonitor EventT info internal timerName timerContent commonData stateId state where
