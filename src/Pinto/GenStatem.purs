@@ -12,9 +12,6 @@ module Pinto.GenStatem
        , class SupportsAddTimeout
        , addTimeoutAction
 
-       , class SupportsSelf
-       , self
-
        , class SupportsNewActions
        , newActions
 
@@ -80,7 +77,7 @@ import Erl.Data.Map as Map
 import Erl.Process (Process)
 import Erl.Process.Raw (Pid)
 import Foreign (Foreign)
-import Pinto.Types (RegistryName, StartLinkResult, class HasRawPid, getRawPid, class HasProcess)
+import Pinto.Types (RegistryName, StartLinkResult, class HasRawPid, getRawPid, class HasProcess, class SupportsSelf, self)
 import Unsafe.Coerce (unsafeCoerce)
 
 -- -----------------------------------------------------------------------------
@@ -97,9 +94,6 @@ class SupportsReply builder where
 
 class SupportsAddTimeout builder timerContent  where
   addTimeoutAction :: TimeoutAction timerContent -> builder timerContent -> builder timerContent
-
-class SupportsSelf context pid | context -> pid where
-  self :: context Effect pid
 
 foreign import data MonitorRef :: Type
 

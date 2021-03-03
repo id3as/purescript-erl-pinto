@@ -16,6 +16,7 @@ import Erl.Atom (atom)
 import Pinto.GenStatem (class HasStateId, Event(..), InitResult(..), StatemPid, StatemType, Timeout(..), TimeoutAction(..), EventResult(..), StateEnterResult(..), StatemRef(..))
 import Pinto.GenStatem as Statem
 import Pinto.Types (RegistryName(..), crashIfNotStarted, class HasRawPid)
+import Pinto.Types as Pinto
 import Debug.Trace (spy)
 
 -- Test-specific imports
@@ -147,11 +148,11 @@ startLink = do
           , unknownEvents: 0
           }
       in do
-        _ <- Statem.self
+        _ <- Pinto.self
         pure $ InitOk initialState initialData
 
     handleEnter StateIdLocked StateIdUnlockedClosed _state _commonData = do
-      _ <- Statem.self
+      _ <- Pinto.self
       audit AuditDoorUnlocked # Statem.lift
       pure $ StateEnterKeepData
 
@@ -177,7 +178,7 @@ startLink = do
 
     handleEvent event state commonData@{ unknownEvents } = do
       -- TODO: log bad event
-      _ <- Statem.self
+      _ <- Pinto.self
       audit AuditUnexpectedEventInState # Statem.lift
       pure $ EventKeepState (commonData { unknownEvents = unknownEvents + 1 })
 

@@ -42,9 +42,15 @@ module Pinto.GenServer
 
 import Prelude
 
+import Control.Monad.State.Trans (StateT)
+import Control.Monad.State.Trans as StateT
+import Control.Monad.Trans.Class (class MonadTrans)
+import Control.Monad.Trans.Class (lift) as Exports
+
 import Control.Monad.Reader (ReaderT, runReaderT)
 import Control.Monad.Reader (lift) as Exports
 import Control.Monad.Reader as Reader
+
 import Data.Either (Either(..))
 import Data.Function.Uncurried (Fn1, Fn2, mkFn1, mkFn2)
 import Data.Maybe (Maybe(..))
@@ -58,6 +64,16 @@ import Erl.Process (Process)
 --------------------------------------------------------------------------------
 -- Public types
 --------------------------------------------------------------------------------
+newtype ServerT cont stop msg state m a =
+  ServerT (StateT (Context cont stop msg state) m a)
+
+derive newtype instance functorInit :: Functor (ServerT cont stop msg state Effect)
+derive newtype instance applyInit :: Apply (ServerT cont stop msg state Effect)
+derive newtype instance applicativeInit :: Applicative (ServerT cont stop msg state Effect)
+derive newtype instance bindInit :: Bind (ServerT cont stop msg state Effect)
+derive newtype instance monadInit :: Monad (ServerT cont stop msg state Effect)
+derive newtype instance monadTransInit :: MonadTrans (ServerT cont stop msg state)
+
 data Action cont stop
   = Timeout Int
   | Hibernate
@@ -287,6 +303,9 @@ foreign import startLinkFFI :: forall cont stop msg state.
   Maybe (RegistryName (ServerType cont stop msg state)) ->
   Effect (InitResult cont (OuterState cont stop msg state)) ->
   Effect (StartLinkResult (ServerPid cont stop msg state))
+
+-- instance supportsSelfInitT :: SupportsSelf (InitT info internal timerName timerContent commonData stateId state) (StatemPid info internal timerName timerContent commonData stateId state) where
+--   self = InitT $ Exports.lift $ selfFFI
 
 self ::
   forall cont stop msg state.

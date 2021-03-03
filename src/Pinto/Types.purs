@@ -9,8 +9,12 @@ module Pinto.Types
 
   , class HasRawPid
   , getRawPid
+
   , class HasProcess
   , getProcess
+
+  , class SupportsSelf
+  , self
 
   , maybeStarted
   , maybeRunning
@@ -27,6 +31,7 @@ module Pinto.Types
 import Prelude
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
+import Effect (Effect)
 import Erl.Atom (Atom)
 import Erl.ModuleName (NativeModuleName)
 import Erl.Process (Process(..))
@@ -59,6 +64,9 @@ class HasProcess b a where
 
 instance processHasProcess :: HasProcess b (Process b) where
   getProcess = identity
+
+class SupportsSelf context pid | context -> pid where
+  self :: context Effect pid
 
 data NotStartedReason serverProcess
   = Ignore
