@@ -16,6 +16,7 @@ module Pinto.GenServer
 
   , From
   , ResultT
+  , ServerT
   , ServerRunning(..)
   , ServerNotRunning(..)
   , Context
@@ -35,7 +36,6 @@ module Pinto.GenServer
   , returnWithAction
 
   , replyTo
-  , self
 
   , module Exports
   ) where
@@ -47,16 +47,14 @@ import Control.Monad.State.Trans as StateT
 import Control.Monad.Trans.Class (class MonadTrans)
 import Control.Monad.Trans.Class (lift) as Exports
 
-import Control.Monad.Reader (ReaderT, runReaderT)
-import Control.Monad.Reader (lift) as Exports
-import Control.Monad.Reader as Reader
-
 import Data.Either (Either(..))
 import Data.Function.Uncurried (Fn1, Fn2, mkFn1, mkFn2)
 import Data.Maybe (Maybe(..))
+import Data.Newtype (class Newtype, un)
+import Data.Tuple as Tuple
 import Effect (Effect)
 import Foreign (Foreign)
-import Pinto.Types (RegistryName, StartLinkResult, class HasRawPid, class HasProcess)
+import Pinto.Types (RegistryName, StartLinkResult, class HasRawPid, class HasProcess, class SupportsSelf)
 import Erl.Process (Process)
 
 -- Sequence of types
@@ -67,12 +65,13 @@ import Erl.Process (Process)
 newtype ServerT cont stop msg state m a =
   ServerT (StateT (Context cont stop msg state) m a)
 
-derive newtype instance functorInit :: Functor (ServerT cont stop msg state Effect)
-derive newtype instance applyInit :: Apply (ServerT cont stop msg state Effect)
-derive newtype instance applicativeInit :: Applicative (ServerT cont stop msg state Effect)
-derive newtype instance bindInit :: Bind (ServerT cont stop msg state Effect)
-derive newtype instance monadInit :: Monad (ServerT cont stop msg state Effect)
-derive newtype instance monadTransInit :: MonadTrans (ServerT cont stop msg state)
+derive newtype instance functorServerT :: Functor (ServerT cont stop msg state Effect)
+derive newtype instance applyServerT :: Apply (ServerT cont stop msg state Effect)
+derive newtype instance applicativeServerT :: Applicative (ServerT cont stop msg state Effect)
+derive newtype instance bindServerT :: Bind (ServerT cont stop msg state Effect)
+derive newtype instance monadServerT :: Monad (ServerT cont stop msg state Effect)
+derive newtype instance monadTransServerT :: MonadTrans (ServerT cont stop msg state)
+derive instance newtypeServerT :: Newtype (ServerT cont stop msg state m a) _
 
 data Action cont stop
   = Timeout Int
@@ -113,7 +112,7 @@ returnWithAction action state = ReturnResult (Just action) state
 -- return state
 -- returnWithAction (Timeout 10) state
 
-type ResultT result cont stop msg state = ReaderT (Context cont stop msg state) Effect result
+type ResultT result cont stop msg state = ServerT cont stop msg state Effect result
 
 
 foreign import data FromForeign :: Type
@@ -220,9 +219,11 @@ call instanceRef callFn =
     wrappedCallFn :: WrappedCallFn reply cont stop msg state
     wrappedCallFn =
       let
-        handler from state@{ innerState, context: handlerContext } = do
-          innerResult <- (runReaderT $ callFn from innerState) handlerContext
-          pure $ (mkOuterState handlerContext) <$> innerResult
+        handler from state@{ innerState, context: initialContext } = do
+          result <- (StateT.runStateT $ un ServerT $ callFn from innerState) initialContext
+          let result' = Tuple.fst result
+          let contextResult = Tuple.snd result
+          pure $ (mkOuterState contextResult) <$> result'
       in
         mkFn2 handler
 
@@ -247,9 +248,11 @@ cast instanceRef castFn =
     wrappedCastFn :: WrappedCastFn cont stop msg state
     wrappedCastFn =
       let
-        handler state@{ innerState, context: handlerContext } = do
-          innerResult <- (runReaderT $ castFn innerState) handlerContext
-          pure $ (mkOuterState handlerContext) <$> innerResult
+        handler state@{ innerState, context: initialContext } = do
+          result <- (StateT.runStateT $ un ServerT $ castFn innerState) initialContext
+          let result' = Tuple.fst result
+          let contextResult = Tuple.snd result
+          pure $ (mkOuterState contextResult) <$> result'
       in
         mkFn1 handler
 
@@ -276,26 +279,37 @@ startLink { name: maybeName, init: initFn, handleInfo: maybeHandleInfo , handleC
       , handleContinue: wrapContinue <$> maybeHandleContinue
       }
 
+    -- initEffect :: Effect (InitResult cont (OuterState cont stop msg state))
+    -- initEffect = do
+    --   innerResult <- (StateT.runStateT initFn) context
+    --   pure $ mapInitResult (mkOuterState context) innerResult
+
     initEffect :: Effect (InitResult cont (OuterState cont stop msg state))
     initEffect = do
-      innerResult <- (runReaderT initFn) context
-      pure $ mapInitResult (mkOuterState context) innerResult
+      result <- (StateT.runStateT $ un ServerT $ initFn) context
+      let result' = Tuple.fst result
+      let contextResult = Tuple.snd result
+      pure $ (mapInitResult (mkOuterState contextResult) result')
 
     wrapHandleInfo :: InfoFn cont stop msg state -> WrappedInfoFn cont stop msg state
     wrapHandleInfo handleInfo =
       let
-        handler msg state@{ innerState, context: handlerContext } = do
-          innerResult <- (runReaderT $ handleInfo msg innerState) handlerContext
-          pure $ (mkOuterState handlerContext) <$> innerResult
+        handler msg state@{ innerState, context: initialContext } = do
+          result <- (StateT.runStateT $ un ServerT $ handleInfo msg innerState) initialContext
+          let result' = Tuple.fst result
+          let contextResult = Tuple.snd result
+          pure $ (mkOuterState contextResult) <$> result'
       in
         mkFn2 handler
 
     wrapContinue :: ContinueFn cont stop msg state -> WrappedContinueFn cont stop msg state
     wrapContinue continueFn =
       let
-        handler cont state@{ innerState, context: handlerContext } = do
-          innerResult <- (runReaderT $ continueFn cont innerState) handlerContext
-          pure $ (mkOuterState handlerContext) <$> innerResult
+        handler cont state@{ innerState, context: initialContext } = do
+          result <- (StateT.runStateT $ un ServerT $ continueFn cont innerState) initialContext
+          let result' = Tuple.fst result
+          let contextResult = Tuple.snd result
+          pure $ (mkOuterState contextResult) <$> result'
       in
         mkFn2 handler
 
@@ -304,13 +318,8 @@ foreign import startLinkFFI :: forall cont stop msg state.
   Effect (InitResult cont (OuterState cont stop msg state)) ->
   Effect (StartLinkResult (ServerPid cont stop msg state))
 
--- instance supportsSelfInitT :: SupportsSelf (InitT info internal timerName timerContent commonData stateId state) (StatemPid info internal timerName timerContent commonData stateId state) where
---   self = InitT $ Exports.lift $ selfFFI
-
-self ::
-  forall cont stop msg state.
-  ReaderT (Context cont stop msg state) Effect (ServerPid cont stop state msg)
-self = Reader.lift selfFFI
+instance supportsSelfServerT :: SupportsSelf (ServerT cont stop msg state) (ServerPid cont stop msg state) where
+  self = ServerT $ Exports.lift $ selfFFI
 
 foreign import selfFFI ::
   forall cont stop msg state.
