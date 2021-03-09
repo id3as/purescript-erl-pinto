@@ -13,10 +13,12 @@ import Prelude
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Erl.Atom (atom)
+import Erl.Process.Raw (class HasPid)
+import Erl.Process.Class (self)
 import Pinto.GenStatem (class HasStateId, Event(..), InitResult(..), StatemPid, StatemType, Timeout(..), TimeoutAction(..), EventResult(..), StateEnterResult(..), StatemRef(..))
 import Pinto.GenStatem as Statem
-import Pinto.Types (RegistryName(..), crashIfNotStarted, class HasRawPid)
-import Pinto.Types as Pinto
+import Pinto (RegistryName(..), crashIfNotStarted)
+import Pinto as Pinto
 import Debug.Trace (spy)
 
 -- Test-specific imports
@@ -121,7 +123,7 @@ newtype DoorLockPid = DoorLockPid (StatemPid Info Internal TimerName TimerConten
 
 -- Only surface the raw pid, don't implement HasProcess - we don't want folks sending us messages using our Info
 -- type
-derive newtype instance doorLockPidHasRawPid :: HasRawPid DoorLockPid
+derive newtype instance doorLockPidHasPid :: HasPid DoorLockPid
 
 data AuditEvent
   = AuditDoorUnlocked
@@ -148,11 +150,11 @@ startLink = do
           , unknownEvents: 0
           }
       in do
-        _ <- Pinto.self
+        _ <- self
         pure $ InitOk initialState initialData
 
     handleEnter StateIdLocked StateIdUnlockedClosed _state _commonData = do
-      _ <- Pinto.self
+      _ <- self
       audit AuditDoorUnlocked # Statem.lift
       pure $ StateEnterKeepData
 
@@ -178,7 +180,7 @@ startLink = do
 
     handleEvent event state commonData@{ unknownEvents } = do
       -- TODO: log bad event
-      _ <- Pinto.self
+      _ <- self
       audit AuditUnexpectedEventInState # Statem.lift
       pure $ EventKeepState (commonData { unknownEvents = unknownEvents + 1 })
 

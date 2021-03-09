@@ -16,7 +16,7 @@ import Erl.Test.EUnit (TestF, suite, test)
 import Foreign (unsafeToForeign)
 import Pinto.GenServer (Action(..), From, ServerRunning(..), ServerSpec, ServerType, ServerRef(..))
 import Pinto.GenServer as GS
-import Pinto.Types (NotStartedReason(..), RegistryName(..), StartLinkResult, crashIfNotStarted)
+import Pinto (NotStartedReason(..), RegistryName(..), StartLinkResult, crashIfNotStarted)
 import Test.Assert (assertEqual)
 import Test.ValueServer as ValueServer
 import Unsafe.Coerce (unsafeCoerce)

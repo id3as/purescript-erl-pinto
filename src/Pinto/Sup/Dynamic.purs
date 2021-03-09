@@ -12,14 +12,14 @@ import Data.Either (Either)
 import Data.Maybe (Maybe)
 import Effect (Effect)
 import Erl.Data.List (List)
-import Erl.Process.Raw (Pid)
+import Erl.Process.Raw (Pid, class HasPid)
 import Foreign (Foreign)
 import Pinto.Sup (Millisecond, Seconds, RestartStrategy, Strategy, ChildType, ChildShutdownTimeoutStrategy, ChildStarted, ChildNotStartedReason, StartChildResult)
-import Pinto.Types (RegistryName, StartLinkResult, class HasRawPid)
+import Pinto.Types (RegistryName, StartLinkResult)
 
 newtype DynamicType childStartArg childProcess = DynamicType Void
 newtype DynamicPid childStartArg childProcess = DynamicPid Pid
-derive newtype instance supervisorPidHasRawPid :: HasRawPid (DynamicPid childStartArg childProcess)
+derive newtype instance supervisorPidHasPid :: HasPid (DynamicPid childStartArg childProcess)
 
 data DynamicRef childStartArg childProcess
   = ByName (RegistryName (DynamicType childStartArg childProcess))
@@ -35,7 +35,7 @@ type DynamicSpec childStartArg childProcess
     }
 
 startLink ::
-  forall childStartArg childProcess. HasRawPid childProcess =>
+  forall childStartArg childProcess. HasPid childProcess =>
   Maybe (RegistryName (DynamicType childStartArg childProcess)) ->
   Effect (DynamicSpec childStartArg childProcess) ->
   Effect (StartLinkResult (DynamicPid childStartArg childProcess))
@@ -48,7 +48,7 @@ foreign import startLinkFFI ::
   Effect (StartLinkResult (DynamicPid childStartArg childProcess))
 
 startChild ::
-  forall childStartArg childProcess. HasRawPid childProcess =>
+  forall childStartArg childProcess. HasPid childProcess =>
   childStartArg ->
   DynamicRef childStartArg childProcess ->
   Effect (StartChildResult childProcess)

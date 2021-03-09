@@ -3,7 +3,6 @@
 -export([ isRegisteredImpl/1
         , alreadyStartedImpl/1
         , node/0
-        , self/0
         ]).
 
 isRegisteredImpl(ServerName) ->
@@ -29,9 +28,4 @@ alreadyStartedImpl(Left) ->
 node() ->
   fun() ->
       atom_to_binary(erlang:node(), utf8)
-  end.
-
-self() ->
-  fun() ->
-      erlang:self()
   end.

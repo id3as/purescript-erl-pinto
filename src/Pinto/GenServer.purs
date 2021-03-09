@@ -53,9 +53,11 @@ import Data.Maybe (Maybe(..))
 import Data.Newtype (class Newtype, un)
 import Data.Tuple as Tuple
 import Effect (Effect)
+import Erl.Process (Process, class HasProcess)
+import Erl.Process.Raw (class HasPid)
+import Erl.Process.Class (class HasSelf, self)
 import Foreign (Foreign)
-import Pinto.Types (RegistryName, StartLinkResult, class HasRawPid, class HasProcess, class SupportsSelf)
-import Erl.Process (Process)
+import Pinto.Types (RegistryName, StartLinkResult)
 
 -- Sequence of types
 -- reply cont stop msg [Timeout] state
@@ -155,7 +157,7 @@ mapInitResult _ (Left InitIgnore) = Left InitIgnore
 newtype ServerType cont stop msg state = ServerType Void
 newtype ServerPid cont stop msg state = ServerPid (Process msg)
 
-derive newtype instance serverPidHasRawPid :: HasRawPid (ServerPid cont stop msg state)
+derive newtype instance serverPidHasPid :: HasPid (ServerPid cont stop msg state)
 derive newtype instance serverPidHasProcess :: HasProcess msg (ServerPid const stop msg state)
 
 data ServerRef cont stop msg state
@@ -318,7 +320,7 @@ foreign import startLinkFFI :: forall cont stop msg state.
   Effect (InitResult cont (OuterState cont stop msg state)) ->
   Effect (StartLinkResult (ServerPid cont stop msg state))
 
-instance supportsSelfServerT :: SupportsSelf (ServerT cont stop msg state) (ServerPid cont stop msg state) where
+instance supportsSelfServerT :: HasSelf (ServerT cont stop msg state Effect) (ServerPid cont stop msg state) where
   self = ServerT $ Exports.lift $ selfFFI
 
 foreign import selfFFI ::

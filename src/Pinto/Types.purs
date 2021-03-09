@@ -1,26 +1,8 @@
 module Pinto.Types
-  ( -- Names and handles
-    RegistryName(..)
-
-    -- Result Types -- TODO - move these to Gen and Sup?
+  ( RegistryName(..)
   , TerminateReason(..)
   , StartLinkResult(..)
   , NotStartedReason(..)
-
-  , class HasRawPid
-  , getRawPid
-
-  , class HasProcess
-  , getProcess
-
-  , class SupportsSelf
-  , self
-
-  , maybeStarted
-  , maybeRunning
-
-  , crashIfNotStarted
-  , crashIfNotRunning
 
   -- , class StartOk
   -- , startOk
@@ -50,24 +32,6 @@ data RegistryName serverType
   | Global Foreign
   | Via NativeModuleName Foreign
 
-class HasRawPid a where
-  getRawPid :: a -> Pid
-
-instance pidHasRawPid :: HasRawPid Pid where
-  getRawPid = identity
-
-instance processHasRawPid :: HasRawPid (Process b) where
-  getRawPid (Process pid) = pid
-
-class HasProcess b a where
-  getProcess :: a -> Process b
-
-instance processHasProcess :: HasProcess b (Process b) where
-  getProcess = identity
-
-class SupportsSelf context pid | context -> pid where
-  self :: context Effect pid
-
 data NotStartedReason serverProcess
   = Ignore
   | AlreadyStarted serverProcess
@@ -81,28 +45,6 @@ data TerminateReason
   | Shutdown
   | ShutdownWithCustom Foreign
   | Custom Foreign
-
-maybeStarted :: forall serverProcess. StartLinkResult serverProcess -> Maybe serverProcess
-maybeStarted slr = case slr of
-    Right serverProcess -> Just serverProcess
-    _ -> Nothing
-
-maybeRunning :: forall serverProcess. StartLinkResult serverProcess -> Maybe serverProcess
-maybeRunning slr = case slr of
-    Right serverProcess -> Just serverProcess
-    Left (AlreadyStarted serverProcess) -> Just serverProcess
-    _ -> Nothing
-
-
-crashIfNotStarted :: forall serverProcess. StartLinkResult serverProcess -> serverProcess
-crashIfNotStarted = unsafePartial \slr ->
-  case maybeStarted slr of
-     Just serverProcess -> serverProcess
-
-crashIfNotRunning :: forall serverProcess. StartLinkResult serverProcess -> serverProcess
-crashIfNotRunning = unsafePartial \slr ->
-  case maybeRunning slr of
-     Just serverProcess -> serverProcess
 
 -- class StartOk a state msg where
 --   startOk :: a -> Maybe (ServerPid state msg)

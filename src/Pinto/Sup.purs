@@ -34,10 +34,10 @@ import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Erl.Data.List (List)
-import Erl.Process.Raw (Pid)
+import Erl.Process.Raw (Pid, class HasPid)
 import Foreign (Foreign)
 import Partial.Unsafe (unsafePartial)
-import Pinto.Types (RegistryName, StartLinkResult, class HasRawPid)
+import Pinto.Types (RegistryName, StartLinkResult)
 
 type ChildStarted childProcess
   = { pid :: childProcess
@@ -91,7 +91,7 @@ type Flags
 
 newtype SupervisorType = SupervisorType Void
 newtype SupervisorPid = SupervisorPid Pid
-derive newtype instance supervisorPidHasRawPid :: HasRawPid SupervisorPid
+derive newtype instance supervisorPidHasPid :: HasPid SupervisorPid
 
 data SupervisorRef
   = ByName (RegistryName SupervisorType)
@@ -115,7 +115,7 @@ foreign import mkErlChildSpecFFI ::
   ErlChildSpec
 
 mkErlChildSpec ::
-  forall childProcess. HasRawPid childProcess =>
+  forall childProcess. HasPid childProcess =>
   ChildSpec childProcess ->
   ErlChildSpec
 mkErlChildSpec = mkErlChildSpecFFI
@@ -127,7 +127,7 @@ foreign import startChildFFI ::
   StartChildResult childProcess
 
 startChild ::
-  forall childProcess. HasRawPid childProcess =>
+  forall childProcess. HasPid childProcess =>
   SupervisorRef ->
   ChildSpec childProcess ->
   StartChildResult childProcess
