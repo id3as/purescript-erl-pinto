@@ -21,5 +21,6 @@ foreign import stopRouterFromCallback :: Effect Unit
 startRouter :: forall handle msg. Effect handle -> (handle -> Effect Unit) -> (msg -> Effect Unit) ->  Effect (RouterRef handle)
 startRouter = startRouterImpl RouterRef
 
+-- TODO :: shouldn't the register function here return a maybe???
 maybeStartRouter :: forall handle msg. Effect (Maybe handle) -> (handle -> Effect Unit) -> (msg -> Effect Unit) ->Effect (Maybe (RouterRef handle))
 maybeStartRouter = maybeStartRouterImpl RouterRef

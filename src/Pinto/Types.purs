@@ -1,44 +1,72 @@
 module Pinto.Types
-       ( ServerName(..)
-       , GlobalName
-       , SupervisorName
-       , StartLinkResult(..)
-       , StartChildResult(..)
-       , ChildTemplate(..)
-       , TerminateReason(..)
-       , class StartOk
-       , startOk
-       , startOkAS
-       )
-       where
+  ( -- Names and handles
+    RegistryName(..)
 
+    -- Result Types -- TODO - move these to Gen and Sup?
+  , TerminateReason(..)
+  , StartLinkResult(..)
+  , NotStartedReason(..)
+
+  , class HasRawPid
+  , getRawPid
+  , class HasProcess
+  , getProcess
+
+  , maybeStarted
+  , maybeRunning
+
+  , crashIfNotStarted
+  , crashIfNotRunning
+
+  -- , class StartOk
+  -- , startOk
+  -- , startOkAS
+  )
+  where
+
+import Prelude
+import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
-import Effect (Effect)
 import Erl.Atom (Atom)
 import Erl.ModuleName (NativeModuleName)
+import Erl.Process (Process(..))
 import Erl.Process.Raw (Pid)
 import Foreign (Foreign)
-import Prelude (Unit)
+import Partial.Unsafe (unsafePartial)
 
-
-foreign import data GlobalName :: Type
 
 -- | Defines the server name for a gen server, along with the 'state' that the gen server
 -- | will be using internally and the 'msg' type that will be received in the handleInfo calls
 -- | this will be supplied to every call to the gen server API in order
 -- | to enforce type safety across calls
-data ServerName state msg = Local Atom
-                          | Global GlobalName
-                          | Via NativeModuleName Foreign
 
-type SupervisorName = ServerName Unit Unit
+data RegistryName serverType
+  = Local Atom
+  | Global Foreign
+  | Via NativeModuleName Foreign
 
--- | The result of invoking gen_server:start_link
-data StartLinkResult
-  = Ok Pid
-  | Ignore
-  | AlreadyStarted Pid
+class HasRawPid a where
+  getRawPid :: a -> Pid
+
+instance pidHasRawPid :: HasRawPid Pid where
+  getRawPid = identity
+
+instance processHasRawPid :: HasRawPid (Process b) where
+  getRawPid (Process pid) = pid
+
+class HasProcess b a where
+  getProcess :: a -> Process b
+
+instance processHasProcess :: HasProcess b (Process b) where
+  getProcess = identity
+
+data NotStartedReason serverProcess
+  = Ignore
+  | AlreadyStarted serverProcess
   | Failed Foreign
+
+type StartLinkResult serverProcess
+  = Either (NotStartedReason serverProcess) serverProcess
 
 data TerminateReason
   = Normal
@@ -46,35 +74,46 @@ data TerminateReason
   | ShutdownWithCustom Foreign
   | Custom Foreign
 
--- | The result of invoking gen_server:start_link
-data StartChildResult
-  = ChildStarted Pid
-  | ChildStartedWithInfo Pid Foreign
-  | ChildAlreadyStarted Pid
-  | ChildAlreadyPresent
-  | ChildFailed Foreign
+maybeStarted :: forall serverProcess. StartLinkResult serverProcess -> Maybe serverProcess
+maybeStarted slr = case slr of
+    Right serverProcess -> Just serverProcess
+    _ -> Nothing
 
--- | The type used to link startSimpleChild and startTemplate together
-data ChildTemplate args = ChildTemplate (args -> Effect StartLinkResult)
+maybeRunning :: forall serverProcess. StartLinkResult serverProcess -> Maybe serverProcess
+maybeRunning slr = case slr of
+    Right serverProcess -> Just serverProcess
+    Left (AlreadyStarted serverProcess) -> Just serverProcess
+    _ -> Nothing
 
-class StartOk a where
-  startOk :: a -> Maybe Pid
-  startOkAS :: a -> Maybe Pid
 
-instance startLinkResultOk :: StartOk StartLinkResult where
-  startOk (Ok p) = Just p
-  startOk _ = Nothing
+crashIfNotStarted :: forall serverProcess. StartLinkResult serverProcess -> serverProcess
+crashIfNotStarted = unsafePartial \slr ->
+  case maybeStarted slr of
+     Just serverProcess -> serverProcess
 
-  startOkAS (Ok p) = Just p
-  startOkAS (AlreadyStarted p) = Just p
-  startOkAS _ = Nothing
+crashIfNotRunning :: forall serverProcess. StartLinkResult serverProcess -> serverProcess
+crashIfNotRunning = unsafePartial \slr ->
+  case maybeRunning slr of
+     Just serverProcess -> serverProcess
 
-instance startChildResultOk :: StartOk StartChildResult where
-  startOk (ChildStarted p) = Just p
-  startOk (ChildStartedWithInfo p _) = Just p
-  startOk _ = Nothing
+-- class StartOk a state msg where
+--   startOk :: a -> Maybe (ServerPid state msg)
+--   startOkAS :: a -> Maybe (ServerPid state msg)
 
-  startOkAS (ChildStarted p) = Just p
-  startOkAS (ChildStartedWithInfo p _) = Just p
-  startOkAS (ChildAlreadyStarted p) = Just p
-  startOkAS _ = Nothing
+-- instance startLinkResultOk :: StartOk StartLinkResult where
+--   startOk (Ok p) = Just p
+--   startOk _ = Nothing
+
+--   startOkAS (Ok p) = Just p
+--   startOkAS (AlreadyStarted p) = Just p
+--   startOkAS _ = Nothing
+
+-- instance startChildResultOk :: StartOk StartChildResult where
+--   startOk (ChildStarted p) = Just p
+--   startOk (ChildStartedWithInfo p _) = Just p
+--   startOk _ = Nothing
+
+--   startOkAS (ChildStarted p) = Just p
+--   startOkAS (ChildStartedWithInfo p _) = Just p
+--   startOkAS (ChildAlreadyStarted p) = Just p
+--   startOkAS _ = Nothing
