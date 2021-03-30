@@ -4,7 +4,7 @@ module Pinto.Types
 
     -- Result Types -- TODO - move these to Gen and Sup?
   , TerminateReason(..)
-  , StartLinkResult(..)
+  , StartLinkResult
   , NotStartedReason(..)
 
   , class HasRawPid
@@ -18,9 +18,7 @@ module Pinto.Types
   , crashIfNotStarted
   , crashIfNotRunning
 
-  -- , class StartOk
-  -- , startOk
-  -- , startOkAS
+  , startLinkResultFromPs
   )
   where
 
@@ -29,7 +27,7 @@ import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Erl.Atom (Atom)
 import Erl.ModuleName (NativeModuleName)
-import Erl.Process (Process(..))
+import Erl.Process (Process, toPid)
 import Erl.Process.Raw (Pid)
 import Foreign (Foreign)
 import Partial.Unsafe (unsafePartial)
@@ -40,6 +38,7 @@ import Partial.Unsafe (unsafePartial)
 -- | this will be supplied to every call to the gen server API in order
 -- | to enforce type safety across calls
 
+data RegistryName :: Type -> Type
 data RegistryName serverType
   = Local Atom
   | Global Foreign
@@ -52,7 +51,7 @@ instance pidHasRawPid :: HasRawPid Pid where
   getRawPid = identity
 
 instance processHasRawPid :: HasRawPid (Process b) where
-  getRawPid (Process pid) = pid
+  getRawPid = toPid
 
 class HasProcess b a where
   getProcess :: a -> Process b
@@ -96,24 +95,8 @@ crashIfNotRunning = unsafePartial \slr ->
   case maybeRunning slr of
      Just serverProcess -> serverProcess
 
--- class StartOk a state msg where
---   startOk :: a -> Maybe (ServerPid state msg)
---   startOkAS :: a -> Maybe (ServerPid state msg)
+startLinkResultFromPs :: forall a. StartLinkResult a -> Foreign
+startLinkResultFromPs = start_link_result_from_ps
 
--- instance startLinkResultOk :: StartOk StartLinkResult where
---   startOk (Ok p) = Just p
---   startOk _ = Nothing
+foreign import start_link_result_from_ps :: forall a. StartLinkResult a -> Foreign
 
---   startOkAS (Ok p) = Just p
---   startOkAS (AlreadyStarted p) = Just p
---   startOkAS _ = Nothing
-
--- instance startChildResultOk :: StartOk StartChildResult where
---   startOk (ChildStarted p) = Just p
---   startOk (ChildStartedWithInfo p _) = Just p
---   startOk _ = Nothing
-
---   startOkAS (ChildStarted p) = Just p
---   startOkAS (ChildStartedWithInfo p _) = Just p
---   startOkAS (ChildAlreadyStarted p) = Just p
---   startOkAS _ = Nothing

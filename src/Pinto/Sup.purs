@@ -20,6 +20,7 @@ module Pinto.Sup
 
   , mkErlChildSpec
   , startLink
+  , stop
 
   , maybeChildStarted
   , maybeChildRunning
@@ -106,6 +107,8 @@ foreign import startLink ::
   Maybe (RegistryName SupervisorType) ->
   Effect SupervisorSpec ->
   Effect (StartLinkResult SupervisorPid)
+
+foreign import stop :: SupervisorRef -> Effect Unit
 
 foreign import data ErlChildSpec :: Type
 

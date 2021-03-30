@@ -290,7 +290,7 @@ foreign import startLinkFFI :: forall cont stop msg state.
 
 self ::
   forall cont stop msg state.
-  ReaderT (Context cont stop msg state) Effect (ServerPid cont stop state msg)
+  ReaderT (Context cont stop msg state) Effect (ServerPid cont stop msg state)
 self = Reader.lift selfFFI
 
 foreign import selfFFI ::

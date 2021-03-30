@@ -1,11 +1,7 @@
 module Pinto ( isRegistered
-             -- , ok
-             -- , ok'
-             -- , okAlreadyStarted
-             -- , okAlreadyStarted'
              , node
              , self
---             , module PintoTypeExports
+             , module PintoTypeExports
              )
 where
 
@@ -18,9 +14,7 @@ import Erl.ModuleName (NativeModuleName(..))
 import Erl.Process.Raw (Pid)
 import Foreign (Foreign, unsafeToForeign)
 import Pinto.Types (RegistryName(..))
---import Pinto.Types as PintoTypeExports
-
--- import Pinto.Types (class StartOk, ServerName(..), startOk, startOkAS)
+import Pinto.Types (class HasProcess, class HasRawPid, NotStartedReason(..), RegistryName(..), StartLinkResult, TerminateReason(..), crashIfNotRunning, crashIfNotStarted, getProcess, getRawPid, maybeRunning, maybeStarted, startLinkResultFromPs) as PintoTypeExports
 
 foreign import node :: Effect String
 foreign import self :: Effect Pid
@@ -32,16 +26,3 @@ isRegistered (Local name) = isRegisteredImpl $ unsafeToForeign $ tuple2 (atom "l
 isRegistered (Global name) = isRegisteredImpl $ unsafeToForeign $ tuple2 (atom "global") name
 isRegistered (Via (NativeModuleName m) name) = isRegisteredImpl $ unsafeToForeign $ tuple3 (atom "via") m name
 
--- ok' :: forall r. StartOk r => r -> Effect Pid
--- ok' r = unsafePartial $
---   case (startOk r) of Just pid -> pure pid
-
--- okAlreadyStarted' :: forall r. StartOk r => r -> Effect Pid
--- okAlreadyStarted' r = unsafePartial $
---   case (startOkAS r) of Just pid -> pure pid
-
--- ok :: forall r. StartOk r => r -> Effect Unit
--- ok = void <<< ok'
-
--- okAlreadyStarted :: forall r. StartOk r => r -> Effect Unit
--- okAlreadyStarted = void <<< okAlreadyStarted'

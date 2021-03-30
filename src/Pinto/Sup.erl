@@ -5,6 +5,7 @@
 %%------------------------------------------------------------------------------
 -export([ mkErlChildSpecFFI/1
         , startLink/2
+        , stop/1
         , startChildFFI/2
         ]).
 
@@ -62,6 +63,11 @@ startLinkPure({nothing}, EffectSupervisorSpec) ->
 startLinkPure({just, RegistryName}, EffectSupervisorSpec) ->
   Result = supervisor:start_link(registry_name_from_ps(RegistryName), ?MODULE, EffectSupervisorSpec),
   start_link_result_to_ps(Result).
+
+stop(RegistryName) ->
+  fun() ->
+    sys:terminate(registry_name_from_ps(RegistryName), shutdown)
+  end.
 
 startChildFFI(SupRef, ChildSpec) ->
   fun() ->
