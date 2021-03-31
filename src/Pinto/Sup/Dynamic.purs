@@ -8,17 +8,19 @@ module Pinto.Sup.Dynamic
   ) where
 
 import Prelude
-import Data.Either (Either)
+
 import Data.Maybe (Maybe)
 import Effect (Effect)
-import Erl.Data.List (List)
 import Erl.Process.Raw (Pid)
-import Foreign (Foreign)
-import Pinto.Sup (Millisecond, Seconds, RestartStrategy, Strategy, ChildType, ChildShutdownTimeoutStrategy, ChildStarted, ChildNotStartedReason, StartChildResult)
+import Pinto.Sup (ChildShutdownTimeoutStrategy, ChildType, RestartStrategy, Seconds, StartChildResult)
 import Pinto.Types (RegistryName, StartLinkResult, class HasRawPid)
 
+newtype DynamicType :: Type -> Type -> Type
 newtype DynamicType childStartArg childProcess = DynamicType Void
+
+newtype DynamicPid :: Type -> Type -> Type
 newtype DynamicPid childStartArg childProcess = DynamicPid Pid
+
 derive newtype instance supervisorPidHasRawPid :: HasRawPid (DynamicPid childStartArg childProcess)
 
 data DynamicRef childStartArg childProcess

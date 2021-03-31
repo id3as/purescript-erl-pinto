@@ -71,7 +71,6 @@ import Control.Monad.Trans.Class (lift) as Exports
 
 import Data.Function.Uncurried (Fn1, Fn2, Fn3, mkFn1, mkFn2, mkFn3)
 import Data.Maybe (Maybe(..))
-import Data.Newtype (class Newtype, un)
 import Data.Tuple as Tuple
 import Effect (Effect)
 import Erl.Data.List (List, (:), nil)
@@ -81,7 +80,6 @@ import Erl.Process (Process)
 import Erl.Process.Raw (Pid)
 import Foreign (Foreign)
 import Pinto.Types (RegistryName, StartLinkResult, class HasRawPid, getRawPid, class HasProcess)
-import Unsafe.Coerce (unsafeCoerce)
 
 -- -----------------------------------------------------------------------------
 -- States
@@ -98,6 +96,7 @@ class SupportsReply builder where
 class SupportsAddTimeout builder timerContent  where
   addTimeoutAction :: TimeoutAction timerContent -> builder timerContent -> builder timerContent
 
+class SupportsSelf :: (Type -> Type -> Type -> Type -> Type -> Type -> Type -> (Type -> Type) -> Type -> Type) -> Type -> Type -> Type -> Type -> Type -> Type -> Type -> Constraint
 class SupportsSelf context info internal timerName timerContent commonData stateId state where
   self :: context info internal timerName timerContent commonData stateId state Effect (StatemPid info internal timerName timerContent commonData stateId state)
 
@@ -204,7 +203,7 @@ derive newtype instance applicativeStateEnter :: Applicative (StateEnterT info i
 derive newtype instance bindStateEnter :: Bind (StateEnterT info internal timerName timerContent commonData stateId state Effect)
 derive newtype instance monadStateEnter :: Monad (StateEnterT info internal timerName timerContent commonData stateId state Effect)
 derive newtype instance monadTransStateEnter :: MonadTrans (StateEnterT info internal timerName timerContent commonData stateId state)
-derive instance newtypeStateEnterT :: Newtype (StateEnterT info internal timerName timerContent commonData stateId state m a) _
+--derive instance newtypeStateEnterT :: Newtype (StateEnterT info internal timerName timerContent commonData stateId state m a) _
 
 instance supportsSelfStateEnterT :: SupportsSelf StateEnterT info internal timerName timerContent commonData stateId state where
   self = StateEnterT $ Exports.lift $ selfFFI
@@ -261,7 +260,7 @@ derive newtype instance applicativeEvent :: Applicative (EventT info internal ti
 derive newtype instance bindEvent :: Bind (EventT info internal timerName timerContent commonData stateId state Effect)
 derive newtype instance monadEvent :: Monad (EventT info internal timerName timerContent commonData stateId state Effect)
 derive newtype instance monadTransEvent :: MonadTrans (EventT info internal timerName timerContent commonData stateId state)
-derive instance newtypeEventT :: Newtype (EventT info internal timerName timerContent commonData stateId state m a) _
+--derive instance newtypeEventT :: Newtype (EventT info internal timerName timerContent commonData stateId state m a) _
 
 instance supportsSelfEventT :: SupportsSelf EventT info internal timerName timerContent commonData stateId state where
   self = EventT $ Exports.lift $ selfFFI
@@ -298,7 +297,10 @@ instance supportsReplyEventActionsBuilder :: SupportsReply (EventActionsBuilder 
 -- -----------------------------------------------------------------------------
 -- Other Gubbins
 -- -----------------------------------------------------------------------------
+newtype StatemType :: Type -> Type -> Type -> Type -> Type -> Type -> Type -> Type
 newtype StatemType info internal timerName timerContent commonData stateId state = StatemType Void
+
+newtype StatemPid :: Type -> Type -> Type -> Type -> Type -> Type -> Type -> Type
 newtype StatemPid info internal timerName timerContent commonData stateId state = StatemPid (Process info)
 
 derive newtype instance statemPidHasRawPid :: HasRawPid (StatemPid info internal timerName timerContent commonData stateId state)
@@ -320,7 +322,7 @@ type InitFn info internal timerName timerContent commonData stateId state =
 
 type CastFn info internal timerName timerContent commonData stateId state =
   EventFn info internal timerName timerContent commonData stateId state
-
+type CallFn :: forall k. k -> Type -> Type -> Type -> Type -> Type -> Type -> Type -> Type
 type CallFn reply info internal timerName timerContent commonData stateId state =
   From reply ->
   EventFn info internal timerName timerContent commonData stateId state
@@ -423,7 +425,7 @@ type WrappedEnterFn info internal timerName timerContent commonData stateId stat
     stateId
     (OuterData info internal timerName timerContent commonData stateId state)
     (Effect (OuterStateEnterResult info internal timerName timerContent commonData stateId state))
-
+type WrappedCallFn :: forall k. k -> Type -> Type -> Type -> Type -> Type -> Type -> Type -> Type
 type WrappedCallFn reply info internal timerName timerContent commonData stateId state =
   Fn2
     (From reply)
@@ -476,6 +478,8 @@ data OuterEventResult info internal timerName timerContent commonData stateId st
 
 foreign import data Reply :: Type
 foreign import data FromForeign :: Type
+
+newtype From :: forall k. k -> Type
 newtype From reply = From FromForeign
 
 foreign import startLinkFFI ::
@@ -559,7 +563,7 @@ startLink
     wrappedHandleEnter oldStateId newStateId (OuterData currentData@{ state, commonData, context }) =
       case maybeHandleEnter of
         Just handleEnter -> do
-            let stateT = un StateEnterT $ handleEnter oldStateId newStateId state commonData
+            let (StateEnterT stateT) = handleEnter oldStateId newStateId state commonData
 
             result <- StateT.runStateT stateT { context, changed: false }
 
@@ -626,7 +630,7 @@ runEventFn ::
   Effect (OuterEventResult info internal timerName timerContent commonData stateId state)
 
 runEventFn eventFn (OuterData outerData@{ state, commonData, context }) = do
-  let stateT = un EventT $ eventFn state commonData
+  let (EventT stateT) = eventFn state commonData
 
   result <- StateT.runStateT stateT { context, changed: false }
 

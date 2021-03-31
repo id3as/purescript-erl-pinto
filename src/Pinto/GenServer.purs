@@ -101,6 +101,8 @@ type ResultT result cont stop msg state = ReaderT (Context cont stop msg state) 
 
 
 foreign import data FromForeign :: Type
+
+newtype From :: Type -> Type
 newtype From reply = From FromForeign
 
 
@@ -137,7 +139,10 @@ mapInitResult f (Right (InitOkHibernate state)) = Right (InitOkHibernate $ f sta
 mapInitResult _ (Left (InitStop term)) = Left (InitStop term)
 mapInitResult _ (Left InitIgnore) = Left InitIgnore
 
+newtype ServerType :: Type -> Type -> Type -> Type -> Type
 newtype ServerType cont stop msg state = ServerType Void
+
+newtype ServerPid :: Type -> Type -> Type -> Type -> Type
 newtype ServerPid cont stop msg state = ServerPid (Process msg)
 
 derive newtype instance serverPidHasRawPid :: HasRawPid (ServerPid cont stop msg state)

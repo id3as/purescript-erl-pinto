@@ -7,7 +7,6 @@ module Pinto.MessageRouting ( startRouter
 
 import Prelude
 import Data.Maybe (Maybe)
-import Data.Either (Either)
 import Effect (Effect)
 import Erl.Process.Raw (Pid)
 
