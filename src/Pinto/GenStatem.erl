@@ -134,7 +134,7 @@ handle_event(cast, Fn, State, Data) ->
   io:format(user, "Cast result: ~p~n", [Result]),
   event_result_from_ps(Result);
 
-handle_event(info, {'DOWN', Ref, process, Pid, Reason}, State, #{ context := #{ monitorHandlers := Handlers } = Context } = Data)
+handle_event(info, {'DOWN', Ref, process, _Pid, Reason}, State, #{ context := #{ monitorHandlers := Handlers } = Context } = Data)
   when
     is_map_key(Ref, Handlers) ->
 
@@ -153,7 +153,7 @@ handle_event(info, {'DOWN', Ref, process, Pid, Reason}, State, #{ context := #{ 
   %% We can't just do a normal event_result_from_ps/1 here because we've changed the data
   event_result_from_ps(Result, DataWithNewContext);
 
-handle_event(info, {'DOWN', Ref, process, Pid, Reason}, State, Data) ->
+handle_event(info, {'DOWN', Ref, process, _Pid, Reason}, State, Data) ->
   io:format(user, "Got unknown monitor down for ~p with reason ~p in state ~p (~p)~n", [Ref, Reason, State, Data]),
   keep_state_and_data;
 
@@ -195,11 +195,11 @@ timeout_action({setStateTimeout, {'at', T, Content}}) -> {state_timeout, T, Cont
 timeout_action({setStateTimeout, {'after', T, Content}}) -> {state_timeout, T, Content};
 timeout_action({setStateTimeout, cancel}) -> {state_timeout, cancel};
 
-timeout_action({updateTimeout, Content}) -> {timeout, update, Content};
 timeout_action({updateTimeout, cancel}) -> {timeout, cancel};
+timeout_action({updateTimeout, Content}) -> {timeout, update, Content};
 
-timeout_action({updateStateTimeout, Content}) -> {state_timeout, update, Content};
-timeout_action({updateStateTimeout, cancel}) -> {state_timeout, cancel}.
+timeout_action({updateStateTimeout, cancel}) -> {state_timeout, cancel};
+timeout_action({updateStateTimeout, Content}) -> {state_timeout, update, Content}.
 
 named_timeout_action(_Action) -> throw(not_implemented).
 
@@ -234,4 +234,4 @@ statem_ref_from_ps({byPid, Pid})                       -> Pid.
 
 down_reason_to_ps(normal) -> {downNormal};
 down_reason_to_ps(noconnection) -> {downNoConnection};
-down_reason_to_ps(Other) -> {downOther}.
+down_reason_to_ps(_Other) -> {downOther}.
