@@ -28,9 +28,6 @@ init(EffectSupervisorSpec) ->
   #{ flags := Flags
    , childSpecs := ChildSpecs
    } = EffectSupervisorSpec(),
-  io:format(user, "ChildSpecs ~p~n", [ChildSpecs]),
-  io:format(user, "Flags ~p~n", [Flags]),
-
 
   {ok, {flags_from_ps(Flags), ChildSpecs}}.
 
