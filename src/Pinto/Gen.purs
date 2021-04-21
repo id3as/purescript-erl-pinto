@@ -9,6 +9,8 @@ module Pinto.Gen ( startLink
                  , CastResult(..)
                  , InitResult(..)
                  , doCall
+                 , doFromCall
+                 , reply
                  , init
                  , doCast
                  , defaultHandleInfo
@@ -104,6 +106,7 @@ foreign import selfImpl :: forall msg.  Effect (Process msg)
 foreign import whereIsImpl :: forall msg name. name -> (Process msg -> Maybe (Process msg)) -> (Maybe (Process msg)) -> Effect (Maybe (Process msg))
 foreign import logWarning :: forall obj. String -> obj -> Effect Unit
 foreign import mapInfoMessageImpl :: forall msg. Maybe (ExitMessage -> msg) -> (Pid -> Foreign -> ExitMessage) -> Foreign -> msg
+foreign import doReplyImpl :: forall response. response -> Pid -> Effect Unit
 
 nativeName :: forall state msg. ServerName state msg -> Foreign
 nativeName (Local name) = unsafeToForeign $ name
@@ -257,7 +260,7 @@ terminate = mkEffectFn2 \reason { context: GenContext { terminate:  mt }, innerS
 
 
 data InitResult state = InitOk state | InitOkTimeout state Int | InitOkHibernate state | InitStop TerminateReason | InitIgnore
-data CallResult response state = CallReply response state | CallReplyHibernate response state | CallStop TerminateReason response state
+data CallResult response state = CallReply response state | CallNoReply state | CallReplyHibernate response state | CallStop TerminateReason response state
 data CastResult state = CastNoReply state | CastNoReplyHibernate state | CastStop state | CastStopReason TerminateReason state
 
 -- | A default implementation of handleInfo that just ignores any messages received
@@ -273,6 +276,7 @@ foreign import data CallResultImpl :: Type -> Type -> Type -> Type
 foreign import data CastResultImpl :: Type -> Type -> Type
 
 foreign import callReplyImpl :: forall resp state msg. resp -> StateImpl state msg -> CallResultImpl resp state msg
+foreign import callNoReplyImpl :: forall resp state msg. StateImpl state msg -> CallResultImpl resp state msg
 foreign import callReplyHibernateImpl :: forall resp state msg. resp -> StateImpl state msg -> CallResultImpl resp state msg
 foreign import callStopImpl :: forall resp state msg. Foreign ->  resp -> StateImpl state msg -> CallResultImpl resp state msg
 
@@ -308,6 +312,12 @@ doCall :: forall response state msg. ServerName state msg -> (state -> Call resp
 doCall name fn = doCallImpl (nativeName name) \genState@{ innerState, context } from ->
   uncurry dispatchCallResp <$> runStateT (fn innerState) context
 
+doFromCall :: forall response state msg. ServerName state msg -> (Pid -> state -> Call response state msg) -> Effect response
+doFromCall name fn = doCallImpl (nativeName name) \genState@{ innerState, context } from ->
+  uncurry dispatchCallResp <$> runStateT (fn from innerState) context
+
+reply :: forall response. response -> Pid -> Effect Unit
+reply = doReplyImpl
 
 -- | Defines an effectful cast that performs an interaction on the state held by the gen server
 -- | ```purescript
@@ -328,6 +338,8 @@ dispatchCallResp resp context =
   case resp of
     CallReply resp newState ->
       callReplyImpl resp $ { innerState: newState, context }
+    CallNoReply newState ->
+      callNoReplyImpl { innerState: newState, context }
     CallReplyHibernate resp newState ->
       callReplyHibernateImpl resp $ { innerState: newState, context }
     CallStop reason resp newState ->

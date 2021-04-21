@@ -8,6 +8,7 @@
        , doCallImpl/2
        , doCastImpl/2
        , callReplyImpl/2
+       , callNoReplyImpl/1
        , callReplyHibernateImpl/2
        , callStopImpl/3
        , castNoReplyImpl/1
@@ -19,6 +20,7 @@
        , start_from_spec/1
        , start_from_spec/2
        , mapInfoMessageImpl/3
+       , doReplyImpl/2
      ]).
 
 
@@ -29,6 +31,7 @@
         ]).
 
 callReplyImpl(Resp, NewState) -> { reply, Resp, NewState }.
+callNoReplyImpl(NewState) -> { noreply, NewState }.
 callReplyHibernateImpl(Resp, NewState) -> { reply, Resp, NewState, hibernate }.
 callStopImpl(Reason, Resp, NewState) -> {stop, Reason, Resp, NewState }.
 
@@ -44,8 +47,11 @@ mapInfoMessageImpl({just, Mapper}, Constructor, { 'EXIT', Pid,  Reason }) ->
   Mapper((Constructor(Pid))(Reason));
 mapInfoMessageImpl(_, _, Other) ->  Other. %% Waves Hands
 
-
-
+doReplyImpl(Reply, From) ->
+  fun() ->
+      gen_server:reply(From, Reply),
+      unit
+  end.
 
 selfImpl() ->
   fun()  ->
