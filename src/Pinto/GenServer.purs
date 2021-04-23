@@ -15,6 +15,8 @@ module Pinto.GenServer
   , ResultT
   , Context
   , Action(..)
+  , SimpleType
+  , SimplePid
   , mkSpec
   , startLink
   , call
@@ -136,6 +138,12 @@ mapInitResult f (InitOkHibernate state) = InitOkHibernate $ f state
 mapInitResult _ (InitStop term) = InitStop term
 
 mapInitResult _ InitIgnore = InitIgnore
+
+type SimpleType msg state
+  = ServerType Unit Unit msg state
+
+type SimplePid msg state
+  = ServerPid Unit Unit msg state
 
 newtype ServerType :: Type -> Type -> Type -> Type -> Type
 newtype ServerType cont stop msg state
