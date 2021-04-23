@@ -121,6 +121,6 @@ let additions =
 -}
 
 let upstream =
-      https://github.com/purerl/package-sets/releases/download/erl-0.13.8-20201120/packages.dhall sha256:fae9f78aca10f80d46819a1e836cb817f2b57542d583ec891ffafd670cff9b4c
+      https://github.com/purerl/package-sets/releases/download/erl-0.14.0-20210319/packages.dhall sha256:aa6d4bcef87080a6684464cfba5fb611b03c4a4372b1e08c77186de4a1f5b66f
 
 in  upstream
