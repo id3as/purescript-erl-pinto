@@ -77,13 +77,13 @@ init([InitEffect]) ->
   InitResult = InitEffect(),
 
   case InitResult of
-    {left, {initStop, Error}}                  -> {stop, Error};
-    {left, {initIgnore}}                       -> ignore;
+    {initStop, Error}                  -> {stop, Error};
+    {initIgnore}                       -> ignore;
 
-    {right, {initOk, State}}                   -> {ok, State};
-    {right, {initOkTimeout, State, Timeout}}   -> {ok, State, Timeout};
-    {right, {initOkContinue, State, Continue}} -> {ok, State, {continue, Continue}};
-    {right, {initOkHibernate, State}}          -> {ok, State, hibernate}
+    {initOk, State}                   -> {ok, State};
+    {initOkTimeout, State, Timeout}   -> {ok, State, Timeout};
+    {initOkContinue, State, Continue} -> {ok, State, {continue, Continue}};
+    {initOkHibernate, State}          -> {ok, State, hibernate}
   end.
 
 

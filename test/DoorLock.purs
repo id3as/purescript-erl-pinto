@@ -16,7 +16,6 @@ import Erl.Atom (atom)
 import Pinto.GenStatem (class HasStateId, Event(..), InitResult(..), StatemPid, StatemType, Timeout(..), TimeoutAction(..), EventResult(..), StateEnterResult(..), StatemRef(..))
 import Pinto.GenStatem as Statem
 import Pinto.Types (RegistryName(..), crashIfNotStarted, class HasRawPid)
-import Debug.Trace (spy)
 
 -- Test-specific imports
 import Control.Monad.Free (Free)
@@ -186,7 +185,6 @@ startLink = do
 
     audit :: AuditEvent -> Effect Unit
     audit event = do
-      let _ = spy "Audit" event
       pure unit
 
 -- -----------------------------------------------------------------------------
