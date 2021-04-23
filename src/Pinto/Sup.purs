@@ -5,7 +5,6 @@ module Pinto.Sup
   , ChildType(..)
   , ChildNotStartedReason(..)
   , StartChildResult
-
   , ErlChildSpec
   , Flags
   , RestartStrategy(..)
@@ -14,21 +13,16 @@ module Pinto.Sup
   , SupervisorRef(..)
   , SupervisorPid
   , SupervisorType
-
   , Millisecond
   , Seconds
-
   , mkErlChildSpec
   , startLink
   , stop
-
   , maybeChildStarted
   , maybeChildRunning
-
   , crashIfChildNotStarted
   , crashIfChildNotRunning
- ) where
-
+  ) where
 
 import Prelude
 import Data.Either (Either(..))
@@ -51,20 +45,24 @@ data ChildNotStartedReason childProcess
   | ChildStartReturnedIgnore
   | ChildFailed Foreign
 
-
 type StartChildResult childProcess
   = Either (ChildNotStartedReason childProcess) (ChildStarted childProcess)
 
 -- maps to transient | permanent | temporary
-data RestartStrategy = RestartNever | RestartAlways | RestartOnCrash
+data RestartStrategy
+  = RestartNever
+  | RestartAlways
+  | RestartOnCrash
 
+type Millisecond
+  = Int
 
-type Millisecond = Int
-type Seconds = Int
+type Seconds
+  = Int
 
 data ChildShutdownTimeoutStrategy
-  = KillImmediately       -- brutal
-  | KillNever             -- infinity
+  = KillImmediately -- brutal
+  | KillNever -- infinity
   | KillAfter Millisecond -- {timeout, non_neg_integer()}
 
 data ChildType
@@ -85,13 +83,17 @@ data Strategy
   | RestForOne
 
 type Flags
-  = { strategy:: Strategy
+  = { strategy :: Strategy
     , intensity :: Int
     , period :: Seconds
     }
 
-newtype SupervisorType = SupervisorType Void
-newtype SupervisorPid = SupervisorPid Pid
+newtype SupervisorType
+  = SupervisorType Void
+
+newtype SupervisorPid
+  = SupervisorPid Pid
+
 derive newtype instance supervisorPidHasRawPid :: HasRawPid SupervisorPid
 
 data SupervisorRef
@@ -118,7 +120,8 @@ foreign import mkErlChildSpecFFI ::
   ErlChildSpec
 
 mkErlChildSpec ::
-  forall childProcess. HasRawPid childProcess =>
+  forall childProcess.
+  HasRawPid childProcess =>
   ChildSpec childProcess ->
   ErlChildSpec
 mkErlChildSpec = mkErlChildSpecFFI
@@ -130,7 +133,8 @@ foreign import startChildFFI ::
   StartChildResult childProcess
 
 startChild ::
-  forall childProcess. HasRawPid childProcess =>
+  forall childProcess.
+  HasRawPid childProcess =>
   SupervisorRef ->
   ChildSpec childProcess ->
   StartChildResult childProcess
@@ -138,22 +142,21 @@ startChild = startChildFFI
 
 maybeChildStarted :: forall childProcess. StartChildResult childProcess -> Maybe childProcess
 maybeChildStarted slr = case slr of
-    Right { pid: childProcess } -> Just childProcess
-    _ -> Nothing
+  Right { pid: childProcess } -> Just childProcess
+  _ -> Nothing
 
 maybeChildRunning :: forall childProcess. StartChildResult childProcess -> Maybe childProcess
 maybeChildRunning slr = case slr of
-    Right { pid: childProcess } -> Just childProcess
-    Left (ChildAlreadyStarted childProcess) -> Just childProcess
-    _ -> Nothing
-
+  Right { pid: childProcess } -> Just childProcess
+  Left (ChildAlreadyStarted childProcess) -> Just childProcess
+  _ -> Nothing
 
 crashIfChildNotStarted :: forall childProcess. StartChildResult childProcess -> childProcess
-crashIfChildNotStarted = unsafePartial \slr ->
-  case maybeChildStarted slr of
-     Just childProcess -> childProcess
+crashIfChildNotStarted =
+  unsafePartial \slr -> case maybeChildStarted slr of
+    Just childProcess -> childProcess
 
 crashIfChildNotRunning :: forall childProcess. StartChildResult childProcess -> childProcess
-crashIfChildNotRunning = unsafePartial \slr ->
-  case maybeChildRunning slr of
-     Just childProcess -> childProcess
+crashIfChildNotRunning =
+  unsafePartial \slr -> case maybeChildRunning slr of
+    Just childProcess -> childProcess

@@ -28,7 +28,6 @@ import Partial.Unsafe (unsafePartial)
    will be using internally and the 'msg' type that will be received in the handleInfo calls
    this will be supplied to every call to the gen server API in order
    to enforce type safety across calls -}
-  --
 data RegistryName :: Type -> Type
 data RegistryName serverType
   = Local Atom

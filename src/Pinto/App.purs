@@ -3,7 +3,6 @@
 module Pinto.App where
 
 import Prelude
-
 import Effect (Effect)
 import Effect.Uncurried (mkEffectFn2, EffectFn2)
 import Erl.Atom (Atom)
