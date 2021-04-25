@@ -22,6 +22,7 @@
         , start_link_result_from_ps/1
 
         , registry_name_from_ps/1
+        , instance_name_from_ps/1
         ]).
 
 init(EffectSupervisorSpec) ->
@@ -75,7 +76,7 @@ startChildPure({byPid, Pid}, ChildSpec) ->
   Result = supervisor:start_child(Pid, ChildSpec),
   start_child_result_to_ps(Result);
 startChildPure({byName, Name}, ChildSpec) ->
-  Result = supervisor:start_child(registry_name_from_ps(Name), ChildSpec),
+  Result = supervisor:start_child(instance_name_from_ps(Name), ChildSpec),
   start_child_result_to_ps(Result).
 
 
