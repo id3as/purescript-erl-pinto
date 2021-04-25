@@ -41,8 +41,9 @@ import Data.Function.Uncurried (Fn1, Fn2, mkFn1, mkFn2)
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Foreign (Foreign)
-import Pinto.Types (RegistryName, StartLinkResult, class HasRawPid, class HasProcess)
-import Erl.Process (Process)
+import Pinto.Types (RegistryName, StartLinkResult)
+import Erl.Process (Process, class HasProcess)
+import Erl.Process.Raw (class HasPid)
 
 -- Sequence of types
 -- reply cont stop msg [Timeout] state
@@ -153,7 +154,7 @@ newtype ServerPid :: Type -> Type -> Type -> Type -> Type
 newtype ServerPid cont stop msg state
   = ServerPid (Process msg)
 
-derive newtype instance serverPidHasRawPid :: HasRawPid (ServerPid cont stop msg state)
+derive newtype instance serverPidHasRawPid :: HasPid (ServerPid cont stop msg state)
 
 derive newtype instance serverPidHasProcess :: HasProcess msg (ServerPid const stop msg state)
 

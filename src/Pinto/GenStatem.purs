@@ -76,10 +76,10 @@ import Effect (Effect)
 import Erl.Data.List (List, (:), nil)
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
-import Erl.Process (Process)
-import Erl.Process.Raw (Pid)
+import Erl.Process (Process, class HasProcess)
+import Erl.Process.Raw (Pid, class HasPid, getPid)
 import Foreign (Foreign)
-import Pinto.Types (RegistryName, StartLinkResult, class HasRawPid, getRawPid, class HasProcess)
+import Pinto.Types (RegistryName, StartLinkResult)
 
 -- -----------------------------------------------------------------------------
 -- States
@@ -109,7 +109,7 @@ data DownReason
 
 class SupportsMonitor context info internal timerName timerContent commonData stateId state where
   monitor ::
-    forall process. HasRawPid process =>
+    forall process. HasPid process =>
     process ->
     MonitorFn info internal timerName timerContent commonData stateId state ->
     context info internal timerName timerContent commonData stateId state Effect MonitorRef
@@ -155,7 +155,7 @@ instance supportsMonitorInitT :: (HasStateId stateId state) => SupportsMonitor I
       monitorImpl :: (StateT (InitContext info internal timerName timerContent commonData stateId state) Effect MonitorRef)
       monitorImpl = do
          context <- StateT.get
-         { monitorRef, newContext } <- StateT.lift $ monitorFFI (getRawPid process) (wrapMonitorFn handleFn) context
+         { monitorRef, newContext } <- StateT.lift $ monitorFFI (getPid process) (wrapMonitorFn handleFn) context
          StateT.put newContext
          pure monitorRef
 
@@ -216,7 +216,7 @@ instance supportsMonitorStateEnterT :: (HasStateId stateId state) => SupportsMon
       monitorImpl :: (StateT (StateEnterContext info internal timerName timerContent commonData stateId state) Effect MonitorRef)
       monitorImpl = do
          { context } <- StateT.get
-         { monitorRef, newContext } <- StateT.lift $ monitorFFI (getRawPid process) (wrapMonitorFn handleFn) context
+         { monitorRef, newContext } <- StateT.lift $ monitorFFI (getPid process) (wrapMonitorFn handleFn) context
          StateT.put { context: newContext, changed: true }
          pure monitorRef
 
@@ -273,7 +273,7 @@ instance supportsMonitorEventT :: (HasStateId stateId state) => SupportsMonitor 
       monitorImpl :: (StateT (EventContext info internal timerName timerContent commonData stateId state) Effect MonitorRef)
       monitorImpl = do
          { context } <- StateT.get
-         { monitorRef, newContext } <- StateT.lift $ monitorFFI (getRawPid process) (wrapMonitorFn handleFn) context
+         { monitorRef, newContext } <- StateT.lift $ monitorFFI (getPid process) (wrapMonitorFn handleFn) context
          StateT.put { context: newContext, changed: true }
          pure monitorRef
 
@@ -303,7 +303,7 @@ newtype StatemType info internal timerName timerContent commonData stateId state
 newtype StatemPid :: Type -> Type -> Type -> Type -> Type -> Type -> Type -> Type
 newtype StatemPid info internal timerName timerContent commonData stateId state = StatemPid (Process info)
 
-derive newtype instance statemPidHasRawPid :: HasRawPid (StatemPid info internal timerName timerContent commonData stateId state)
+derive newtype instance statemPidHasPid :: HasPid (StatemPid info internal timerName timerContent commonData stateId state)
 derive newtype instance statemPidHasProcess :: HasProcess info (StatemPid info internal timerName timerContent commonData stateId state)
 
 data StatemRef info internal timerName timerContent commonData stateId state

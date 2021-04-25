@@ -3,10 +3,6 @@ module Pinto.Types
   , RegistryName(..)
   , StartLinkResult
   , NotStartedReason(..)
-  , class HasRawPid
-  , getRawPid
-  , class HasProcess
-  , getProcess
   , maybeStarted
   , maybeRunning
   , crashIfNotStarted
@@ -28,26 +24,12 @@ import Partial.Unsafe (unsafePartial)
    will be using internally and the 'msg' type that will be received in the handleInfo calls
    this will be supplied to every call to the gen server API in order
    to enforce type safety across calls -}
+
 data RegistryName :: Type -> Type
 data RegistryName serverType
   = Local Atom
   | Global Foreign
   | Via NativeModuleName Foreign
-
-class HasRawPid a where
-  getRawPid :: a -> Pid
-
-instance pidHasRawPid :: HasRawPid Pid where
-  getRawPid = identity
-
-instance processHasRawPid :: HasRawPid (Process b) where
-  getRawPid = toPid
-
-class HasProcess b a where
-  getProcess :: a -> Process b
-
-instance processHasProcess :: HasProcess b (Process b) where
-  getProcess = identity
 
 data NotStartedReason serverProcess
   = Ignore
