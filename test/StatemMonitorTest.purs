@@ -13,7 +13,8 @@ import Effect (Effect)
 import Erl.Atom (atom)
 import Pinto.GenStatem (class HasStateId, Event(..), InitResult(..), StatemPid, StatemType, Timeout(..), TimeoutAction(..), EventResult(..), StateEnterResult(..), StatemRef(..), MonitorRef)
 import Pinto.GenStatem as Statem
-import Pinto.Types (RegistryName(..), crashIfNotStarted, class HasRawPid)
+import Pinto.Types (RegistryName(..), crashIfNotStarted)
+import Erl.Process.Raw (class HasPid)
 import Debug.Trace (spy)
 import Test.ValueServer (ValueServerPid)
 import Test.ValueServer as ValueServer
@@ -79,7 +80,7 @@ newtype OurPid
 
 -- Only surface the raw pid, don't implement HasProcess - we don't want folks sending us messages using our Info
 -- type
-derive newtype instance ourPidHasRawPid :: HasRawPid OurPid
+derive newtype instance ourPidHasPid :: HasPid OurPid
 
 name :: RegistryName OurType
 name = Local $ atom "statemMonitorTest"

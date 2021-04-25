@@ -13,7 +13,8 @@ import Effect (Effect)
 import Erl.Atom (atom)
 import Pinto.GenStatem (class HasStateId, Event(..), InitResult(..), StatemPid, StatemType, Timeout(..), TimeoutAction(..), EventResult(..), StateEnterResult(..), StatemRef(..))
 import Pinto.GenStatem as Statem
-import Pinto.Types (RegistryName(..), crashIfNotStarted, class HasRawPid)
+import Erl.Process.Raw (class HasPid)
+import Pinto.Types (RegistryName(..), crashIfNotStarted)
 -- Test-specific imports
 import Control.Monad.Free (Free)
 import Erl.Test.EUnit (TestF, suite, test)
@@ -112,7 +113,7 @@ newtype DoorLockPid
 
 -- Only surface the raw pid, don't implement HasProcess - we don't want folks sending us messages using our Info
 -- type
-derive newtype instance doorLockPidHasRawPid :: HasRawPid DoorLockPid
+derive newtype instance doorLockPidHasPid :: HasPid DoorLockPid
 
 data AuditEvent
   = AuditDoorUnlocked

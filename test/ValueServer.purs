@@ -14,7 +14,8 @@ import Effect (Effect)
 import Erl.Atom (atom)
 import Pinto.GenServer (InitResult(..), ServerType, ServerPid, ServerRef(..))
 import Pinto.GenServer as GS
-import Pinto.Types (RegistryName(..), crashIfNotStarted, class HasRawPid)
+import Pinto.Types (RegistryName(..), crashIfNotStarted)
+import Erl.Process.Raw (class HasPid)
 
 type Cont
   = Void
@@ -36,7 +37,7 @@ newtype ValueServerPid
 
 -- Only surface the raw pid, don't implement HasProcess - we don't want folks sending us messages using our Info
 -- type
-derive newtype instance valueServerPidHasRawPid :: HasRawPid ValueServerPid
+derive newtype instance valueServerPidHasPid :: HasPid ValueServerPid
 
 serverName :: RegistryName ValueServerType
 serverName = Local $ atom "valueServer"
