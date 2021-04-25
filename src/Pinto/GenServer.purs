@@ -17,7 +17,7 @@ module Pinto.GenServer
   , Action(..)
   , SimpleType
   , SimplePid
-  , mkSpec
+  , defaultSpec
   , startLink
   , call
   , cast
@@ -178,7 +178,7 @@ type OuterState cont stop msg state
     }
 
 mkOuterState :: forall cont stop msg state. Context cont stop msg state -> state -> OuterState cont stop msg state
-mkOuterState context innerState = { context, innerState }
+mkOuterState = { context: _, innerState: _ }
 
 newtype Context cont stop msg state
   = Context
@@ -198,8 +198,8 @@ type WrappedCastFn cont stop msg state
 type WrappedContinueFn cont stop msg state
   = Fn2 cont (OuterState cont stop msg state) (Effect (ReturnResult cont stop (OuterState cont stop msg state)))
 
-mkSpec :: forall cont stop msg state. InitFn cont stop msg state -> ServerSpec cont stop msg state
-mkSpec initFn =
+defaultSpec :: forall cont stop msg state. InitFn cont stop msg state -> ServerSpec cont stop msg state
+defaultSpec initFn =
   { name: Nothing
   , init: initFn
   , handleInfo: Nothing

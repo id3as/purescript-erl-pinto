@@ -40,11 +40,9 @@ startLinkFFI(MaybeName, InitEffect) ->
       Result =
         case MaybeName of
           {nothing} ->
-            io:format(user, "Starting GenStatem without a name~n", []),
             gen_statem:start_link(?MODULE, InitEffect, []);
           {just, NamePS} ->
             Name = registry_name_from_ps(NamePS),
-            io:format(user, "Starting GenStatem with name ~p~n", [Name]),
             gen_statem:start_link(Name, ?MODULE, InitEffect, [])
         end,
 
@@ -53,13 +51,11 @@ startLinkFFI(MaybeName, InitEffect) ->
 
 callFFI(StatemRef, CallFn) ->
   fun() ->
-      io:format(user, "Issuing call to ~p~n", [statem_ref_from_ps(StatemRef)]),
       gen_server:call(statem_ref_from_ps(StatemRef), CallFn)
   end.
 
 castFFI(StatemRef, CastFn) ->
   fun() ->
-      io:format(user, "Issuing cast to ~p~n", [statem_ref_from_ps(StatemRef)]),
       ok = gen_server:cast(statem_ref_from_ps(StatemRef), CastFn),
       unit
   end.
@@ -96,11 +92,7 @@ callback_mode() ->
 
 init(InitEffect) ->
 
-  io:format(user, "About to run init effect ~p~n", [InitEffect]),
-
   InitResult = InitEffect(),
-  io:format(user, "InitResult ~p~n", [InitResult]),
-
   case InitResult of
     {outerInitOk, State, Data} -> {ok, State, Data};
     {outerInitOkWithActions, State, Data, Actions} -> {ok, State, Data, init_actions(Actions)};
@@ -109,10 +101,8 @@ init(InitEffect) ->
   end.
 
 handle_event(enter, OldState, NewState, #{ handleEnter := HandleEnter } = Data) ->
-  io:format(user, "Got state enter ~p -> ~p (~p)~n", [OldState, NewState, Data]),
   HandleEnterEffect = HandleEnter(OldState, NewState, Data),
   HandleEnterResult = HandleEnterEffect(),
-  io:format(user, "Enter result: ~p~n", [HandleEnterResult]),
   case HandleEnterResult of
     {outerStateEnterOk, NewData} -> {keep_state, NewData};
     {outerStateEnterOkWithActions, NewData, Actions} -> {keep_state, NewData, state_enter_actions(Actions)};
@@ -120,25 +110,20 @@ handle_event(enter, OldState, NewState, #{ handleEnter := HandleEnter } = Data) 
     {outerStateEnterKeepDataWithActions, Actions} -> {keep_state_and_data, state_enter_actions(Actions)}
   end;
 
-handle_event({call, From}, Fn, State, Data) ->
-  io:format(user, "Got call event ~p:~p in state ~p (~p)~n", [From, Fn, State, Data]),
+handle_event({call, From}, Fn, _State, Data) ->
   Effect = Fn(From, Data),
   Result = Effect(),
-  io:format(user, "Call result: ~p~n", [Result]),
   event_result_from_ps(Result);
 
-handle_event(cast, Fn, State, Data) ->
-  io:format(user, "Got cast event ~p in state ~p (~p)~n", [Fn, State, Data]),
+handle_event(cast, Fn, _State, Data) ->
   Effect = Fn(Data),
   Result = Effect(),
-  io:format(user, "Cast result: ~p~n", [Result]),
   event_result_from_ps(Result);
 
-handle_event(info, {'DOWN', Ref, process, _Pid, Reason}, State, #{ context := #{ monitorHandlers := Handlers } = Context } = Data)
+handle_event(info, {'DOWN', Ref, process, _Pid, Reason}, _State, #{ context := #{ monitorHandlers := Handlers } = Context } = Data)
   when
     is_map_key(Ref, Handlers) ->
 
-  io:format(user, "Got monitor down for ~p with reason ~p in state ~p (~p)~n", [Ref, Reason, State, Data]),
 
   Fn = maps:get(Ref, Handlers),
 
@@ -148,21 +133,16 @@ handle_event(info, {'DOWN', Ref, process, _Pid, Reason}, State, #{ context := #{
   Effect = Fn(down_reason_to_ps(Reason), DataWithNewContext),
   Result = Effect(),
 
-  io:format(user, "Monitor result: ~p~n", [Result]),
-
   %% We can't just do a normal event_result_from_ps/1 here because we've changed the data
   event_result_from_ps(Result, DataWithNewContext);
 
-handle_event(info, {'DOWN', Ref, process, _Pid, Reason}, State, Data) ->
-  io:format(user, "Got unknown monitor down for ~p with reason ~p in state ~p (~p)~n", [Ref, Reason, State, Data]),
+handle_event(info, {'DOWN', _Ref, process, _Pid, _Reason}, _State, _Data) ->
   keep_state_and_data;
 
-handle_event(Event, EventContent, State, #{ handleEvent := HandleEvent } = Data) ->
+handle_event(Event, EventContent, _State, #{ handleEvent := HandleEvent } = Data) ->
   EventPS = event_to_ps(Event, EventContent),
-  io:format(user, "Got event ~p in state ~p (~p)~n", [EventPS, State, Data]),
   Effect = HandleEvent(EventPS, Data),
   Result = Effect(),
-  io:format(user, "Event result: ~p~n", [Result]),
   event_result_from_ps(Result).
 
 

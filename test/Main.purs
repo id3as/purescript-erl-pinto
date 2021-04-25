@@ -2,25 +2,24 @@ module Test.Main where
 
 import Prelude
 import Control.Monad.Free (Free)
-import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Effect.Unsafe (unsafePerformEffect)
 import Erl.Atom (atom)
 import Erl.Data.List (nil, (:))
 import Erl.Test.EUnit (TestF, runTests, suite, test)
-import Pinto.GenServer (CallResult(..), InitResult(..), ServerType, ServerRef(..), ServerPid)
+import Pinto (StartLinkResult)
+import Pinto.GenServer (InitResult(..), ServerPid, ServerRef(..))
 import Pinto.GenServer as GS
-import Pinto.Sup (ChildShutdownTimeoutStrategy(..), ChildSpec, ChildType(..), RestartStrategy(..), Strategy(..), SupervisorSpec, mkErlChildSpec)
+import Pinto.Sup (ChildShutdownTimeoutStrategy(..), ChildType(..), RestartStrategy(..), Strategy(..), SupervisorSpec, ChildSpec, spec)
 import Pinto.Sup as Sup
-import Pinto.Sup.Dynamic (DynamicSpec, DynamicPid, DynamicType)
+import Pinto.Sup.Dynamic (DynamicSpec)
 import Pinto.Sup.Dynamic as DynamicSup
 import Pinto.Types (RegistryName(..), crashIfNotStarted)
 import Test.Assert (assertEqual)
-import Test.GenServer as TGS
 import Test.DoorLock as DoorLock
+import Test.GenServer as TGS
 import Test.StatemMonitorTest as StatemMonitorTest
-import Unsafe.Coerce (unsafeCoerce)
 
 foreign import filterSasl :: Effect Unit
 
@@ -71,7 +70,7 @@ testStartWithNamedChild =
     pure unit
   where
   childSpecs =
-    mkErlChildSpec myChild
+    spec myChild
       : nil
 
   supInit :: Effect SupervisorSpec
@@ -91,9 +90,9 @@ testStartWithNamedChild =
   childName = Local $ atom "testNamedChild"
 
   --myChild :: ChildSpec String TestState TestMsg
-  myChild = mkChildSpec "myChildId" (GS.startLink $ (GS.mkSpec childInit) { name = Just childName })
+  myChild = mkChildSpec "myChildId" (GS.startLink $ (GS.defaultSpec childInit) { name = Just childName })
 
---mkChildSpec :: forall childType. String -> ChildSpec childType
+mkChildSpec :: forall childType. String -> Effect (StartLinkResult childType) -> ChildSpec childType
 mkChildSpec id start =
   { id
   , childType: Worker
@@ -128,7 +127,7 @@ dynamicSupervisor =
       , shutdownStrategy: KillAfter 5000
       }
 
-  childStart unit = GS.startLink $ (GS.mkSpec childInit)
+  childStart unit = GS.startLink $ (GS.defaultSpec childInit)
 
   childInit = do
     pure $ InitOk $ TestState 0

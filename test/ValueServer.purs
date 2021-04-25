@@ -46,7 +46,7 @@ startLink :: Effect ValueServerPid
 startLink = do
   ValueServerPid
     <$> crashIfNotStarted
-    <$> (GS.startLink $ (GS.mkSpec init) { name = Just serverName })
+    <$> (GS.startLink $ (GS.defaultSpec init) { name = Just serverName })
   where
   init =
     let

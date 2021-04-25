@@ -1,10 +1,9 @@
 module Pinto.Sup
-  ( ChildStarted
-  , ChildShutdownTimeoutStrategy(..)
+  ( ChildShutdownTimeoutStrategy(..)
   , ChildSpec(..)
   , ChildType(..)
   , ChildNotStartedReason(..)
-  , StartChildResult
+  , StartChildResult(..)
   , ErlChildSpec
   , Flags
   , RestartStrategy(..)
@@ -15,7 +14,7 @@ module Pinto.Sup
   , SupervisorType
   , Millisecond
   , Seconds
-  , mkErlChildSpec
+  , spec
   , startLink
   , stop
   , maybeChildStarted
@@ -25,28 +24,26 @@ module Pinto.Sup
   ) where
 
 import Prelude
-import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Erl.Data.List (List)
-import Erl.Process.Raw (Pid, getPid, class HasPid)
+import Erl.Process.Raw (Pid, class HasPid)
 import Foreign (Foreign)
 import Partial.Unsafe (unsafePartial)
 import Pinto.Types (RegistryName, StartLinkResult)
 
-type ChildStarted childProcess
-  = { pid :: childProcess
-    , info :: Maybe Foreign
-    }
-
+data ChildNotStartedReason :: Type -> Type
 data ChildNotStartedReason childProcess
+
+data StartChildResult childProcess
   = ChildAlreadyPresent
   | ChildAlreadyStarted childProcess
   | ChildStartReturnedIgnore
   | ChildFailed Foreign
-
-type StartChildResult childProcess
-  = Either (ChildNotStartedReason childProcess) (ChildStarted childProcess)
+  | ChildStarted
+    { pid :: childProcess
+    , info :: Maybe Foreign
+    }
 
 -- maps to transient | permanent | temporary
 data RestartStrategy
@@ -114,17 +111,17 @@ foreign import stop :: SupervisorRef -> Effect Unit
 
 foreign import data ErlChildSpec :: Type
 
-foreign import mkErlChildSpecFFI ::
+foreign import specFFI ::
   forall childProcess.
   ChildSpec childProcess ->
   ErlChildSpec
 
-mkErlChildSpec ::
+spec ::
   forall childProcess.
   HasPid childProcess =>
   ChildSpec childProcess ->
   ErlChildSpec
-mkErlChildSpec = mkErlChildSpecFFI
+spec = specFFI
 
 foreign import startChildFFI ::
   forall childProcess.
@@ -142,13 +139,13 @@ startChild = startChildFFI
 
 maybeChildStarted :: forall childProcess. StartChildResult childProcess -> Maybe childProcess
 maybeChildStarted slr = case slr of
-  Right { pid: childProcess } -> Just childProcess
+  ChildStarted { pid: childProcess } -> Just childProcess
   _ -> Nothing
 
 maybeChildRunning :: forall childProcess. StartChildResult childProcess -> Maybe childProcess
 maybeChildRunning slr = case slr of
-  Right { pid: childProcess } -> Just childProcess
-  Left (ChildAlreadyStarted childProcess) -> Just childProcess
+  ChildStarted { pid: childProcess } -> Just childProcess
+  (ChildAlreadyStarted childProcess) -> Just childProcess
   _ -> Nothing
 
 crashIfChildNotStarted :: forall childProcess. StartChildResult childProcess -> childProcess

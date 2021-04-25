@@ -3,7 +3,7 @@
 %%------------------------------------------------------------------------------
 %% FFI API
 %%------------------------------------------------------------------------------
--export([ mkErlChildSpecFFI/1
+-export([ specFFI/1
         , startLink/2
         , stop/1
         , startChildFFI/2
@@ -36,12 +36,12 @@ init(EffectSupervisorSpec) ->
 %%------------------------------------------------------------------------------
 %% FFI API
 %%------------------------------------------------------------------------------
-mkErlChildSpecFFI(#{ id := ChildId
-                   , start := StartFn
-                   , restartStrategy := RestartStrategy
-                   , shutdownStrategy := ChildShutdownTimeoutStrategy
-                   , childType := ChildType
-                   }) ->
+specFFI(#{ id := ChildId
+         , start := StartFn
+         , restartStrategy := RestartStrategy
+         , shutdownStrategy := ChildShutdownTimeoutStrategy
+         , childType := ChildType
+         }) ->
   #{ id => ChildId
    , start => {?MODULE, start_proxy, [StartFn]}
    , restart => restart_from_ps(RestartStrategy)
@@ -69,7 +69,7 @@ stop(RegistryName) ->
 
 startChildFFI(SupRef, ChildSpec) ->
   fun() ->
-      startChildPure(SupRef, mkErlChildSpecFFI(ChildSpec))
+      startChildPure(SupRef, specFFI(ChildSpec))
   end.
 
 startChildPure({byPid, Pid}, ChildSpec) ->
@@ -85,12 +85,12 @@ startChildPure({byName, Name}, ChildSpec) ->
 %%------------------------------------------------------------------------------
 %% erlang -> ps conversion helpers
 %%------------------------------------------------------------------------------
-start_child_result_to_ps({ok, undefined})                 -> {left, {childStartReturnedIgnore}};
-start_child_result_to_ps({ok, {Pid, Info}})               -> {right, #{pid => Pid, info => {just, Info}}};
-start_child_result_to_ps({ok, Pid})                       -> {right, #{pid => Pid, info => {nothing}}};
-start_child_result_to_ps({error, already_present})        -> {left, {childAlreadyPresent}};
-start_child_result_to_ps({error, {already_started, Pid}}) -> {left, {childAlreadyStarted, Pid}};
-start_child_result_to_ps({error, Other})                  -> {left, {childFailed, Other}}.
+start_child_result_to_ps({ok, undefined})                 -> {childStartReturnedIgnore};
+start_child_result_to_ps({ok, {Pid, Info}})               -> {childStarted, #{pid => Pid, info => {just, Info}}};
+start_child_result_to_ps({ok, Pid})                       -> {childStarted, #{pid => Pid, info => {nothing}}};
+start_child_result_to_ps({error, already_present})        -> {childAlreadyPresent};
+start_child_result_to_ps({error, {already_started, Pid}}) -> {childAlreadyStarted, Pid};
+start_child_result_to_ps({error, Other})                  -> {childFailed, Other}.
 
 %%------------------------------------------------------------------------------
 %% ps -> erlang conversion helpers

@@ -26,7 +26,6 @@
 init(EffectSupervisorSpec) ->
   DynamicSpecPS = EffectSupervisorSpec(),
   DynamicSpec = dynamic_spec_from_ps(DynamicSpecPS),
-  io:format(user, "DynamicSpec ~p~n", [DynamicSpec]),
 
   {ok, DynamicSpec}.
 
@@ -48,7 +47,6 @@ startLinkPure({just, RegistryName}, DynamicSpecEffect) ->
 
 startChildFFI(ChildArg, SupRef) ->
   fun() ->
-      io:format(user, "Starting a child for ~p with ~p~n", [SupRef, ChildArg]),
       startChildPure(SupRef, ChildArg)
   end.
 
@@ -64,12 +62,12 @@ startChildPure({byName, Name}, ChildArg) ->
 %%------------------------------------------------------------------------------
 %% erlang -> ps conversion helpers
 %%------------------------------------------------------------------------------
-start_child_result_to_ps({ok, undefined})                 -> {left, {childStartReturnedIgnore}};
-start_child_result_to_ps({ok, {Pid, Info}})               -> {right, #{pid => Pid, info => {just, Info}}};
-start_child_result_to_ps({ok, Pid})                       -> {right, #{pid => Pid, info => {nothing}}};
-start_child_result_to_ps({error, already_present})        -> {left, {childAlreadyPresent}};
-start_child_result_to_ps({error, {already_started, Pid}}) -> {left, {childAlreadyStarted, Pid}};
-start_child_result_to_ps({error, Other})                  -> {left, {childFailed, Other}}.
+start_child_result_to_ps({ok, undefined})                 -> {childStartReturnedIgnore};
+start_child_result_to_ps({ok, {Pid, Info}})               -> {childStarted, #{pid => Pid, info => {just, Info}}};
+start_child_result_to_ps({ok, Pid})                       -> {childStarted, #{pid => Pid, info => {nothing}}};
+start_child_result_to_ps({error, already_present})        -> {childAlreadyPresent};
+start_child_result_to_ps({error, {already_started, Pid}}) -> {childAlreadyStarted, Pid};
+start_child_result_to_ps({error, Other})                  -> {childFailed, Other}.
 
 %%------------------------------------------------------------------------------
 %% ps -> erlang conversion helpers

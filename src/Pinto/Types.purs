@@ -10,21 +10,14 @@ module Pinto.Types
   , startLinkResultFromPs
   ) where
 
-import Prelude
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Erl.Atom (Atom)
 import Erl.ModuleName (NativeModuleName)
-import Erl.Process (Process, toPid)
-import Erl.Process.Raw (Pid)
 import Foreign (Foreign)
 import Partial.Unsafe (unsafePartial)
 
-{- Defines the server name for a gen server, along with the 'state' that the gen server
-   will be using internally and the 'msg' type that will be received in the handleInfo calls
-   this will be supplied to every call to the gen server API in order
-   to enforce type safety across calls -}
-
+{- Defines the server name for a gen server, along with the 'state' that the gen server will be using internally and the 'msg' type that will be received in the handleInfo calls this will be supplied to every call to the gen server API in order to enforce type safety across calls -}
 data RegistryName :: Type -> Type
 data RegistryName serverType
   = Local Atom

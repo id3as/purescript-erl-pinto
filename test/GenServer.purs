@@ -5,7 +5,6 @@ module Test.GenServer
 import Prelude
 import Control.Monad.Free (Free)
 import Data.Maybe (Maybe(..))
-import Debug.Trace (spy)
 import Effect (Effect)
 import Data.Either (Either(..))
 import Erl.Atom (atom)
@@ -19,8 +18,6 @@ import Test.Assert (assertEqual)
 import Test.ValueServer as ValueServer
 import Unsafe.Coerce (unsafeCoerce)
 
-foreign import startGprocFFI :: Effect Unit
-
 foreign import sleep :: Int -> Effect Unit
 
 type TestServerType
@@ -32,9 +29,7 @@ genServerSuite =
     testStartLinkAnonymous
     testStartLinkLocal
     testStartLinkGlobal
-    -- testStartLinkVia
     testStopNormalLocal
-    -- testStopNormalGlobal
     testHandleInfo
     testCall
     testCast
@@ -61,7 +56,7 @@ data TestStop
 testStartLinkAnonymous :: Free TestF Unit
 testStartLinkAnonymous =
   test "Can start an anonymous GenServer" do
-    serverPid <- crashIfNotStarted <$> (GS.startLink $ (GS.mkSpec init))
+    serverPid <- crashIfNotStarted <$> (GS.startLink $ (GS.defaultSpec init))
     let
       instanceRef = ByPid serverPid
     state1 <- getState instanceRef
@@ -88,13 +83,6 @@ testStartLinkGlobal =
   test "Can start a globally named GenServer" do
     testStartGetSet $ Global (unsafeToForeign $ atom "testStartLinkGlobal")
 
--- testStartLinkVia :: Free TestF Unit
--- testStartLinkVia =
---   test "Can start a gproc named GenServer" do
---     startGprocFFI
---     let
---       viaName = Via (NativeModuleName $ atom "gproc") $ unsafeToForeign (tuple3 (atom "n") (atom "l") "testStartLinkVia")
---     testStartGetSet viaName
 testStopNormalLocal :: Free TestF Unit
 testStopNormalLocal =
   test "Can start and stop a locally named GenServer" do
@@ -108,7 +96,7 @@ testStopNormalGlobal =
 testHandleInfo :: Free TestF Unit
 testHandleInfo =
   test "HandleInfo handler receives message" do
-    serverPid <- crashIfNotStarted <$> (GS.startLink $ (GS.mkSpec init) { handleInfo = Just handleInfo })
+    serverPid <- crashIfNotStarted <$> (GS.startLink $ (GS.defaultSpec init) { handleInfo = Just handleInfo })
     (unsafeCoerce serverPid :: Process TestMsg) ! TestMsg
     state <- getState (ByPid serverPid)
     assertEqual
@@ -121,14 +109,12 @@ testHandleInfo =
     pure $ InitOk $ TestState 0
 
   handleInfo msg (TestState x) = do
-    let
-      _ = spy "Got message" msg
     pure $ GS.return $ TestState $ x + 1
 
 testCall :: Free TestF Unit
 testCall =
   test "Can create gen_server:call handlers" do
-    serverPid <- crashIfNotStarted <$> (GS.startLink $ GS.mkSpec init)
+    serverPid <- crashIfNotStarted <$> (GS.startLink $ GS.defaultSpec init)
     state <- getState (ByPid serverPid)
     assertEqual
       { actual: state
@@ -142,7 +128,7 @@ testCall =
 testCast :: Free TestF Unit
 testCast =
   test "HandleCast changes state" do
-    serverPid <- crashIfNotStarted <$> (GS.startLink $ (GS.mkSpec init))
+    serverPid <- crashIfNotStarted <$> (GS.startLink $ (GS.defaultSpec init))
     setStateCast (ByPid serverPid) $ TestState 42
     state <- getState (ByPid serverPid)
     assertEqual
@@ -176,7 +162,7 @@ testStartGetSet registryName = do
   let
     gsSpec :: ServerSpec TestCont TestStop TestMsg TestState
     gsSpec =
-      (GS.mkSpec init)
+      (GS.defaultSpec init)
         { name = Just registryName
         , handleInfo = Just handleInfo
         , handleContinue = Just handleContinue
@@ -213,7 +199,7 @@ testStartGetSet registryName = do
           GS.replyTo from (TestState x)
           pure $ GS.return $ TestState $ x + 100
 
-  callContinueReply handle = GS.call handle \from state -> pure $ GS.replyWithAction state (Continue TestCont) state
+  callContinueReply handle = GS.call handle \_from state -> pure $ GS.replyWithAction state (Continue TestCont) state
 
   callContinueNoReply handle = GS.call handle \from state -> pure $ GS.noReplyWithAction (Continue $ TestContFrom from) state
 
@@ -224,7 +210,7 @@ testStopNormal registryName = do
   let
     gsSpec :: ServerSpec TestCont TestStop TestMsg TestState
     gsSpec =
-      (GS.mkSpec init)
+      (GS.defaultSpec init)
         { name = Just registryName
         , handleInfo = Just handleInfo
         , handleContinue = Just handleContinue
@@ -259,7 +245,7 @@ testStopNormal registryName = do
           GS.replyTo from (TestState x)
           pure $ GS.return $ TestState $ x + 100
 
-  callContinueReply handle = GS.call handle \from state -> pure $ GS.replyWithAction state (Continue TestCont) state
+  callContinueReply handle = GS.call handle \_from state -> pure $ GS.replyWithAction state (Continue TestCont) state
 
   callContinueNoReply handle = GS.call handle \from state -> pure $ GS.noReplyWithAction (Continue $ TestContFrom from) state
 
