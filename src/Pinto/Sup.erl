@@ -62,9 +62,13 @@ startLinkPure({just, RegistryName}, EffectSupervisorSpec) ->
   Result = supervisor:start_link(registry_name_from_ps(RegistryName), ?MODULE, EffectSupervisorSpec),
   start_link_result_to_ps(Result).
 
-stop(RegistryName) ->
+stop({byPid, Pid}) ->
   fun() ->
-    sys:terminate(registry_name_from_ps(RegistryName), shutdown)
+    sys:terminate(Pid, shutdown)
+  end;
+stop({byName, Name}) ->
+  fun() ->
+    sys:terminate(instance_name_from_ps(Name), shutdown)
   end.
 
 startChildFFI(SupRef, ChildSpec) ->
