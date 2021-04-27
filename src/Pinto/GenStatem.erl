@@ -2,11 +2,14 @@
 
 -include_lib("kernel/include/logger.hrl").
 
+%% Note: This could do with the same treatment as GenServer.erl
+%% there is no good reason for the callbacks to be written in Erlang
+%% and no good reason to be doing any substantial logic in Erlang
+%% before making further changes in here, perhaps take a deep breath and make that one first
+
 %% FFI Exports
 -export([ startLinkFFI/2
         , selfFFI/0
-        , monitorFFI/3
-        , demonitorFFI/2
         , callFFI/2
         , castFFI/2
         , mkReply/1
@@ -62,25 +65,6 @@ selfFFI() ->
       self()
   end.
 
-monitorFFI(Pid, HandlerFn, #{ monitorHandlers := MonitorHandlers } = Context) ->
-  fun() ->
-      MonitorRef = monitor(process, Pid),
-      NewMonitorHandlers = maps:put(MonitorRef, HandlerFn, MonitorHandlers),
-      NewContext = Context#{ monitorHandlers => NewMonitorHandlers },
-
-      #{ monitorRef => MonitorRef
-       , newContext => NewContext
-       }
-  end.
-
-demonitorFFI(MonitorRef, #{ monitorHandlers := MonitorHandlers } = Context) ->
-  fun() ->
-      true = demonitor(MonitorRef, [flush]),
-      NewMonitorHandlers = maps:remove(MonitorRef, MonitorHandlers),
-      NewContext = Context#{ monitorHandlers => NewMonitorHandlers },
-      NewContext
-  end.
-
 %%% ----------------------------------------------------------------------------
 %%% gen_statem API
 %%% ----------------------------------------------------------------------------
@@ -116,25 +100,6 @@ handle_event(cast, Fn, _State, Data) ->
   Effect = Fn(Data),
   Result = Effect(),
   event_result_from_ps(Result);
-
-handle_event(info, {'DOWN', Ref, process, _Pid, Reason}, _State, #{ context := #{ monitorHandlers := Handlers } = Context } = Data)
-  when
-    is_map_key(Ref, Handlers) ->
-
-
-  Fn = maps:get(Ref, Handlers),
-
-  NewContext = Context#{ monitorHandlers => maps:remove(Ref, Handlers) },
-  DataWithNewContext = Data#{ context => NewContext },
-
-  Effect = Fn(down_reason_to_ps(Reason), DataWithNewContext),
-  Result = Effect(),
-
-  %% We can't just do a normal event_result_from_ps/1 here because we've changed the data
-  event_result_from_ps(Result, DataWithNewContext);
-
-handle_event(info, {'DOWN', _Ref, process, _Pid, _Reason}, _State, _Data) ->
-  keep_state_and_data;
 
 handle_event(Event, EventContent, _State, #{ handleEvent := HandleEvent } = Data) ->
   EventPS = event_to_ps(Event, EventContent),

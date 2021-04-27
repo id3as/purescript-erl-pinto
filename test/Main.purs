@@ -19,7 +19,6 @@ import Pinto.Types (RegistryName(..), RegistryReference(..), crashIfNotStarted)
 import Test.Assert (assertEqual)
 import Test.DoorLock as DoorLock
 import Test.GenServer as TGS
-import Test.StatemMonitorTest as StatemMonitorTest
 
 foreign import filterSasl :: Effect Unit
 
@@ -32,7 +31,6 @@ main =
       $ runTests do
           TGS.genServerSuite
           DoorLock.testSuite
-          StatemMonitorTest.testSuite
           supervisorSuite
 
 supervisorSuite :: Free TestF Unit

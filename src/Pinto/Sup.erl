@@ -67,7 +67,20 @@ startLinkPure({just, Name}, EffectSupervisorSpec) ->
 
 stopFFI(Ref) ->
   fun() ->
-    sys:terminate(Ref, shutdown)
+      %% Note: There is no supervisor:stop in OTP, but for convenience
+      %% here is an implementation of one, if you want more behaviour than this
+      %% then you're best off calling sys:terminate yourself with your own monitoring
+      %% behaviour
+    Pid = whereis(Ref),
+    if Pid == undefined -> ok;
+       true ->
+        Ref = erlang:monitor(process, Pid),
+         sys:terminate(Pid, 'normal'),
+         receive
+           {'DOWN', _, process, Pid, normal} -> ok
+         after 1000 -> ok %% shrug
+         end
+    end
   end.
 
 startChildFFI(Ref, ChildSpec) ->
@@ -99,6 +112,7 @@ flags_from_ps( #{ strategy := Strategy
    , period => Period
    }.
 
+%% Note: These could be done in Purerl too and next time we're down thie way, probably will be
 
 strategy_from_ps({oneForAll}) -> one_for_all;
 strategy_from_ps({oneForOne}) -> one_for_one;

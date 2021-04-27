@@ -12,10 +12,6 @@ module Pinto.GenStatem
   , self
   , class SupportsNewActions
   , newActions
-  , class SupportsMonitor
-  , monitor
-  , demonitor
-  , MonitorRef
   , DownReason
   , InitFn
   , InitResult(..)
@@ -83,27 +79,10 @@ class SupportsSelf :: (Type -> Type -> Type -> Type -> Type -> Type -> Type -> (
 class SupportsSelf context info internal timerName timerContent commonData stateId state where
   self :: context info internal timerName timerContent commonData stateId state Effect (StatemPid info internal timerName timerContent commonData stateId state)
 
-foreign import data MonitorRef :: Type
-
 data DownReason
   = DownNormal
   | DownNoConnection
   | DownOther Foreign
-
-class SupportsMonitor context info internal timerName timerContent commonData stateId state where
-  monitor ::
-    forall process.
-    HasPid process =>
-    process ->
-    MonitorFn info internal timerName timerContent commonData stateId state ->
-    context info internal timerName timerContent commonData stateId state Effect MonitorRef
-  demonitor ::
-    MonitorRef ->
-    context info internal timerName timerContent commonData stateId state Effect Unit
-
-type MonitorFn info internal timerName timerContent commonData stateId state
-  = DownReason ->
-    EventFn info internal timerName timerContent commonData stateId state
 
 class SupportsNewActions builder where
   newActions :: builder
@@ -134,24 +113,6 @@ derive newtype instance monadTransInit :: MonadTrans (InitT info internal timerN
 
 instance supportsSelfInitT :: SupportsSelf InitT info internal timerName timerContent commonData stateId state where
   self = InitT $ Exports.lift $ selfFFI
-
-instance supportsMonitorInitT :: (HasStateId stateId state) => SupportsMonitor InitT info internal timerName timerContent commonData stateId state where
-  monitor process handleFn = InitT $ monitorImpl
-    where
-    monitorImpl :: (StateT (InitContext info internal timerName timerContent commonData stateId state) Effect MonitorRef)
-    monitorImpl = do
-      context <- StateT.get
-      { monitorRef, newContext } <- StateT.lift $ monitorFFI (getPid process) (wrapMonitorFn handleFn) context
-      StateT.put newContext
-      pure monitorRef
-  demonitor monitorRef = InitT $ demonitorImpl
-    where
-    demonitorImpl :: (StateT (InitContext info internal timerName timerContent commonData stateId state) Effect Unit)
-    demonitorImpl = do
-      context <- StateT.get
-      newContext <- StateT.lift $ demonitorFFI monitorRef context
-      StateT.put newContext
-      pure unit
 
 instance supportsNewActionsInitActionsBuilder :: SupportsNewActions (InitActionsBuilder info internal timerName timerContent) where
   newActions = InitActionsBuilder nil
@@ -196,24 +157,6 @@ derive newtype instance monadTransStateEnter :: MonadTrans (StateEnterT info int
 instance supportsSelfStateEnterT :: SupportsSelf StateEnterT info internal timerName timerContent commonData stateId state where
   self = StateEnterT $ Exports.lift $ selfFFI
 
-instance supportsMonitorStateEnterT :: (HasStateId stateId state) => SupportsMonitor StateEnterT info internal timerName timerContent commonData stateId state where
-  monitor process handleFn = StateEnterT $ monitorImpl
-    where
-    monitorImpl :: (StateT (StateEnterContext info internal timerName timerContent commonData stateId state) Effect MonitorRef)
-    monitorImpl = do
-      { context } <- StateT.get
-      { monitorRef, newContext } <- StateT.lift $ monitorFFI (getPid process) (wrapMonitorFn handleFn) context
-      StateT.put { context: newContext, changed: true }
-      pure monitorRef
-  demonitor monitorRef = StateEnterT $ demonitorImpl
-    where
-    demonitorImpl :: (StateT (StateEnterContext info internal timerName timerContent commonData stateId state) Effect Unit)
-    demonitorImpl = do
-      { context } <- StateT.get
-      newContext <- StateT.lift $ demonitorFFI monitorRef context
-      StateT.put { context: newContext, changed: true }
-      pure unit
-
 instance supportsNewActionsStateEnterActionsBuilder :: SupportsNewActions (StateEnterActionsBuilder timerName timerContent) where
   newActions = StateEnterActionsBuilder nil
 
@@ -252,24 +195,6 @@ derive newtype instance monadTransEvent :: MonadTrans (EventT info internal time
 --derive instance newtypeEventT :: Newtype (EventT info internal timerName timerContent commonData stateId state m a) _
 instance supportsSelfEventT :: SupportsSelf EventT info internal timerName timerContent commonData stateId state where
   self = EventT $ Exports.lift $ selfFFI
-
-instance supportsMonitorEventT :: (HasStateId stateId state) => SupportsMonitor EventT info internal timerName timerContent commonData stateId state where
-  monitor process handleFn = EventT $ monitorImpl
-    where
-    monitorImpl :: (StateT (EventContext info internal timerName timerContent commonData stateId state) Effect MonitorRef)
-    monitorImpl = do
-      { context } <- StateT.get
-      { monitorRef, newContext } <- StateT.lift $ monitorFFI (getPid process) (wrapMonitorFn handleFn) context
-      StateT.put { context: newContext, changed: true }
-      pure monitorRef
-  demonitor monitorRef = EventT $ demonitorImpl
-    where
-    demonitorImpl :: (StateT (EventContext info internal timerName timerContent commonData stateId state) Effect Unit)
-    demonitorImpl = do
-      { context } <- StateT.get
-      newContext <- StateT.lift $ demonitorFFI monitorRef context
-      StateT.put { context: newContext, changed: true }
-      pure unit
 
 instance supportsNewActionsEventActionsBuilder :: SupportsNewActions (EventActionsBuilder info internal timerName timerContent) where
   newActions = EventActionsBuilder nil
@@ -392,9 +317,8 @@ data Timeout timerContent
   | After Int timerContent
   | Cancel
 
--- NOTE: this is managed entirely by FFI
 type Context info internal timerName timerContent commonData stateId state
-  = { monitorHandlers :: Map MonitorRef (WrappedMonitorFn info internal timerName timerContent commonData stateId state)
+  = {
     }
 
 newtype OuterData info internal timerName timerContent commonData stateId state
@@ -419,19 +343,6 @@ type WrappedCallFn reply info internal timerName timerContent commonData stateId
       (From reply)
       (OuterData info internal timerName timerContent commonData stateId state)
       (Effect (OuterEventResult info internal timerName timerContent commonData stateId state))
-
-type WrappedMonitorFn info internal timerName timerContent commonData stateId state
-  = Fn2
-      DownReason
-      (OuterData info internal timerName timerContent commonData stateId state)
-      (Effect (OuterEventResult info internal timerName timerContent commonData stateId state))
-
-wrapMonitorFn ::
-  forall info internal timerName timerContent commonData stateId state.
-  HasStateId stateId state =>
-  MonitorFn info internal timerName timerContent commonData stateId state ->
-  WrappedMonitorFn info internal timerName timerContent commonData stateId state
-wrapMonitorFn monitorFn = mkFn2 \reason -> runEventFn (monitorFn reason)
 
 type WrappedCastFn info internal timerName timerContent commonData stateId state
   = Fn1
@@ -482,19 +393,6 @@ foreign import selfFFI ::
   forall info internal timerName timerContent commonData stateId state.
   Effect (StatemPid info internal timerName timerContent commonData stateId state)
 
-foreign import monitorFFI ::
-  forall info internal timerName timerContent commonData stateId state.
-  Pid ->
-  WrappedMonitorFn info internal timerName timerContent commonData stateId state ->
-  Context info internal timerName timerContent commonData stateId state ->
-  Effect { monitorRef :: MonitorRef, newContext :: Context info internal timerName timerContent commonData stateId state }
-
-foreign import demonitorFFI ::
-  forall info internal timerName timerContent commonData stateId state.
-  MonitorRef ->
-  Context info internal timerName timerContent commonData stateId state ->
-  Effect (Context info internal timerName timerContent commonData stateId state)
-
 foreign import mkReply :: forall reply. From reply -> reply -> Reply
 
 foreign import callFFI ::
@@ -523,7 +421,7 @@ startLink { name: maybeName
   initEffect :: Effect (OuterInitResult info internal timerName timerContent commonData stateId state)
   initEffect = do
     let
-      initialContext = { monitorHandlers: Map.empty }
+      initialContext = {}
     result <- StateT.runStateT init initialContext
     let
       result' = Tuple.fst result
