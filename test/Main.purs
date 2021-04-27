@@ -9,7 +9,7 @@ import Erl.Atom (atom)
 import Erl.Data.List (nil, (:))
 import Erl.Test.EUnit (TestF, runTests, suite, test)
 import Pinto (StartLinkResult)
-import Pinto.GenServer (InitResult(..), ServerPid, ServerRef(..))
+import Pinto.GenServer (InitResult(..), ServerPid, ServerRef)
 import Pinto.GenServer as GS
 import Pinto.Sup (ChildShutdownTimeoutStrategy(..), ChildType(..), RestartStrategy(..), Strategy(..), SupervisorSpec, ChildSpec, spec)
 import Pinto.Sup as Sup
@@ -97,8 +97,8 @@ mkChildSpec id start =
   { id
   , childType: Worker
   , start
-  , restartStrategy: RestartOnCrash
-  , shutdownStrategy: KillAfter 5000
+  , restartStrategy: RestartTemporary
+  , shutdownStrategy: ShutdownTimeout 5000
   }
 
 --------------------------------------------------------------------------------
@@ -123,8 +123,8 @@ dynamicSupervisor =
       , period: 5
       , childType: Worker
       , start: childStart
-      , restartStrategy: RestartOnCrash
-      , shutdownStrategy: KillAfter 5000
+      , restartStrategy: RestartTemporary
+      , shutdownStrategy: ShutdownTimeout 5000
       }
 
   childStart unit = GS.startLink $ (GS.defaultSpec childInit)

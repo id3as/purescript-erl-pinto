@@ -20,6 +20,11 @@
         , start_link_result_from_ps/1
         ]).
 
+-import('pinto_sup@foreign',
+        [ restart_from_ps/1,
+          shutdown_from_ps/1,
+          type_from_ps/1
+        ]).
 init(EffectSupervisorSpec) ->
   DynamicSpecPS = EffectSupervisorSpec(),
   DynamicSpec = dynamic_spec_from_ps(DynamicSpecPS),
@@ -87,16 +92,6 @@ dynamic_spec_from_ps(#{ intensity := Intensity
     { SupFlags, [ ChildSpec ] }.
 
 
-restart_from_ps({restartNever}) -> transient;
-restart_from_ps({restartAlways}) -> permanent;
-restart_from_ps({restartOnCrash}) -> temporary.
-
-shutdown_from_ps({killImmediately}) -> brutal;
-shutdown_from_ps({killNever}) -> infinity;
-shutdown_from_ps({killAfter, Ms}) ->  Ms.
-
-type_from_ps({supervisor}) -> supervisor;
-type_from_ps({worker}) -> worker.
 
 start_proxy(StartFn, StartArg) ->
   StartEffect = StartFn(StartArg),

@@ -45,11 +45,10 @@ data StartChildResult childProcess
     , info :: Maybe Foreign
     }
 
--- maps to transient | permanent | temporary
 data RestartStrategy
-  = RestartNever
-  | RestartAlways
-  | RestartOnCrash
+  = RestartTransient
+  | RestartPermanent
+  | RestartTemporary
 
 type Millisecond
   = Int
@@ -58,9 +57,9 @@ type Seconds
   = Int
 
 data ChildShutdownTimeoutStrategy
-  = KillImmediately -- brutal
-  | KillNever -- infinity
-  | KillAfter Millisecond -- {timeout, non_neg_integer()}
+  = ShutdownBrutal
+  | ShutdownInfinity
+  | ShutdownTimeout Millisecond
 
 data ChildType
   = Supervisor

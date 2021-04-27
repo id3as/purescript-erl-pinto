@@ -17,6 +17,12 @@
         , init/1
         ]).
 
+%% used by dynamic sup
+-export([ restart_from_ps/1,
+          shutdown_from_ps/1,
+          type_from_ps/1
+        ]).
+
 -import('pinto_types@foreign',
         [ start_link_result_to_ps/1
         , start_link_result_from_ps/1
@@ -98,13 +104,13 @@ strategy_from_ps({oneForAll}) -> one_for_all;
 strategy_from_ps({oneForOne}) -> one_for_one;
 strategy_from_ps({restForOne}) -> rest_for_one.
 
-restart_from_ps({restartNever}) -> transient;
-restart_from_ps({restartAlways}) -> permanent;
-restart_from_ps({restartOnCrash}) -> temporary.
+restart_from_ps({restartTransient}) -> transient;
+restart_from_ps({restartPermanent}) -> permanent;
+restart_from_ps({restartTemporary}) -> temporary.
 
-shutdown_from_ps({killImmediately}) -> brutal;
-shutdown_from_ps({killNever}) -> infinity;
-shutdown_from_ps({killAfter, Ms}) ->  Ms.
+shutdown_from_ps({shutdownBrutal}) -> brutal;
+shutdown_from_ps({shutdownInfinity}) -> infinity;
+shutdown_from_ps({shutdownTimeout, Ms}) ->  Ms.
 
 type_from_ps({supervisor}) -> supervisor;
 type_from_ps({worker}) -> worker.
