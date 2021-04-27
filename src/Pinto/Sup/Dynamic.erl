@@ -18,9 +18,6 @@
 -import('pinto_types@foreign',
         [ start_link_result_to_ps/1
         , start_link_result_from_ps/1
-
-        , registry_name_from_ps/1
-        , instance_name_from_ps/1
         ]).
 
 init(EffectSupervisorSpec) ->
@@ -42,22 +39,14 @@ startLinkPure({nothing}, DynamicSpecEffect) ->
   Result = supervisor:start_link(?MODULE, DynamicSpecEffect),
   start_link_result_to_ps(Result);
 startLinkPure({just, RegistryName}, DynamicSpecEffect) ->
-  Result = supervisor:start_link(registry_name_from_ps(RegistryName), ?MODULE, DynamicSpecEffect),
+  Result = supervisor:start_link(RegistryName, ?MODULE, DynamicSpecEffect),
   start_link_result_to_ps(Result).
 
-startChildFFI(ChildArg, SupRef) ->
+startChildFFI(ChildArg, Ref) ->
   fun() ->
-      startChildPure(SupRef, ChildArg)
+    Result = supervisor:start_child(Ref, [ChildArg]),
+    start_child_result_to_ps(Result)
   end.
-
-startChildPure({byPid, Pid}, ChildArg) ->
-  Result = supervisor:start_child(Pid, [ChildArg]),
-  start_child_result_to_ps(Result);
-startChildPure({byName, Name}, ChildArg) ->
-  Result = supervisor:start_child(instance_name_from_ps(Name), [ChildArg]),
-  start_child_result_to_ps(Result).
-
-
 
 %%------------------------------------------------------------------------------
 %% erlang -> ps conversion helpers
@@ -73,13 +62,13 @@ start_child_result_to_ps({error, Other})                  -> {childFailed, Other
 %% ps -> erlang conversion helpers
 %%------------------------------------------------------------------------------
 dynamic_spec_from_ps(#{ intensity := Intensity
-                    , period := Period
+                      , period := Period
 
-                    , start := StartFn
-                    , restartStrategy := RestartStrategy
-                    , shutdownStrategy := ChildShutdownTimeoutStrategy
-                    , childType := ChildType
-                    }) ->
+                      , start := StartFn
+                      , restartStrategy := RestartStrategy
+                      , shutdownStrategy := ChildShutdownTimeoutStrategy
+                      , childType := ChildType
+                      }) ->
 
   SupFlags =
     #{ strategy => simple_one_for_one

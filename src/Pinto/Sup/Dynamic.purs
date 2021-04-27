@@ -12,7 +12,7 @@ import Data.Maybe (Maybe)
 import Effect (Effect)
 import Erl.Process.Raw (Pid, class HasPid)
 import Pinto.Sup (ChildShutdownTimeoutStrategy, ChildType, RestartStrategy, Seconds, StartChildResult)
-import Pinto.Types (RegistryName, StartLinkResult)
+import Pinto.Types (RegistryInstance, RegistryName, RegistryReference, StartLinkResult, registryInstance)
 
 newtype DynamicType :: Type -> Type -> Type
 newtype DynamicType childStartArg childProcess
@@ -24,9 +24,11 @@ newtype DynamicPid childStartArg childProcess
 
 derive newtype instance supervisorPidHasPid :: HasPid (DynamicPid childStartArg childProcess)
 
-data DynamicRef childStartArg childProcess
-  = ByName (RegistryName (DynamicType childStartArg childProcess))
-  | ByPid (DynamicPid childStartArg childProcess)
+type DynamicRef childStartArg childProcess
+  = RegistryReference (DynamicPid childStartArg childProcess) (DynamicType childStartArg childProcess)
+
+type DynamicInstance childStartArg childProcess
+  = RegistryInstance (DynamicPid childStartArg childProcess) (DynamicType childStartArg childProcess)
 
 type DynamicSpec childStartArg childProcess
   = { intensity :: Int
@@ -57,10 +59,10 @@ startChild ::
   childStartArg ->
   DynamicRef childStartArg childProcess ->
   Effect (StartChildResult childProcess)
-startChild = startChildFFI
+startChild a r = startChildFFI a $ registryInstance r
 
 foreign import startChildFFI ::
   forall childStartArg childProcess.
   childStartArg ->
-  DynamicRef childStartArg childProcess ->
+  DynamicInstance childStartArg childProcess ->
   Effect (StartChildResult childProcess)

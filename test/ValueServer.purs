@@ -12,10 +12,10 @@ import Prelude
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Erl.Atom (atom)
+import Erl.Process.Raw (class HasPid)
 import Pinto.GenServer (InitResult(..), ServerType, ServerPid, ServerRef(..))
 import Pinto.GenServer as GS
-import Pinto.Types (RegistryName(..), crashIfNotStarted)
-import Erl.Process.Raw (class HasPid)
+import Pinto.Types (RegistryName(..), RegistryReference(..), crashIfNotStarted)
 
 type Cont
   = Void

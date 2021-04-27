@@ -8,16 +8,15 @@ module Test.DoorLock
   ) where
 
 import Prelude
+import Control.Monad.Free (Free)
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Erl.Atom (atom)
+import Erl.Process.Raw (class HasPid)
+import Erl.Test.EUnit (TestF, suite, test)
 import Pinto.GenStatem (class HasStateId, Event(..), InitResult(..), StatemPid, StatemType, Timeout(..), TimeoutAction(..), EventResult(..), StateEnterResult(..), StatemRef(..))
 import Pinto.GenStatem as Statem
-import Erl.Process.Raw (class HasPid)
-import Pinto.Types (RegistryName(..), crashIfNotStarted)
--- Test-specific imports
-import Control.Monad.Free (Free)
-import Erl.Test.EUnit (TestF, suite, test)
+import Pinto.Types (RegistryName(..), RegistryReference(..), crashIfNotStarted)
 import Test.Assert (assertEqual)
 
 -- -----------------------------------------------------------------------------

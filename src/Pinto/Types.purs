@@ -8,21 +8,48 @@ module Pinto.Types
   , crashIfNotStarted
   , crashIfNotRunning
   , startLinkResultFromPs
+  , registryInstance
+  , RegistryInstance
+  , RegistryReference(..)
   ) where
 
+import Prelude
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Erl.Atom (Atom)
 import Erl.ModuleName (NativeModuleName)
+import Erl.Process.Raw (class HasPid, getPid)
 import Foreign (Foreign)
 import Partial.Unsafe (unsafePartial)
+import Unsafe.Coerce (unsafeCoerce)
 
-{- Defines the server name for a gen server, along with the 'state' that the gen server will be using internally and the 'msg' type that will be received in the handleInfo calls this will be supplied to every call to the gen server API in order to enforce type safety across calls -}
 data RegistryName :: Type -> Type
 data RegistryName serverType
   = Local Atom
   | Global Foreign
   | Via NativeModuleName Foreign
+
+data RegistryReference :: Type -> Type -> Type
+data RegistryReference serverPid serverType
+  = ByPid serverPid
+  | ByName (RegistryName serverType)
+
+foreign import data RegistryInstance :: Type -> Type -> Type
+
+registryInstance ::
+  forall serverPid serverType.
+  HasPid serverPid => RegistryReference serverPid serverType -> RegistryInstance serverPid serverType
+registryInstance (ByPid pid) = registryPidToInstance pid
+
+registryInstance (ByName name) = registryNameToInstance name
+
+registryPidToInstance :: forall serverPid serverType. HasPid serverPid => serverPid -> RegistryInstance serverPid serverType
+registryPidToInstance serverPid = unsafeCoerce $ getPid serverPid
+
+registryNameToInstance :: forall serverPid serverType. RegistryName serverType -> RegistryInstance serverPid serverType
+registryNameToInstance (Local atom) = unsafeCoerce atom
+
+registryNameToInstance other = unsafeCoerce other
 
 data NotStartedReason serverProcess
   = Ignore

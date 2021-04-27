@@ -15,7 +15,7 @@ import Pinto.Sup (ChildShutdownTimeoutStrategy(..), ChildType(..), RestartStrate
 import Pinto.Sup as Sup
 import Pinto.Sup.Dynamic (DynamicSpec)
 import Pinto.Sup.Dynamic as DynamicSup
-import Pinto.Types (RegistryName(..), crashIfNotStarted)
+import Pinto.Types (RegistryName(..), RegistryReference(..), crashIfNotStarted)
 import Test.Assert (assertEqual)
 import Test.DoorLock as DoorLock
 import Test.GenServer as TGS
@@ -108,7 +108,7 @@ dynamicSupervisor :: Free TestF Unit
 dynamicSupervisor =
   test "Can start a supervisor and add a child" do
     supPid <- crashIfNotStarted <$> DynamicSup.startLink Nothing supInit
-    childPid <- Sup.crashIfChildNotStarted <$> DynamicSup.startChild unit (DynamicSup.ByPid supPid)
+    childPid <- Sup.crashIfChildNotStarted <$> DynamicSup.startChild unit (ByPid supPid)
     childState <- getState (ByPid childPid)
     assertEqual
       { actual: childState

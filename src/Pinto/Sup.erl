@@ -5,7 +5,7 @@
 %%------------------------------------------------------------------------------
 -export([ specFFI/1
         , startLink/2
-        , stop/1
+        , stopFFI/1
         , startChildFFI/2
         ]).
 
@@ -20,9 +20,6 @@
 -import('pinto_types@foreign',
         [ start_link_result_to_ps/1
         , start_link_result_from_ps/1
-
-        , registry_name_from_ps/1
-        , instance_name_from_ps/1
         ]).
 
 init(EffectSupervisorSpec) ->
@@ -58,32 +55,20 @@ startLink(Name, EffectSupervisorSpec) ->
 startLinkPure({nothing}, EffectSupervisorSpec) ->
   Result = supervisor:start_link(?MODULE, EffectSupervisorSpec),
   start_link_result_to_ps(Result);
-startLinkPure({just, RegistryName}, EffectSupervisorSpec) ->
-  Result = supervisor:start_link(registry_name_from_ps(RegistryName), ?MODULE, EffectSupervisorSpec),
+startLinkPure({just, Name}, EffectSupervisorSpec) ->
+  Result = supervisor:start_link(Name, ?MODULE, EffectSupervisorSpec),
   start_link_result_to_ps(Result).
 
-stop({byPid, Pid}) ->
+stopFFI(Ref) ->
   fun() ->
-    sys:terminate(Pid, shutdown)
-  end;
-stop({byName, Name}) ->
-  fun() ->
-    sys:terminate(instance_name_from_ps(Name), shutdown)
+    sys:terminate(Ref, shutdown)
   end.
 
-startChildFFI(SupRef, ChildSpec) ->
+startChildFFI(Ref, ChildSpec) ->
   fun() ->
-      startChildPure(SupRef, specFFI(ChildSpec))
+      Result = supervisor:start_child(Ref, ChildSpec),
+      start_child_result_to_ps(Result)
   end.
-
-startChildPure({byPid, Pid}, ChildSpec) ->
-  Result = supervisor:start_child(Pid, ChildSpec),
-  start_child_result_to_ps(Result);
-startChildPure({byName, Name}, ChildSpec) ->
-  Result = supervisor:start_child(instance_name_from_ps(Name), ChildSpec),
-  start_child_result_to_ps(Result).
-
-
 
 
 %%------------------------------------------------------------------------------

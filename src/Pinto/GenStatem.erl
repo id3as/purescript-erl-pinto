@@ -20,8 +20,6 @@
 
 -import('pinto_types@foreign',
         [ start_link_result_to_ps/1
-        , registry_name_from_ps/1
-        , instance_name_from_ps/1
         ]).
 
 %%% ----------------------------------------------------------------------------
@@ -41,8 +39,7 @@ startLinkFFI(MaybeName, InitEffect) ->
         case MaybeName of
           {nothing} ->
             gen_statem:start_link(?MODULE, InitEffect, []);
-          {just, NamePS} ->
-            Name = registry_name_from_ps(NamePS),
+          {just, Name} ->
             gen_statem:start_link(Name, ?MODULE, InitEffect, [])
         end,
 
@@ -51,12 +48,12 @@ startLinkFFI(MaybeName, InitEffect) ->
 
 callFFI(StatemRef, CallFn) ->
   fun() ->
-      gen_server:call(statem_ref_from_ps(StatemRef), CallFn)
+      gen_server:call(StatemRef, CallFn)
   end.
 
 castFFI(StatemRef, CastFn) ->
   fun() ->
-      ok = gen_server:cast(statem_ref_from_ps(StatemRef), CastFn),
+      ok = gen_server:cast(StatemRef, CastFn),
       unit
   end.
 
@@ -208,9 +205,6 @@ event_result_from_ps(Result, PreUpdatedData) ->
     {outerEventNextState, NewState, NewData} -> {next_state, NewState, NewData};
     {outerEventNextStateWithActions, NewState, NewData, Actions} -> {next_state, NewState, NewData, event_actions(Actions)}
   end.
-
-statem_ref_from_ps({byName, PsCallName})               -> instance_name_from_ps(PsCallName);
-statem_ref_from_ps({byPid, Pid})                       -> Pid.
 
 down_reason_to_ps(normal) -> {downNormal};
 down_reason_to_ps(noconnection) -> {downNoConnection};

@@ -62,7 +62,7 @@ import Erl.Data.Map as Map
 import Erl.Process (Process, class HasProcess)
 import Erl.Process.Raw (Pid, class HasPid, getPid)
 import Foreign (Foreign)
-import Pinto.Types (RegistryName, StartLinkResult)
+import Pinto.Types (RegistryInstance, RegistryName, RegistryReference, StartLinkResult, registryInstance)
 
 -- -----------------------------------------------------------------------------
 -- States
@@ -289,9 +289,13 @@ derive newtype instance statemPidHasPid :: HasPid (StatemPid info internal timer
 
 derive newtype instance statemPidHasProcess :: HasProcess info (StatemPid info internal timerName timerContent commonData stateId state)
 
-data StatemRef info internal timerName timerContent commonData stateId state
-  = ByName (RegistryName (StatemType info internal timerName timerContent commonData stateId state))
-  | ByPid (StatemPid info internal timerName timerContent commonData stateId state)
+type StatemRef info internal timerName timerContent commonData stateId state
+  = RegistryReference (StatemPid info internal timerName timerContent commonData stateId state)
+      (StatemType info internal timerName timerContent commonData stateId state)
+
+type StatemInstance info internal timerName timerContent commonData stateId state
+  = RegistryInstance (StatemPid info internal timerName timerContent commonData stateId state)
+      (StatemType info internal timerName timerContent commonData stateId state)
 
 type Spec info internal timerName timerContent commonData stateId state
   = { name :: Maybe (RegistryName (StatemType info internal timerName timerContent commonData stateId state))
@@ -388,9 +392,9 @@ data Timeout timerContent
   | After Int timerContent
   | Cancel
 
- -- NOTE: this is managed entirely by FFI
+-- NOTE: this is managed entirely by FFI
 type Context info internal timerName timerContent commonData stateId state
- = { monitorHandlers :: Map MonitorRef (WrappedMonitorFn info internal timerName timerContent commonData stateId state)
+  = { monitorHandlers :: Map MonitorRef (WrappedMonitorFn info internal timerName timerContent commonData stateId state)
     }
 
 newtype OuterData info internal timerName timerContent commonData stateId state
@@ -495,13 +499,13 @@ foreign import mkReply :: forall reply. From reply -> reply -> Reply
 
 foreign import callFFI ::
   forall reply info internal timerName timerContent commonData stateId state.
-  StatemRef info internal timerName timerContent commonData stateId state ->
+  StatemInstance info internal timerName timerContent commonData stateId state ->
   WrappedCallFn reply info internal timerName timerContent commonData stateId state ->
   Effect reply
 
 foreign import castFFI ::
   forall info internal timerName timerContent commonData stateId state.
-  StatemRef info internal timerName timerContent commonData stateId state ->
+  StatemInstance info internal timerName timerContent commonData stateId state ->
   WrappedCastFn info internal timerName timerContent commonData stateId state ->
   Effect Unit
 
@@ -583,7 +587,7 @@ call ::
   StatemRef info internal timerName timerContent commonData stateId state ->
   CallFn reply info internal timerName timerContent commonData stateId state ->
   Effect reply
-call instanceRef callFn = callFFI instanceRef (mkFn2 \from -> runEventFn (callFn from))
+call r callFn = callFFI (registryInstance r) (mkFn2 \from -> runEventFn (callFn from))
 
 cast ::
   forall info internal timerName timerContent commonData stateId state.
@@ -591,7 +595,7 @@ cast ::
   StatemRef info internal timerName timerContent commonData stateId state ->
   CastFn info internal timerName timerContent commonData stateId state ->
   Effect Unit
-cast instanceRef castFn = castFFI instanceRef (mkFn1 $ runEventFn castFn)
+cast r castFn = castFFI (registryInstance r) (mkFn1 $ runEventFn castFn)
 
 runEventFn ::
   forall info internal timerName timerContent commonData stateId state.
@@ -620,9 +624,8 @@ runEventFn eventFn (OuterData outerData@{ state, commonData, context }) = do
         pure $ OuterEventKeepStateAndDataWithActions actions
     EventKeepState newData -> pure $ OuterEventKeepState (OuterData $ outerData { commonData = newData, context = newContext })
     EventKeepStateWithActions newData actions -> pure $ OuterEventKeepStateWithActions (OuterData $ outerData { commonData = newData, context = newContext }) actions
-    EventNextState newState newData -> -- NOTE: we don't need to check whether the new state id matches the old one, Erlang does that, it treats things
-      -- like keep_state_and_data as a synonym for {next_state, OldState, OldData}
-      pure $ OuterEventNextState (getStateId newState) (OuterData $ outerData { state = newState, commonData = newData, context = newContext })
-    EventNextStateWithActions newState newData actions -> -- NOTE: we don't need to check whether the new state id matches the old one, Erlang does that, it treats things
-      -- like keep_state_and_data as a synonym for {next_state, OldState, OldData}
-      pure $ OuterEventNextStateWithActions (getStateId newState) (OuterData $ outerData { state = newState, commonData = newData, context = newContext }) actions
+    EventNextState newState newData -> pure $ OuterEventNextState (getStateId newState) (OuterData $ outerData { state = newState, commonData = newData, context = newContext })
+    EventNextStateWithActions newState newData actions -> pure $ OuterEventNextStateWithActions (getStateId newState) (OuterData $ outerData { state = newState, commonData = newData, context = newContext }) actions
+
+-- NOTE: we don't need to check whether the new state id matches the old one, Erlang does that, it treats things -- like keep_state_and_data as a synonym for {next_state, OldState, OldData}
+-- NOTE: we don't need to check whether the new state id matches the old one, Erlang does that, it treats things -- like keep_state_and_data as a synonym for {next_state, OldState, OldData} p

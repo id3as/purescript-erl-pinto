@@ -30,7 +30,7 @@ import Erl.Data.List (List)
 import Erl.Process.Raw (Pid, class HasPid)
 import Foreign (Foreign)
 import Partial.Unsafe (unsafePartial)
-import Pinto.Types (RegistryName, StartLinkResult)
+import Pinto.Types (RegistryInstance, RegistryName, RegistryReference, StartLinkResult, registryInstance)
 
 data ChildNotStartedReason :: Type -> Type
 data ChildNotStartedReason childProcess
@@ -93,9 +93,11 @@ newtype SupervisorPid
 
 derive newtype instance supervisorPidHasPid :: HasPid SupervisorPid
 
-data SupervisorRef
-  = ByName (RegistryName SupervisorType)
-  | ByPid SupervisorPid
+type SupervisorRef
+  = RegistryReference SupervisorPid SupervisorType
+
+type SupervisorInstance
+  = RegistryInstance SupervisorPid SupervisorType
 
 type SupervisorSpec
   = { flags :: Flags
@@ -107,7 +109,10 @@ foreign import startLink ::
   Effect SupervisorSpec ->
   Effect (StartLinkResult SupervisorPid)
 
-foreign import stop :: SupervisorRef -> Effect Unit
+foreign import stopFFI :: SupervisorInstance -> Effect Unit
+
+stop :: SupervisorRef -> Effect Unit
+stop = registryInstance >>> stopFFI
 
 foreign import data ErlChildSpec :: Type
 
@@ -125,7 +130,7 @@ spec = specFFI
 
 foreign import startChildFFI ::
   forall childProcess.
-  SupervisorRef ->
+  SupervisorInstance ->
   ChildSpec childProcess ->
   StartChildResult childProcess
 
@@ -135,7 +140,7 @@ startChild ::
   SupervisorRef ->
   ChildSpec childProcess ->
   StartChildResult childProcess
-startChild = startChildFFI
+startChild r = startChildFFI $ registryInstance r
 
 maybeChildStarted :: forall childProcess. StartChildResult childProcess -> Maybe childProcess
 maybeChildStarted slr = case slr of

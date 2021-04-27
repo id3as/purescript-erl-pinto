@@ -15,8 +15,6 @@ module Pinto.GenServer
   , ResultT
   , Context
   , Action(..)
-  , SimpleType
-  , SimplePid
   , defaultSpec
   , startLink
   , call
@@ -40,10 +38,10 @@ import Control.Monad.Reader as Reader
 import Data.Function.Uncurried (Fn1, Fn2, mkFn1, mkFn2)
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
-import Foreign (Foreign)
-import Pinto.Types (RegistryName, StartLinkResult)
 import Erl.Process (Process, class HasProcess)
 import Erl.Process.Raw (class HasPid)
+import Foreign (Foreign)
+import Pinto.Types (RegistryInstance, RegistryName, RegistryReference, StartLinkResult, registryInstance)
 
 -- Sequence of types
 -- reply cont stop msg [Timeout] state
@@ -140,12 +138,6 @@ mapInitResult _ (InitStop term) = InitStop term
 
 mapInitResult _ InitIgnore = InitIgnore
 
-type SimpleType msg state
-  = ServerType Unit Unit msg state
-
-type SimplePid msg state
-  = ServerPid Unit Unit msg state
-
 newtype ServerType :: Type -> Type -> Type -> Type -> Type
 newtype ServerType cont stop msg state
   = ServerType Void
@@ -158,9 +150,11 @@ derive newtype instance serverPidHasRawPid :: HasPid (ServerPid cont stop msg st
 
 derive newtype instance serverPidHasProcess :: HasProcess msg (ServerPid const stop msg state)
 
-data ServerRef cont stop msg state
-  = ByName (RegistryName (ServerType cont stop msg state))
-  | ByPid (ServerPid cont stop msg state)
+type ServerRef cont stop msg state
+  = RegistryReference (ServerPid cont stop msg state) (ServerType cont stop msg state)
+
+type ServerInstance cont stop msg state
+  = RegistryInstance (ServerPid cont stop msg state) (ServerType cont stop msg state)
 
 type ServerSpec cont stop msg state
   = { name :: Maybe (RegistryName (ServerType cont stop msg state))
@@ -208,7 +202,7 @@ defaultSpec initFn =
 
 foreign import callFFI ::
   forall reply cont stop msg state.
-  ServerRef cont stop msg state ->
+  ServerInstance cont stop msg state ->
   WrappedCallFn reply cont stop msg state ->
   Effect reply
 
@@ -217,7 +211,7 @@ call ::
   ServerRef cont stop msg state ->
   CallFn reply cont stop msg state ->
   Effect reply
-call instanceRef callFn = callFFI instanceRef wrappedCallFn
+call r callFn = callFFI (registryInstance r) wrappedCallFn
   where
   wrappedCallFn :: WrappedCallFn reply cont stop msg state
   wrappedCallFn =
@@ -232,7 +226,7 @@ foreign import replyTo :: forall reply. From reply -> reply -> Effect Unit
 
 foreign import castFFI ::
   forall cont stop msg state.
-  ServerRef cont stop msg state ->
+  ServerInstance cont stop msg state ->
   WrappedCastFn cont stop msg state ->
   Effect Unit
 
@@ -241,7 +235,7 @@ cast ::
   ServerRef cont stop msg state ->
   CastFn cont stop msg state ->
   Effect Unit
-cast instanceRef castFn = castFFI instanceRef wrappedCastFn
+cast r castFn = castFFI (registryInstance r) wrappedCastFn
   where
   wrappedCastFn :: WrappedCastFn cont stop msg state
   wrappedCastFn =
@@ -252,17 +246,16 @@ cast instanceRef castFn = castFFI instanceRef wrappedCastFn
     in
       mkFn1 handler
 
--- TODO: should we transform the thrown noproc?
 foreign import stopFFI ::
   forall cont stop msg state.
-  ServerRef cont stop msg state ->
+  ServerInstance cont stop msg state ->
   Effect Unit
 
 stop ::
   forall cont stop msg state.
   ServerRef cont stop msg state ->
   Effect Unit
-stop = stopFFI
+stop r = stopFFI $ registryInstance r
 
 startLink :: forall cont stop msg state. (ServerSpec cont stop msg state) -> Effect (StartLinkResult (ServerPid cont stop msg state))
 startLink { name: maybeName, init: initFn, handleInfo: maybeHandleInfo, handleContinue: maybeHandleContinue } = startLinkFFI maybeName initEffect

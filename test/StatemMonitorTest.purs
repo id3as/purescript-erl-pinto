@@ -8,20 +8,19 @@ module Test.StatemMonitorTest
   ) where
 
 import Prelude
+import Control.Monad.Free (Free)
 import Data.Maybe (Maybe(..))
+import Debug.Trace (spy)
 import Effect (Effect)
 import Erl.Atom (atom)
+import Erl.Process.Raw (class HasPid)
+import Erl.Test.EUnit (TestF, suite, test)
 import Pinto.GenStatem (class HasStateId, EventResult(..), InitResult(..), MonitorRef, StatemPid, StatemRef(..), StatemType)
 import Pinto.GenStatem as Statem
-import Pinto.Types (RegistryName(..), crashIfNotStarted)
-import Erl.Process.Raw (class HasPid)
-import Debug.Trace (spy)
+import Pinto.Types (RegistryName(..), RegistryReference(..), crashIfNotStarted)
+import Test.Assert (assertEqual)
 import Test.ValueServer (ValueServerPid)
 import Test.ValueServer as ValueServer
--- Test-specific imports
-import Control.Monad.Free (Free)
-import Erl.Test.EUnit (TestF, suite, test)
-import Test.Assert (assertEqual)
 
 -- -----------------------------------------------------------------------------
 -- Test Implementation

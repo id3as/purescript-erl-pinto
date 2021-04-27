@@ -4,16 +4,16 @@ module Test.GenServer
 
 import Prelude
 import Control.Monad.Free (Free)
+import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
-import Data.Either (Either(..))
 import Erl.Atom (atom)
 import Erl.Process (Process, (!))
 import Erl.Test.EUnit (TestF, suite, test)
 import Foreign (unsafeToForeign)
 import Pinto.GenServer (Action(..), From, InitResult(..), ServerSpec, ServerType, ServerRef(..))
 import Pinto.GenServer as GS
-import Pinto.Types (NotStartedReason(..), RegistryName(..), StartLinkResult, crashIfNotStarted)
+import Pinto.Types (NotStartedReason(..), RegistryName(..), RegistryReference(..), StartLinkResult, crashIfNotStarted)
 import Test.Assert (assertEqual)
 import Test.ValueServer as ValueServer
 import Unsafe.Coerce (unsafeCoerce)
