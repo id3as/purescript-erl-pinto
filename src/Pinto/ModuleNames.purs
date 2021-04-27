@@ -8,6 +8,9 @@ pintoApp = ModuleName "Pinto.App"
 pintoGenServer :: ModuleName
 pintoGenServer = ModuleName "Pinto.GenServer"
 
+pintoGenStatem :: ModuleName
+pintoGenStatem = ModuleName "Pinto.GenStatem"
+
 pintoMessageRouting :: ModuleName
 pintoMessageRouting = ModuleName "Pinto.MessageRouting"
 

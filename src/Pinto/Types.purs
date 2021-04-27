@@ -11,6 +11,8 @@ module Pinto.Types
   , registryInstance
   , RegistryInstance
   , RegistryReference(..)
+  , class ExportsTo
+  , export
   ) where
 
 import Prelude
@@ -90,3 +92,6 @@ startLinkResultFromPs :: forall a. StartLinkResult a -> Foreign
 startLinkResultFromPs = start_link_result_from_ps
 
 foreign import start_link_result_from_ps :: forall a. StartLinkResult a -> Foreign
+
+class ExportsTo a b where
+  export :: a -> b

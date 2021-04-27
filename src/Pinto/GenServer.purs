@@ -37,8 +37,6 @@ module Pinto.GenServer
   , NativeInitResult
   , NativeCallResult
   , NativeReturnResult
-  , class ToNative
-  , toNative
   , module Exports
   ) where
 
@@ -59,7 +57,7 @@ import Erl.Process (Process, class HasProcess)
 import Erl.Process.Raw (class HasPid)
 import Foreign (Foreign)
 import Partial.Unsafe (unsafePartial)
-import Pinto.Types (RegistryInstance, RegistryName, RegistryReference, StartLinkResult, registryInstance)
+import Pinto.Types (RegistryInstance, RegistryName, RegistryReference, StartLinkResult, registryInstance, class ExportsTo, export)
 import Unsafe.Coerce (unsafeCoerce)
 
 -- Sequence of types
@@ -283,24 +281,24 @@ init =
   mkEffectFn1 \args -> do
     let
       impl = unsafePartial $ fromJust $ head args
-    toNative <$> impl
+    export <$> impl
 
 handle_call :: forall reply cont stop msg state. EffectFn3 (CallFn reply cont stop msg state) (From reply) (OuterState cont stop msg state) (NativeCallResult reply cont stop (OuterState cont stop msg state))
 handle_call =
   mkEffectFn3 \f from state@{ innerState, context } -> do
     result <- (runReaderT $ f from innerState) context
-    pure $ toNative (mkOuterState context <$> result)
+    pure $ export (mkOuterState context <$> result)
 
 handle_cast :: forall cont stop msg state. EffectFn2 (CastFn cont stop msg state) (OuterState cont stop msg state) (NativeReturnResult cont stop (OuterState cont stop msg state))
 handle_cast =
   mkEffectFn2 \f state@{ innerState, context } -> do
     result <- (runReaderT $ f innerState) context
-    pure $ toNative (mkOuterState context <$> result)
+    pure $ export (mkOuterState context <$> result)
 
 handle_info :: forall cont stop msg state. EffectFn2 msg (OuterState cont stop msg state) (NativeReturnResult cont stop (OuterState cont stop msg state))
 handle_info =
   mkEffectFn2 \msg state@{ innerState, context: context@(Context { handleInfo: maybeHandleInfo }) } ->
-    toNative
+    export
       <$> case maybeHandleInfo of
           Just f -> do
             result <- (runReaderT $ f msg innerState) context
@@ -310,18 +308,15 @@ handle_info =
 handle_continue :: forall cont stop msg state. EffectFn2 cont (OuterState cont stop msg state) (NativeReturnResult cont stop (OuterState cont stop msg state))
 handle_continue =
   mkEffectFn2 \msg state@{ innerState, context: context@(Context { handleContinue: maybeHandleContinue }) } ->
-    toNative
+    export
       <$> case maybeHandleContinue of
           Just f -> do
             result <- (runReaderT $ f msg innerState) context
             pure $ (mkOuterState context <$> result)
           Nothing -> pure $ ReturnResult Nothing state
 
-class ToNative a b where
-  toNative :: a -> b
-
-instance toNativeInitResult :: ToNative (InitResult cont state) (NativeInitResult state) where
-  toNative = case _ of
+instance exportInitResult :: ExportsTo (InitResult cont state) (NativeInitResult state) where
+  export = case _ of
     InitStop err -> unsafeCoerce $ tuple2 (atom "stop") err
     InitIgnore -> unsafeCoerce $ atom "ignore"
     InitOk state -> unsafeCoerce $ tuple2 (atom "ok") state
@@ -329,8 +324,8 @@ instance toNativeInitResult :: ToNative (InitResult cont state) (NativeInitResul
     InitOkContinue state cont -> unsafeCoerce $ tuple3 (atom "ok") state $ tuple2 (atom "continue") cont
     InitOkHibernate state -> unsafeCoerce $ tuple3 (atom "ok") state (atom "hibernate")
 
-instance toNativeCallResult :: ToNative (CallResult reply cont stop outerState) (NativeCallResult reply cont stop outerState) where
-  toNative = case _ of
+instance exportCallResult :: ExportsTo (CallResult reply cont stop outerState) (NativeCallResult reply cont stop outerState) where
+  export = case _ of
     CallResult (Just reply) Nothing newState -> unsafeCoerce $ tuple3 (atom "reply") reply newState
     CallResult (Just reply) (Just (Timeout timeout)) newState -> unsafeCoerce $ tuple4 (atom "reply") reply newState timeout
     CallResult (Just reply) (Just Hibernate) newState -> unsafeCoerce $ tuple4 (atom "reply") reply newState (atom "hibernate")
@@ -344,8 +339,8 @@ instance toNativeCallResult :: ToNative (CallResult reply cont stop outerState) 
     CallResult Nothing (Just StopNormal) newState -> unsafeCoerce $ tuple3 (atom "stop") (atom "normal") newState
     CallResult Nothing (Just (StopOther reason)) newState -> unsafeCoerce $ tuple3 (atom "stop") reason newState
 
-instance toNativeReturnResult :: ToNative (ReturnResult cont stop outerState) (NativeReturnResult cont stop outerState) where
-  toNative = case _ of
+instance exportReturnResult :: ExportsTo (ReturnResult cont stop outerState) (NativeReturnResult cont stop outerState) where
+  export = case _ of
     ReturnResult Nothing newState -> unsafeCoerce $ tuple2 (atom "noreply") newState
     ReturnResult (Just (Timeout timeout)) newState -> unsafeCoerce $ tuple3 (atom "noreply") newState timeout
     ReturnResult (Just Hibernate) newState -> unsafeCoerce $ tuple3 (atom "noreply") newState $ atom "hibernate"

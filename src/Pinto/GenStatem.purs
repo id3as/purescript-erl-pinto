@@ -41,6 +41,14 @@ module Pinto.GenStatem
   , call
   , cast
   , module Exports
+  -- As before, these could be adifferent module
+  , init
+  , callback_mode
+  , handle_event
+  , NativeInitResult
+  , NativeAction
+  , OuterData
+  , NativeHandleEventResult
   ) where
 
 import Prelude
@@ -49,16 +57,24 @@ import Control.Monad.State.Trans as StateT
 import Control.Monad.Trans.Class (class MonadTrans)
 import Control.Monad.Trans.Class (lift) as Exports
 import Data.Function.Uncurried (Fn1, Fn2, Fn3, mkFn1, mkFn2, mkFn3)
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Tuple as Tuple
+import Debug.Trace (spy)
 import Effect (Effect)
+import Effect.Uncurried (EffectFn1, EffectFn4, mkEffectFn1, mkEffectFn4)
+import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, (:), nil)
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
+import Erl.Data.Tuple (tuple2, tuple3, tuple4)
+import Erl.ModuleName (NativeModuleName, nativeModuleName)
 import Erl.Process (Process, class HasProcess)
 import Erl.Process.Raw (Pid, class HasPid, getPid)
 import Foreign (Foreign)
-import Pinto.Types (RegistryInstance, RegistryName, RegistryReference, StartLinkResult, registryInstance)
+import Partial.Unsafe (unsafeCrashWith)
+import Pinto.ModuleNames (pintoGenStatem)
+import Pinto.Types (class ExportsTo, RegistryInstance, RegistryName, RegistryReference, StartLinkResult, export, registryInstance)
+import Unsafe.Coerce (unsafeCoerce)
 
 -- -----------------------------------------------------------------------------
 -- States
@@ -227,6 +243,7 @@ type Spec info internal timerName timerContent commonData stateId state
     , init :: InitFn info internal timerName timerContent commonData stateId state
     , handleEvent :: HandleEventFn info internal timerName timerContent commonData stateId state
     , handleEnter :: Maybe (EnterFn info internal timerName timerContent commonData stateId state)
+    , getStateId :: state -> stateId
     }
 
 type InitFn info internal timerName timerContent commonData stateId state
@@ -311,6 +328,7 @@ data TimeoutAction timerContent
 data NamedTimeoutAction timerName timerContent
   = SetNamedTimeout timerName (Timeout timerContent)
   | UpdateNamedTimeout timerName timerContent
+  | CancelNamedTimeout
 
 data Timeout timerContent
   = At Int timerContent
@@ -325,9 +343,10 @@ newtype OuterData info internal timerName timerContent commonData stateId state
   = OuterData
   { state :: state
   , commonData :: commonData
-  , handleEnter :: WrappedEnterFn info internal timerName timerContent commonData stateId state
-  , handleEvent :: WrappedHandleEventFn info internal timerName timerContent commonData stateId state
+  , handleEnter :: EnterFn info internal timerName timerContent commonData stateId state
+  , handleEvent :: HandleEventFn info internal timerName timerContent commonData stateId state
   , context :: Context info internal timerName timerContent commonData stateId state
+  , getStateId :: state -> stateId
   }
 
 type WrappedEnterFn info internal timerName timerContent commonData stateId state
@@ -386,7 +405,8 @@ newtype From reply
 foreign import startLinkFFI ::
   forall info internal timerName timerContent commonData stateId state.
   Maybe (RegistryName (StatemType info internal timerName timerContent commonData stateId state)) ->
-  Effect (OuterInitResult info internal timerName timerContent commonData stateId state) ->
+  NativeModuleName ->
+  Spec info internal timerName timerContent commonData stateId state ->
   Effect (StartLinkResult (StatemPid info internal timerName timerContent commonData stateId state))
 
 foreign import selfFFI ::
@@ -398,13 +418,13 @@ foreign import mkReply :: forall reply. From reply -> reply -> Reply
 foreign import callFFI ::
   forall reply info internal timerName timerContent commonData stateId state.
   StatemInstance info internal timerName timerContent commonData stateId state ->
-  WrappedCallFn reply info internal timerName timerContent commonData stateId state ->
+  CallFn reply info internal timerName timerContent commonData stateId state ->
   Effect reply
 
 foreign import castFFI ::
   forall info internal timerName timerContent commonData stateId state.
   StatemInstance info internal timerName timerContent commonData stateId state ->
-  WrappedCastFn info internal timerName timerContent commonData stateId state ->
+  CastFn info internal timerName timerContent commonData stateId state ->
   Effect Unit
 
 startLink ::
@@ -412,59 +432,7 @@ startLink ::
   HasStateId stateId state =>
   Spec info internal timerName timerContent commonData stateId state ->
   Effect (StartLinkResult (StatemPid info internal timerName timerContent commonData stateId state))
-startLink { name: maybeName
-, init: (InitT init)
-, handleEnter: maybeHandleEnter
-, handleEvent
-} = startLinkFFI maybeName initEffect
-  where
-  initEffect :: Effect (OuterInitResult info internal timerName timerContent commonData stateId state)
-  initEffect = do
-    let
-      initialContext = {}
-    result <- StateT.runStateT init initialContext
-    let
-      result' = Tuple.fst result
-    let
-      contextResult = Tuple.snd result
-    case result' of
-      (InitOk state commonData) -> pure $ OuterInitOk (getStateId state) (mkOuterData state commonData contextResult)
-      (InitOkWithActions state commonData actions) -> pure $ OuterInitOkWithActions (getStateId state) (mkOuterData state commonData contextResult) actions
-      (InitStop error) -> pure $ OuterInitStop error
-      (InitIgnore) -> pure $ OuterInitIgnore
-
-  mkOuterData state commonData contextResult =
-    OuterData
-      { state
-      , commonData
-      , handleEnter: mkFn3 wrappedHandleEnter
-      , handleEvent: mkFn2 (\event -> runEventFn (handleEvent event))
-      , context: contextResult
-      }
-
-  wrappedHandleEnter oldStateId newStateId (OuterData currentData@{ state, commonData, context }) = case maybeHandleEnter of
-    Just handleEnter -> do
-      let
-        (StateEnterT stateT) = handleEnter oldStateId newStateId state commonData
-      result <- StateT.runStateT stateT { context, changed: false }
-      let
-        result' = Tuple.fst result
-      let
-        { context: newContext, changed: contextChanged } = Tuple.snd result
-      case result' of
-        StateEnterOk newData -> pure $ OuterStateEnterOk (OuterData $ currentData { commonData = newData })
-        StateEnterOkWithActions newData actions -> pure $ OuterStateEnterOkWithActions (OuterData $ currentData { commonData = newData }) actions
-        StateEnterKeepData ->
-          if contextChanged then
-            pure $ OuterStateEnterOk (OuterData $ currentData { context = newContext })
-          else
-            pure $ OuterStateEnterKeepData
-        StateEnterKeepDataWithActions actions ->
-          if contextChanged then
-            pure $ OuterStateEnterOkWithActions (OuterData $ currentData { context = newContext }) actions
-          else
-            pure $ OuterStateEnterKeepDataWithActions actions
-    Nothing -> pure $ OuterStateEnterKeepData
+startLink args@{ name: maybeName } = startLinkFFI maybeName (nativeModuleName pintoGenStatem) args
 
 mkSpec ::
   forall info internal timerName timerContent commonData stateId state.
@@ -477,6 +445,7 @@ mkSpec initFn handleEventFn =
   , init: initFn
   , handleEvent: handleEventFn
   , handleEnter: Nothing
+  , getStateId: getStateId
   }
 
 call ::
@@ -485,7 +454,7 @@ call ::
   StatemRef info internal timerName timerContent commonData stateId state ->
   CallFn reply info internal timerName timerContent commonData stateId state ->
   Effect reply
-call r callFn = callFFI (registryInstance r) (mkFn2 \from -> runEventFn (callFn from))
+call r callFn = callFFI (registryInstance r) callFn
 
 cast ::
   forall info internal timerName timerContent commonData stateId state.
@@ -493,15 +462,15 @@ cast ::
   StatemRef info internal timerName timerContent commonData stateId state ->
   CastFn info internal timerName timerContent commonData stateId state ->
   Effect Unit
-cast r castFn = castFFI (registryInstance r) (mkFn1 $ runEventFn castFn)
+cast r castFn = castFFI (registryInstance r) castFn
 
 runEventFn ::
   forall info internal timerName timerContent commonData stateId state.
-  HasStateId stateId state =>
+  (state -> stateId) ->
   EventFn info internal timerName timerContent commonData stateId state ->
   OuterData info internal timerName timerContent commonData stateId state ->
   Effect (OuterEventResult info internal timerName timerContent commonData stateId state)
-runEventFn eventFn (OuterData outerData@{ state, commonData, context }) = do
+runEventFn getStateId eventFn (OuterData outerData@{ state, commonData, context }) = do
   let
     (EventT stateT) = eventFn state commonData
   result <- StateT.runStateT stateT { context, changed: false }
@@ -526,4 +495,151 @@ runEventFn eventFn (OuterData outerData@{ state, commonData, context }) = do
     EventNextStateWithActions newState newData actions -> pure $ OuterEventNextStateWithActions (getStateId newState) (OuterData $ outerData { state = newState, commonData = newData, context = newContext }) actions
 
 -- NOTE: we don't need to check whether the new state id matches the old one, Erlang does that, it treats things -- like keep_state_and_data as a synonym for {next_state, OldState, OldData}
--- NOTE: we don't need to check whether the new state id matches the old one, Erlang does that, it treats things -- like keep_state_and_data as a synonym for {next_state, OldState, OldData} p
+-- GenStatem API
+callback_mode :: List Atom
+callback_mode = (atom "handle_event_function") : (atom "state_enter") : nil
+
+init ::
+  forall info internal timerName timerContent commonData stateId state.
+  EffectFn1 (Spec info internal timerName timerContent commonData stateId state) NativeInitResult
+init =
+  mkEffectFn1 \{ init: (InitT f)
+  , handleEnter: maybeHandleEnter
+  , handleEvent
+  , getStateId
+  } -> do
+    result <- StateT.runStateT f {}
+    let
+      result' = Tuple.fst result
+
+      contextResult = Tuple.snd result
+
+      mkOuterData state commonData contextResult =
+        OuterData
+          { state
+          , commonData
+          , handleEnter: fromMaybe (\_ _ _ _ -> pure StateEnterKeepData) maybeHandleEnter
+          , handleEvent
+          , context: contextResult
+          , getStateId: getStateId
+          }
+    pure $ export
+      $ case result' of
+          (InitOk state commonData) -> OuterInitOk (getStateId state) (mkOuterData state commonData contextResult)
+          (InitOkWithActions state commonData actions) -> OuterInitOkWithActions (getStateId state) (mkOuterData state commonData contextResult) actions
+          (InitStop error) -> OuterInitStop error
+          (InitIgnore) -> OuterInitIgnore
+
+runEnterState ::
+  forall info internal timerName timerContent commonData stateId state.
+  EnterFn info internal timerName timerContent commonData stateId state ->
+  (state -> stateId) ->
+  stateId ->
+  stateId ->
+  OuterData info internal timerName timerContent commonData stateId state ->
+  Effect (OuterStateEnterResult info internal timerName timerContent commonData stateId state)
+runEnterState handleEnter getStateId oldStateId newStateId (OuterData currentData@{ state, commonData, context }) = do
+  let
+    (StateEnterT stateT) = handleEnter oldStateId newStateId state commonData
+  result <- StateT.runStateT stateT { context, changed: false }
+  let
+    result' = Tuple.fst result
+
+    { context: newContext, changed: contextChanged } = Tuple.snd result
+  case result' of
+    StateEnterOk newData -> pure $ OuterStateEnterOk (OuterData $ currentData { commonData = newData })
+    StateEnterOkWithActions newData actions -> pure $ OuterStateEnterOkWithActions (OuterData $ currentData { commonData = newData }) actions
+    StateEnterKeepData ->
+      if contextChanged then
+        pure $ OuterStateEnterOk (OuterData $ currentData { context = newContext })
+      else
+        pure $ OuterStateEnterKeepData
+    StateEnterKeepDataWithActions actions ->
+      if contextChanged then
+        pure $ OuterStateEnterOkWithActions (OuterData $ currentData { context = newContext }) actions
+      else
+        pure $ OuterStateEnterKeepDataWithActions actions
+
+handle_event ::
+  forall reply info internal timerName timerContent commonData stateId state.
+  EffectFn4 Foreign Foreign stateId (OuterData info internal timerName timerContent commonData stateId state) NativeHandleEventResult
+handle_event =
+  mkEffectFn4 \t e stateId dat@(OuterData { getStateId, handleEvent, handleEnter }) -> do
+    case parseEventFFI t e of
+      HandleEventEnter oldStateId -> export <$> runEnterState handleEnter getStateId oldStateId stateId dat
+      HandleEventCall from f -> export <$> runEventFn getStateId (f from) dat
+      HandleEventCast f -> export <$> runEventFn getStateId f dat
+      HandleEvent ev -> export <$> runEventFn getStateId (handleEvent ev) dat
+
+data HandleEvent :: Type -> Type -> Type -> Type -> Type -> Type -> Type -> Type -> Type
+data HandleEvent reply info internal timerName timerContent commonData stateId state
+  = HandleEventEnter stateId
+  | HandleEventCall (From reply) (CallFn reply info internal timerName timerContent commonData stateId state)
+  | HandleEventCast (CastFn info internal timerName timerContent commonData stateId state)
+  | HandleEvent (Event info internal timerName timerContent)
+
+foreign import parseEventFFI ::
+  forall reply info internal timerName timerContent commonData stateId state.
+  Foreign -> Foreign -> HandleEvent reply info internal timerName timerContent commonData stateId state
+
+foreign import data NativeInitResult :: Type
+
+foreign import data NativeAction :: Type
+
+foreign import data NativeHandleEventResult :: Type
+
+instance exportOuterStateEnterResult :: ExportsTo (OuterStateEnterResult info internal timerName timerContent commonData stateId state) NativeHandleEventResult where
+  export = case _ of
+    OuterStateEnterOk newData -> unsafeCoerce $ tuple2 (atom "keep_state") newData
+    OuterStateEnterOkWithActions newData actions -> unsafeCoerce $ tuple3 (atom "keep_state") newData (export actions :: List NativeAction)
+    OuterStateEnterKeepData -> unsafeCoerce $ atom "keep_state_and_data"
+    OuterStateEnterKeepDataWithActions actions -> unsafeCoerce $ tuple2 (atom "keep_state_and_data") (export actions :: List NativeAction)
+
+instance exportOuterEventResult :: ExportsTo (OuterEventResult info internal timerName timerContent commonData stateId state) NativeHandleEventResult where
+  export = case _ of
+    OuterEventKeepStateAndData -> unsafeCoerce $ atom "keep_state_and_data"
+    OuterEventKeepStateAndDataWithActions actions -> unsafeCoerce $ tuple2 (atom "keep_state_and_data") (export actions :: List NativeAction)
+    OuterEventKeepState newData -> unsafeCoerce $ tuple2 (atom "keep_state") newData
+    OuterEventKeepStateWithActions newData actions -> unsafeCoerce $ tuple3 (atom "keep_state") newData (export actions :: List NativeAction)
+    OuterEventNextState newState newData -> unsafeCoerce $ unsafeCoerce $ tuple3 (atom "next_state") newState newData
+    OuterEventNextStateWithActions newState newData actions -> unsafeCoerce $ tuple4 (atom "next_state") newState newData (export actions :: List NativeAction)
+
+instance exportOuterInitResult :: ExportsTo (OuterInitResult info internal timerName timerContent commonData stateId state) NativeInitResult where
+  export = case _ of
+    OuterInitOk state dat -> unsafeCoerce $ tuple3 (atom "ok") state dat
+    OuterInitOkWithActions state dat actions -> unsafeCoerce $ tuple4 (atom "ok") state dat $ (export actions :: List NativeAction)
+    OuterInitStop err -> unsafeCoerce $ tuple2 (atom "stop") err
+    OuterInitIgnore -> unsafeCoerce $ atom "ignore"
+
+instance exportActions :: ExportsTo (InitActionsBuilder a b c d) (List NativeAction) where
+  export (InitActionsBuilder actions) = export <$> actions
+
+instance exportEventActions :: ExportsTo (EventActionsBuilder a b c d) (List NativeAction) where
+  export (EventActionsBuilder actions) = export <$> actions
+
+instance exportStateEnterActions :: ExportsTo (StateEnterActionsBuilder a b) (List NativeAction) where
+  export (StateEnterActionsBuilder actions) = export <$> actions
+
+instance exportEventAction :: ExportsTo (EventAction a b c d) NativeAction where
+  export = case _ of
+    CommonAction action -> export action
+    Postpone -> unsafeCoerce $ atom "postpone"
+    NextEvent _ -> unsafeCrashWith "Not Implemented"
+
+instance exportCommonAction :: ExportsTo (CommonAction a b) NativeAction where
+  export = case _ of
+    Hibernate -> unsafeCoerce $ atom "hibernate"
+    TimeoutAction timeout -> export timeout
+    NamedTimeoutAction named -> unsafeCrashWith "Not implemented"
+    ReplyAction reply -> unsafeCoerce reply
+
+instance exportTimeoutAction :: ExportsTo (TimeoutAction a) NativeAction where
+  export = case _ of
+    SetTimeout (At timeout content) -> unsafeCoerce $ tuple4 (atom "timeout") timeout content ((tuple2 (atom "abs") true : nil))
+    SetTimeout (After timeout content) -> unsafeCoerce $ tuple3 (atom "timeout") timeout content
+    SetTimeout Cancel -> unsafeCoerce $ tuple2 (atom "timeout") (atom "cancel")
+    SetStateTimeout (At timeout content) -> unsafeCoerce $ tuple4 (atom "state_timeout") timeout content ((tuple2 (atom "abs") true : nil))
+    SetStateTimeout (After timeout content) -> unsafeCoerce $ tuple3 (atom "state_timeout") timeout content
+    SetStateTimeout Cancel -> unsafeCoerce $ tuple2 (atom "state_timeout") (atom "cancel")
+    UpdateTimeout content -> unsafeCoerce $ tuple3 (atom "timeout") (atom "update") content
+    UpdateStateTimeout content -> unsafeCoerce $ tuple3 (atom "state_timeout") (atom "update") content
