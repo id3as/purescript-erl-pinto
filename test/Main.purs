@@ -108,7 +108,7 @@ dynamicSupervisor :: Free TestF Unit
 dynamicSupervisor =
   test "Can start a supervisor and add a child" do
     supPid <- crashIfNotStarted <$> DynamicSup.startLink Nothing supInit
-    childPid <- Sup.crashIfChildNotStarted <$> DynamicSup.startChild unit (ByPid supPid)
+    childPid <- Sup.crashIfChildNotStarted <$> DynamicSup.startChild (ByPid supPid) unit
     childState <- getState (ByPid childPid)
     assertEqual
       { actual: childState

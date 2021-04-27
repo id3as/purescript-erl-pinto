@@ -42,7 +42,7 @@ startLinkPure({just, RegistryName}, DynamicSpecEffect) ->
   Result = supervisor:start_link(RegistryName, ?MODULE, DynamicSpecEffect),
   start_link_result_to_ps(Result).
 
-startChildFFI(ChildArg, Ref) ->
+startChildFFI(Ref, ChildArg) ->
   fun() ->
     Result = supervisor:start_child(Ref, [ChildArg]),
     start_child_result_to_ps(Result)

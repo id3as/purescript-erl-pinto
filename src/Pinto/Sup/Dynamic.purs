@@ -56,13 +56,13 @@ foreign import startLinkFFI ::
 startChild ::
   forall childStartArg childProcess.
   HasPid childProcess =>
-  childStartArg ->
   DynamicRef childStartArg childProcess ->
+  childStartArg ->
   Effect (StartChildResult childProcess)
-startChild a r = startChildFFI a $ registryInstance r
+startChild = startChildFFI <<< registryInstance
 
 foreign import startChildFFI ::
   forall childStartArg childProcess.
-  childStartArg ->
   DynamicInstance childStartArg childProcess ->
+  childStartArg ->
   Effect (StartChildResult childProcess)
