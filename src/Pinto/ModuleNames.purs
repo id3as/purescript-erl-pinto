@@ -5,6 +5,9 @@ import Erl.ModuleName (ModuleName(..))
 pintoApp :: ModuleName
 pintoApp = ModuleName "Pinto.App"
 
+pintoGenServer :: ModuleName
+pintoGenServer = ModuleName "Pinto.GenServer"
+
 pintoMessageRouting :: ModuleName
 pintoMessageRouting = ModuleName "Pinto.MessageRouting"
 

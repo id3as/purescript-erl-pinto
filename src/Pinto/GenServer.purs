@@ -28,6 +28,17 @@ module Pinto.GenServer
   , returnWithAction
   , replyTo
   , self
+  -- These probably need to go in a different module
+  , init
+  , handle_call
+  , handle_cast
+  , handle_info
+  , handle_continue
+  , NativeInitResult
+  , NativeCallResult
+  , NativeReturnResult
+  , class ToNative
+  , toNative
   , module Exports
   ) where
 
@@ -36,12 +47,20 @@ import Control.Monad.Reader (ReaderT, runReaderT)
 import Control.Monad.Reader (lift) as Exports
 import Control.Monad.Reader as Reader
 import Data.Function.Uncurried (Fn1, Fn2, mkFn1, mkFn2)
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), fromJust)
 import Effect (Effect)
+import Effect.Uncurried (EffectFn1, EffectFn2, EffectFn3, mkEffectFn1, mkEffectFn2, mkEffectFn3)
+import Erl.Atom (atom)
+import Erl.Data.List (List, head)
+import Erl.Data.Tuple (tuple2, tuple3, tuple4)
+import Erl.ModuleName (NativeModuleName(..), nativeModuleName)
+import Pinto.ModuleNames (pintoGenServer)
 import Erl.Process (Process, class HasProcess)
 import Erl.Process.Raw (class HasPid)
 import Foreign (Foreign)
+import Partial.Unsafe (unsafePartial)
 import Pinto.Types (RegistryInstance, RegistryName, RegistryReference, StartLinkResult, registryInstance)
+import Unsafe.Coerce (unsafeCoerce)
 
 -- Sequence of types
 -- reply cont stop msg [Timeout] state
@@ -176,21 +195,9 @@ mkOuterState = { context: _, innerState: _ }
 
 newtype Context cont stop msg state
   = Context
-  { handleInfo :: Maybe (WrappedInfoFn cont stop msg state)
-  , handleContinue :: Maybe (WrappedContinueFn cont stop msg state)
+  { handleInfo :: Maybe (InfoFn cont stop msg state)
+  , handleContinue :: Maybe (ContinueFn cont stop msg state)
   }
-
-type WrappedInfoFn cont stop msg state
-  = Fn2 msg (OuterState cont stop msg state) (Effect (ReturnResult cont stop (OuterState cont stop msg state)))
-
-type WrappedCallFn reply cont stop msg state
-  = Fn2 (From reply) (OuterState cont stop msg state) (Effect (CallResult reply cont stop (OuterState cont stop msg state)))
-
-type WrappedCastFn cont stop msg state
-  = Fn1 (OuterState cont stop msg state) (Effect (ReturnResult cont stop (OuterState cont stop msg state)))
-
-type WrappedContinueFn cont stop msg state
-  = Fn2 cont (OuterState cont stop msg state) (Effect (ReturnResult cont stop (OuterState cont stop msg state)))
 
 defaultSpec :: forall cont stop msg state. InitFn cont stop msg state -> ServerSpec cont stop msg state
 defaultSpec initFn =
@@ -203,7 +210,7 @@ defaultSpec initFn =
 foreign import callFFI ::
   forall reply cont stop msg state.
   ServerInstance cont stop msg state ->
-  WrappedCallFn reply cont stop msg state ->
+  CallFn reply cont stop msg state ->
   Effect reply
 
 call ::
@@ -211,23 +218,14 @@ call ::
   ServerRef cont stop msg state ->
   CallFn reply cont stop msg state ->
   Effect reply
-call r callFn = callFFI (registryInstance r) wrappedCallFn
-  where
-  wrappedCallFn :: WrappedCallFn reply cont stop msg state
-  wrappedCallFn =
-    let
-      handler from state@{ innerState, context: handlerContext } = do
-        innerResult <- (runReaderT $ callFn from innerState) handlerContext
-        pure $ (mkOuterState handlerContext) <$> innerResult
-    in
-      mkFn2 handler
+call r callFn = callFFI (registryInstance r) callFn
 
 foreign import replyTo :: forall reply. From reply -> reply -> Effect Unit
 
 foreign import castFFI ::
   forall cont stop msg state.
   ServerInstance cont stop msg state ->
-  WrappedCastFn cont stop msg state ->
+  CastFn cont stop msg state ->
   Effect Unit
 
 cast ::
@@ -235,16 +233,7 @@ cast ::
   ServerRef cont stop msg state ->
   CastFn cont stop msg state ->
   Effect Unit
-cast r castFn = castFFI (registryInstance r) wrappedCastFn
-  where
-  wrappedCastFn :: WrappedCastFn cont stop msg state
-  wrappedCastFn =
-    let
-      handler state@{ innerState, context: handlerContext } = do
-        innerResult <- (runReaderT $ castFn innerState) handlerContext
-        pure $ (mkOuterState handlerContext) <$> innerResult
-    in
-      mkFn1 handler
+cast r castFn = castFFI (registryInstance r) castFn
 
 foreign import stopFFI ::
   forall cont stop msg state.
@@ -258,12 +247,12 @@ stop ::
 stop r = stopFFI $ registryInstance r
 
 startLink :: forall cont stop msg state. (ServerSpec cont stop msg state) -> Effect (StartLinkResult (ServerPid cont stop msg state))
-startLink { name: maybeName, init: initFn, handleInfo: maybeHandleInfo, handleContinue: maybeHandleContinue } = startLinkFFI maybeName initEffect
+startLink { name: maybeName, init: initFn, handleInfo: maybeHandleInfo, handleContinue: maybeHandleContinue } = startLinkFFI maybeName (nativeModuleName pintoGenServer) initEffect
   where
   context =
     Context
-      { handleInfo: wrapHandleInfo <$> maybeHandleInfo
-      , handleContinue: wrapContinue <$> maybeHandleContinue
+      { handleInfo: maybeHandleInfo
+      , handleContinue: maybeHandleContinue
       }
 
   initEffect :: Effect (InitResult cont (OuterState cont stop msg state))
@@ -271,27 +260,10 @@ startLink { name: maybeName, init: initFn, handleInfo: maybeHandleInfo, handleCo
     innerResult <- (runReaderT initFn) context
     pure $ mapInitResult (mkOuterState context) innerResult
 
-  wrapHandleInfo :: InfoFn cont stop msg state -> WrappedInfoFn cont stop msg state
-  wrapHandleInfo handleInfo =
-    let
-      handler msg state@{ innerState, context: handlerContext } = do
-        innerResult <- (runReaderT $ handleInfo msg innerState) handlerContext
-        pure $ (mkOuterState handlerContext) <$> innerResult
-    in
-      mkFn2 handler
-
-  wrapContinue :: ContinueFn cont stop msg state -> WrappedContinueFn cont stop msg state
-  wrapContinue continueFn =
-    let
-      handler cont state@{ innerState, context: handlerContext } = do
-        innerResult <- (runReaderT $ continueFn cont innerState) handlerContext
-        pure $ (mkOuterState handlerContext) <$> innerResult
-    in
-      mkFn2 handler
-
 foreign import startLinkFFI ::
   forall cont stop msg state.
   Maybe (RegistryName (ServerType cont stop msg state)) ->
+  NativeModuleName ->
   Effect (InitResult cont (OuterState cont stop msg state)) ->
   Effect (StartLinkResult (ServerPid cont stop msg state))
 
@@ -303,3 +275,86 @@ self = Reader.lift selfFFI
 foreign import selfFFI ::
   forall cont stop msg state.
   Effect (ServerPid cont stop msg state)
+
+init ::
+  forall cont state.
+  EffectFn1 (List (Effect (InitResult cont state))) (NativeInitResult state)
+init =
+  mkEffectFn1 \args -> do
+    let
+      impl = unsafePartial $ fromJust $ head args
+    toNative <$> impl
+
+handle_call :: forall reply cont stop msg state. EffectFn3 (CallFn reply cont stop msg state) (From reply) (OuterState cont stop msg state) (NativeCallResult reply cont stop (OuterState cont stop msg state))
+handle_call =
+  mkEffectFn3 \f from state@{ innerState, context } -> do
+    result <- (runReaderT $ f from innerState) context
+    pure $ toNative (mkOuterState context <$> result)
+
+handle_cast :: forall cont stop msg state. EffectFn2 (CastFn cont stop msg state) (OuterState cont stop msg state) (NativeReturnResult cont stop (OuterState cont stop msg state))
+handle_cast =
+  mkEffectFn2 \f state@{ innerState, context } -> do
+    result <- (runReaderT $ f innerState) context
+    pure $ toNative (mkOuterState context <$> result)
+
+handle_info :: forall cont stop msg state. EffectFn2 msg (OuterState cont stop msg state) (NativeReturnResult cont stop (OuterState cont stop msg state))
+handle_info =
+  mkEffectFn2 \msg state@{ innerState, context: context@(Context { handleInfo: maybeHandleInfo }) } ->
+    toNative
+      <$> case maybeHandleInfo of
+          Just f -> do
+            result <- (runReaderT $ f msg innerState) context
+            pure $ (mkOuterState context <$> result)
+          Nothing -> pure $ ReturnResult Nothing state
+
+handle_continue :: forall cont stop msg state. EffectFn2 cont (OuterState cont stop msg state) (NativeReturnResult cont stop (OuterState cont stop msg state))
+handle_continue =
+  mkEffectFn2 \msg state@{ innerState, context: context@(Context { handleContinue: maybeHandleContinue }) } ->
+    toNative
+      <$> case maybeHandleContinue of
+          Just f -> do
+            result <- (runReaderT $ f msg innerState) context
+            pure $ (mkOuterState context <$> result)
+          Nothing -> pure $ ReturnResult Nothing state
+
+class ToNative a b where
+  toNative :: a -> b
+
+instance toNativeInitResult :: ToNative (InitResult cont state) (NativeInitResult state) where
+  toNative = case _ of
+    InitStop err -> unsafeCoerce $ tuple2 (atom "stop") err
+    InitIgnore -> unsafeCoerce $ atom "ignore"
+    InitOk state -> unsafeCoerce $ tuple2 (atom "ok") state
+    InitOkTimeout state timeout -> unsafeCoerce $ tuple3 (atom "timeout") state timeout
+    InitOkContinue state cont -> unsafeCoerce $ tuple3 (atom "ok") state $ tuple2 (atom "continue") cont
+    InitOkHibernate state -> unsafeCoerce $ tuple3 (atom "ok") state (atom "hibernate")
+
+instance toNativeCallResult :: ToNative (CallResult reply cont stop outerState) (NativeCallResult reply cont stop outerState) where
+  toNative = case _ of
+    CallResult (Just reply) Nothing newState -> unsafeCoerce $ tuple3 (atom "reply") reply newState
+    CallResult (Just reply) (Just (Timeout timeout)) newState -> unsafeCoerce $ tuple4 (atom "reply") reply newState timeout
+    CallResult (Just reply) (Just Hibernate) newState -> unsafeCoerce $ tuple4 (atom "reply") reply newState (atom "hibernate")
+    CallResult (Just reply) (Just (Continue cont)) newState -> unsafeCoerce $ tuple4 (atom "reply") reply newState $ tuple2 (atom "continue") cont
+    CallResult (Just reply) (Just StopNormal) newState -> unsafeCoerce $ tuple4 (atom "stop") (atom "normal") reply newState
+    CallResult (Just reply) (Just (StopOther reason)) newState -> unsafeCoerce $ tuple4 (atom "stop") reason reply newState
+    CallResult Nothing Nothing newState -> unsafeCoerce $ tuple2 (atom "reply") newState
+    CallResult Nothing (Just (Timeout timeout)) newState -> unsafeCoerce $ tuple3 (atom "noreply") newState timeout
+    CallResult Nothing (Just Hibernate) newState -> unsafeCoerce $ tuple3 (atom "noreply") newState (atom "hibernate")
+    CallResult Nothing (Just (Continue cont)) newState -> unsafeCoerce $ tuple3 (atom "noreply") newState $ tuple2 (atom "continue") cont
+    CallResult Nothing (Just StopNormal) newState -> unsafeCoerce $ tuple3 (atom "stop") (atom "normal") newState
+    CallResult Nothing (Just (StopOther reason)) newState -> unsafeCoerce $ tuple3 (atom "stop") reason newState
+
+instance toNativeReturnResult :: ToNative (ReturnResult cont stop outerState) (NativeReturnResult cont stop outerState) where
+  toNative = case _ of
+    ReturnResult Nothing newState -> unsafeCoerce $ tuple2 (atom "noreply") newState
+    ReturnResult (Just (Timeout timeout)) newState -> unsafeCoerce $ tuple3 (atom "noreply") newState timeout
+    ReturnResult (Just Hibernate) newState -> unsafeCoerce $ tuple3 (atom "noreply") newState $ atom "hibernate"
+    ReturnResult (Just (Continue cont)) newState -> unsafeCoerce $ tuple3 (atom "noreply") newState $ tuple2 (atom "continue") cont
+    ReturnResult (Just StopNormal) newState -> unsafeCoerce $ tuple3 (atom "stop") (atom "normal") newState
+    ReturnResult (Just (StopOther reason)) newState -> unsafeCoerce $ tuple3 (atom "stop") reason newState
+
+foreign import data NativeInitResult :: Type -> Type
+
+foreign import data NativeCallResult :: Type -> Type -> Type -> Type -> Type
+
+foreign import data NativeReturnResult :: Type -> Type -> Type -> Type
