@@ -9,6 +9,7 @@
         , replyTo/2
         , stopFFI/1
         , parseTrappedExitFFI/2
+        , parseShutdownReasonFFI/1
         ]).
 
 
@@ -63,4 +64,17 @@ parseTrappedExitFFI({ 'EXIT', Pid,  Reason }, ExitMsg) ->
 
 parseTrappedExitFFI(_,_) ->
   {nothing}.
+
+parseShutdownReasonFFI(normal) ->
+  {reasonNormal};
+
+parseShutdownReasonFFI(shutdown) ->
+  {reasonShutdown, {nothing}};
+
+parseShutdownReasonFFI({shutdown, Reason}) ->
+  {reasonShutdown, {just, Reason}};
+
+parseShutdownReasonFFI(SomethingElse) ->
+  {reasonOther, SomethingElse}.
+
 

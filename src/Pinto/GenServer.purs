@@ -9,6 +9,7 @@ module Pinto.GenServer
   , CallResult(..)
   , CastFn
   , InfoFn
+  , TerminateFn
   , ContinueFn
   , ReturnResult(..)
   , From
@@ -35,6 +36,7 @@ module Pinto.GenServer
   , handle_cast
   , handle_info
   , handle_continue
+  , terminate
   , NativeInitResult
   , NativeCallResult
   , NativeReturnResult
@@ -48,14 +50,14 @@ import Control.Monad.Reader as Reader
 import Data.Maybe (Maybe(..), fromJust, fromMaybe')
 import Effect (Effect)
 import Effect.Uncurried (EffectFn1, EffectFn2, EffectFn3, mkEffectFn1, mkEffectFn2, mkEffectFn3)
-import Erl.Atom (atom)
+import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, head)
 import Erl.Data.Tuple (tuple2, tuple3, tuple4)
 import Erl.ModuleName (NativeModuleName, nativeModuleName)
 import Erl.Process (class HasProcess, Process)
 import Erl.Process.Raw (class HasPid, Pid, setProcessFlagTrapExit)
 import Foreign (Foreign)
-import Partial.Unsafe (unsafePartial)
+import Partial.Unsafe (unsafeCrashWith, unsafePartial)
 import Pinto.ModuleNames (pintoGenServer)
 import Pinto.Types (RegistryInstance, RegistryName, RegistryReference, StartLinkResult, registryInstance, class ExportsTo, export)
 import Unsafe.Coerce (unsafeCoerce)
@@ -131,6 +133,9 @@ type ContinueFn cont stop msg state
 type InfoFn cont stop msg state
   = msg -> state -> ResultT (ReturnResult cont stop state) cont stop msg state
 
+type TerminateFn cont stop msg state
+  = Foreign -> state -> ResultT Unit cont stop msg state
+
 -- -- | Type of the callback invoked during a gen_server:handle_cast
 -- type Cast state msg = ResultT (CastResult state) state msg
 data InitResult cont state
@@ -182,6 +187,7 @@ type ServerSpec cont stop msg state
     , init :: InitFn cont stop msg state
     , handleInfo :: Maybe (InfoFn cont stop msg state)
     , handleContinue :: Maybe (ContinueFn cont stop msg state)
+    , terminate :: Maybe (TerminateFn cont stop msg state)
     , trapExits :: Maybe (ExitMessage -> msg)
     }
 
@@ -200,6 +206,7 @@ newtype Context cont stop msg state
   = Context
   { handleInfo :: Maybe (InfoFn cont stop msg state)
   , handleContinue :: Maybe (ContinueFn cont stop msg state)
+  , terminate :: Maybe (TerminateFn cont stop msg state)
   , trapExits :: Maybe (ExitMessage -> msg)
   }
 
@@ -209,6 +216,7 @@ defaultSpec initFn =
   , init: initFn
   , handleInfo: Nothing
   , handleContinue: Nothing
+  , terminate: Nothing
   , trapExits: Nothing
   }
 
@@ -252,18 +260,19 @@ stop ::
 stop r = stopFFI $ registryInstance r
 
 startLink :: forall cont stop msg state. (ServerSpec cont stop msg state) -> Effect (StartLinkResult (ServerPid cont stop msg state))
-startLink { name: maybeName, init: initFn, handleInfo: maybeHandleInfo, handleContinue: maybeHandleContinue, trapExits: maybeTrapExits } = startLinkFFI maybeName (nativeModuleName pintoGenServer) initEffect
+startLink { name: maybeName, init: initFn, handleInfo, handleContinue, terminate, trapExits } = startLinkFFI maybeName (nativeModuleName pintoGenServer) initEffect
   where
   context =
     Context
-      { handleInfo: maybeHandleInfo
-      , handleContinue: maybeHandleContinue
-      , trapExits: maybeTrapExits
+      { handleInfo
+      , handleContinue
+      , terminate
+      , trapExits
       }
 
   initEffect :: Effect (InitResult cont (OuterState cont stop msg state))
   initEffect = do
-    _ <- case maybeTrapExits of
+    _ <- case trapExits of
       Nothing -> pure unit
       Just _ -> void $ setProcessFlagTrapExit true
     innerResult <- (runReaderT initFn) context
@@ -322,7 +331,22 @@ handle_info =
               pure $ (mkOuterState context <$> result)
             Nothing -> pure $ ReturnResult Nothing state
 
+terminate :: forall cont stop msg state. EffectFn2 Foreign (OuterState cont stop msg state) Atom
+terminate =
+  mkEffectFn2 \reason state@{ innerState, context: context@(Context { terminate: maybeTerminate }) } -> do
+    case maybeTerminate of
+      Just f -> (runReaderT $ f reason innerState) context
+      Nothing -> pure unit
+    pure $ atom "ok"
+
+data ShutdownReason
+  = ReasonNormal
+  | ReasonShutdown (Maybe Foreign)
+  | ReasonOther Foreign
+
 foreign import parseTrappedExitFFI :: Foreign -> (Pid -> Foreign -> ExitMessage) -> Maybe ExitMessage
+
+foreign import parseShutdownReasonFFI :: Foreign -> ShutdownReason
 
 assumeExpectedMessage :: forall msg. Foreign -> msg
 assumeExpectedMessage = unsafeCoerce

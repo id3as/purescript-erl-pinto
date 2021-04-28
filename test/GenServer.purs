@@ -17,7 +17,7 @@ import Partial.Unsafe (unsafeCrashWith)
 import Pinto.GenServer (Action(..), ExitMessage, From, InitResult(..), ServerRef(..), ServerSpec, ServerType)
 import Pinto.GenServer as GS
 import Pinto.Types (NotStartedReason(..), RegistryName(..), RegistryReference(..), StartLinkResult, crashIfNotStarted)
-import Test.Assert (assertEqual)
+import Test.Assert (assertEqual, assert')
 import Test.ValueServer as ValueServer
 import Unsafe.Coerce (unsafeCoerce)
 
@@ -160,30 +160,43 @@ testValueServer =
     pure unit
 
 type TrapExitState
-  = { spawnedPid :: Pid
+  = { testPid :: Pid
     , receivedExit :: Boolean
+    , receivedTerminate :: Boolean
     }
 
 testTrapExits :: Free TestF Unit
 testTrapExits =
-  test "Trapped exits get translated when requested" do
-    serverPid <- crashIfNotStarted <$> (GS.startLink $ (GS.defaultSpec init) { handleInfo = Just handleInfo, trapExits = Just TrappedExit })
-    state <- getState (ByPid serverPid)
-    assertEqual
-      { actual: state.receivedExit
-      , expected: true
-      }
-    pure unit
+  suite "Trapped exits" do
+    test "Children's exits get translated when requested" do
+      serverPid <- crashIfNotStarted <$> (GS.startLink $ (GS.defaultSpec init) { handleInfo = Just handleInfo, trapExits = Just TrappedExit })
+      state <- getState (ByPid serverPid)
+      assertEqual
+        { actual: state.receivedExit
+        , expected: true
+        }
+      pure unit
+    test "Parent exits arrive in the terminate callback" do
+      testPid <- Raw.self
+      void $ Raw.spawnLink $ void $ crashIfNotStarted <$> (GS.startLink $ (GS.defaultSpec $ init2 testPid) { terminate = Just terminate, trapExits = Just TrappedExit })
+      receivedTerminate <- Raw.receiveWithTimeout 500 false
+      assert' "Terminate wasn't called on the genserver" receivedTerminate
   where
   init = do
     pid <- GS.lift $ Raw.spawnLink $ Raw.receiveWithTimeout 0 unit
-    pure $ InitOk $ { spawnedPid: pid, receivedExit: false }
+    pure $ InitOk $ { testPid: pid, receivedExit: false, receivedTerminate: false }
+
+  init2 pid = do
+    pure $ InitOk $ { testPid: pid, receivedExit: false, receivedTerminate: false }
 
   handleInfo (TrappedExit exit) s = do
     pure $ GS.return $ s { receivedExit = true }
 
   handleInfo _ s = do
     unsafeCrashWith "Unexpected message"
+
+  terminate reason s = do
+    GS.lift $ Raw.send s.testPid true
 
 ---------------------------------------------------------------------------------
 -- Internal
