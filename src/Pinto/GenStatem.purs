@@ -56,7 +56,6 @@ import Control.Monad.State.Trans (StateT)
 import Control.Monad.State.Trans as StateT
 import Control.Monad.Trans.Class (class MonadTrans)
 import Control.Monad.Trans.Class (lift) as Exports
-import Data.Function.Uncurried (Fn1, Fn2, Fn3)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Tuple as Tuple
 import Effect (Effect)
@@ -485,13 +484,13 @@ init =
 
       contextResult = Tuple.snd result
 
-      mkOuterData state commonData contextResult =
+      mkOuterData state commonData innerContext =
         OuterData
           { state
           , commonData
           , handleEnter: fromMaybe (\_ _ _ _ -> pure StateEnterKeepData) maybeHandleEnter
           , handleEvent
-          , context: contextResult
+          , context: innerContext
           , getStateId: getStateId
           }
     pure $ export
@@ -532,7 +531,7 @@ runEnterState handleEnter getStateId oldStateId newStateId (OuterData currentDat
         pure $ OuterStateEnterKeepDataWithActions actions
 
 handle_event ::
-  forall reply info internal timerName timerContent commonData stateId state.
+  forall info internal timerName timerContent commonData stateId state.
   EffectFn4 Foreign Foreign stateId (OuterData info internal timerName timerContent commonData stateId state) NativeHandleEventResult
 handle_event =
   mkEffectFn4 \t e stateId dat@(OuterData { getStateId, handleEvent, handleEnter }) -> do

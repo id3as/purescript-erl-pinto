@@ -269,7 +269,6 @@ startLink { name: maybeName, init: initFn, handleInfo: maybeHandleInfo, handleCo
     innerResult <- (runReaderT initFn) context
     pure $ mapInitResult (mkOuterState context) innerResult
 
-
 foreign import startLinkFFI ::
   forall cont stop msg state.
   Maybe (RegistryName (ServerType cont stop msg state)) ->
@@ -349,12 +348,12 @@ instance exportInitResult :: ExportsTo (InitResult cont state) (NativeInitResult
 
 instance exportCallResult :: ExportsTo (CallResult reply cont stop outerState) (NativeCallResult reply cont stop outerState) where
   export = case _ of
-    CallResult (Just reply) Nothing newState -> unsafeCoerce $ tuple3 (atom "reply") reply newState
-    CallResult (Just reply) (Just (Timeout timeout)) newState -> unsafeCoerce $ tuple4 (atom "reply") reply newState timeout
-    CallResult (Just reply) (Just Hibernate) newState -> unsafeCoerce $ tuple4 (atom "reply") reply newState (atom "hibernate")
-    CallResult (Just reply) (Just (Continue cont)) newState -> unsafeCoerce $ tuple4 (atom "reply") reply newState $ tuple2 (atom "continue") cont
-    CallResult (Just reply) (Just StopNormal) newState -> unsafeCoerce $ tuple4 (atom "stop") (atom "normal") reply newState
-    CallResult (Just reply) (Just (StopOther reason)) newState -> unsafeCoerce $ tuple4 (atom "stop") reason reply newState
+    CallResult (Just r) Nothing newState -> unsafeCoerce $ tuple3 (atom "reply") r newState
+    CallResult (Just r) (Just (Timeout timeout)) newState -> unsafeCoerce $ tuple4 (atom "reply") r newState timeout
+    CallResult (Just r) (Just Hibernate) newState -> unsafeCoerce $ tuple4 (atom "reply") r newState (atom "hibernate")
+    CallResult (Just r) (Just (Continue cont)) newState -> unsafeCoerce $ tuple4 (atom "reply") r newState $ tuple2 (atom "continue") cont
+    CallResult (Just r) (Just StopNormal) newState -> unsafeCoerce $ tuple4 (atom "stop") (atom "normal") r newState
+    CallResult (Just r) (Just (StopOther reason)) newState -> unsafeCoerce $ tuple4 (atom "stop") reason r newState
     CallResult Nothing Nothing newState -> unsafeCoerce $ tuple2 (atom "reply") newState
     CallResult Nothing (Just (Timeout timeout)) newState -> unsafeCoerce $ tuple3 (atom "noreply") newState timeout
     CallResult Nothing (Just Hibernate) newState -> unsafeCoerce $ tuple3 (atom "noreply") newState (atom "hibernate")
