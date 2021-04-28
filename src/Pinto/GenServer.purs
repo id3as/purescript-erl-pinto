@@ -12,6 +12,7 @@ module Pinto.GenServer
   , TerminateFn
   , ContinueFn
   , ReturnResult(..)
+  , ShutdownReason(..)
   , From
   , ResultT
   , Context
@@ -134,7 +135,7 @@ type InfoFn cont stop msg state
   = msg -> state -> ResultT (ReturnResult cont stop state) cont stop msg state
 
 type TerminateFn cont stop msg state
-  = Foreign -> state -> ResultT Unit cont stop msg state
+  = ShutdownReason -> state -> ResultT Unit cont stop msg state
 
 -- -- | Type of the callback invoked during a gen_server:handle_cast
 -- type Cast state msg = ResultT (CastResult state) state msg
@@ -335,7 +336,7 @@ terminate :: forall cont stop msg state. EffectFn2 Foreign (OuterState cont stop
 terminate =
   mkEffectFn2 \reason state@{ innerState, context: context@(Context { terminate: maybeTerminate }) } -> do
     case maybeTerminate of
-      Just f -> (runReaderT $ f reason innerState) context
+      Just f -> (runReaderT $ f (parseShutdownReasonFFI reason) innerState) context
       Nothing -> pure unit
     pure $ atom "ok"
 
