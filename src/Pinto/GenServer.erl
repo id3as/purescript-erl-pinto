@@ -8,6 +8,7 @@
         , castFFI/2
         , replyTo/2
         , stopFFI/1
+        , parseTrappedExitFFI/2
         ]).
 
 
@@ -56,3 +57,10 @@ stopFFI(ServerRef) ->
       gen_server:stop(ServerRef),
       unit
   end.
+
+parseTrappedExitFFI({ 'EXIT', Pid,  Reason }, ExitMsg) ->
+  {just, (ExitMsg(Pid))(Reason)};
+
+parseTrappedExitFFI(_,_) ->
+  {nothing}.
+

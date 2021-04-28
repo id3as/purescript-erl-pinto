@@ -9,9 +9,12 @@ import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Process (Process, (!))
+import Erl.Process.Raw (Pid)
+import Erl.Process.Raw as Raw
 import Erl.Test.EUnit (TestF, suite, test)
 import Foreign (unsafeToForeign)
-import Pinto.GenServer (Action(..), From, InitResult(..), ServerSpec, ServerType, ServerRef(..))
+import Partial.Unsafe (unsafeCrashWith)
+import Pinto.GenServer (Action(..), ExitMessage, From, InitResult(..), ServerRef(..), ServerSpec, ServerType)
 import Pinto.GenServer as GS
 import Pinto.Types (NotStartedReason(..), RegistryName(..), RegistryReference(..), StartLinkResult, crashIfNotStarted)
 import Test.Assert (assertEqual)
@@ -34,6 +37,7 @@ genServerSuite =
     testCall
     testCast
     testValueServer
+    testTrapExits
 
 data TestState
   = TestState Int
@@ -49,6 +53,7 @@ data TestCont
 
 data TestMsg
   = TestMsg
+  | TrappedExit ExitMessage
 
 data TestStop
   = StopReason
@@ -154,6 +159,32 @@ testValueServer =
     assertEqual { actual: v3, expected: 50 }
     pure unit
 
+type TrapExitState
+  = { spawnedPid :: Pid
+    , receivedExit :: Boolean
+    }
+
+testTrapExits :: Free TestF Unit
+testTrapExits =
+  test "Trapped exits get translated when requested" do
+    serverPid <- crashIfNotStarted <$> (GS.startLink $ (GS.defaultSpec init) { handleInfo = Just handleInfo, trapExits = Just TrappedExit })
+    state <- getState (ByPid serverPid)
+    assertEqual
+      { actual: state.receivedExit
+      , expected: true
+      }
+    pure unit
+  where
+  init = do
+    pid <- GS.lift $ Raw.spawnLink $ Raw.receiveWithTimeout 0 unit
+    pure $ InitOk $ { spawnedPid: pid, receivedExit: false }
+
+  handleInfo (TrappedExit exit) s = do
+    pure $ GS.return $ s { receivedExit = true }
+
+  handleInfo _ s = do
+    unsafeCrashWith "Unexpected message"
+
 ---------------------------------------------------------------------------------
 -- Internal
 ---------------------------------------------------------------------------------
@@ -190,6 +221,9 @@ testStartGetSet registryName = do
 
   handleInfo TestMsg (TestState x) = do
     pure $ GS.return $ TestState $ x + 100
+
+  handleInfo _ s = do
+    unsafeCrashWith "Unexpected message"
 
   handleContinue cont (TestState x) =
     GS.lift do
@@ -236,6 +270,9 @@ testStopNormal registryName = do
 
   handleInfo TestMsg (TestState x) = do
     pure $ GS.return $ TestState $ x + 100
+
+  handleInfo _ _ = do
+    unsafeCrashWith "Unexpected message"
 
   handleContinue cont (TestState x) =
     GS.lift do

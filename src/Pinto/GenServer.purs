@@ -15,6 +15,7 @@ module Pinto.GenServer
   , ResultT
   , Context
   , Action(..)
+  , ExitMessage(..)
   , defaultSpec
   , startLink
   , call
@@ -44,19 +45,18 @@ import Prelude
 import Control.Monad.Reader (ReaderT, runReaderT)
 import Control.Monad.Reader (lift) as Exports
 import Control.Monad.Reader as Reader
-import Data.Function.Uncurried (Fn1, Fn2, mkFn1, mkFn2)
-import Data.Maybe (Maybe(..), fromJust)
+import Data.Maybe (Maybe(..), fromJust, fromMaybe')
 import Effect (Effect)
 import Effect.Uncurried (EffectFn1, EffectFn2, EffectFn3, mkEffectFn1, mkEffectFn2, mkEffectFn3)
 import Erl.Atom (atom)
 import Erl.Data.List (List, head)
 import Erl.Data.Tuple (tuple2, tuple3, tuple4)
-import Erl.ModuleName (NativeModuleName(..), nativeModuleName)
-import Pinto.ModuleNames (pintoGenServer)
-import Erl.Process (Process, class HasProcess)
-import Erl.Process.Raw (class HasPid)
+import Erl.ModuleName (NativeModuleName, nativeModuleName)
+import Erl.Process (class HasProcess, Process)
+import Erl.Process.Raw (class HasPid, Pid, setProcessFlagTrapExit)
 import Foreign (Foreign)
 import Partial.Unsafe (unsafePartial)
+import Pinto.ModuleNames (pintoGenServer)
 import Pinto.Types (RegistryInstance, RegistryName, RegistryReference, StartLinkResult, registryInstance, class ExportsTo, export)
 import Unsafe.Coerce (unsafeCoerce)
 
@@ -141,6 +141,10 @@ data InitResult cont state
   | InitStop Foreign
   | InitIgnore
 
+-- | A trapped exit
+data ExitMessage
+  = Exit Pid Foreign
+
 -- Can't do a functor instance over a type synonym, so just have a function instead
 mapInitResult :: forall state state' cont. (state -> state') -> InitResult cont state -> InitResult cont state'
 mapInitResult f (InitOk state) = InitOk $ f state
@@ -178,6 +182,7 @@ type ServerSpec cont stop msg state
     , init :: InitFn cont stop msg state
     , handleInfo :: Maybe (InfoFn cont stop msg state)
     , handleContinue :: Maybe (ContinueFn cont stop msg state)
+    , trapExits :: Maybe (ExitMessage -> msg)
     }
 
 --------------------------------------------------------------------------------
@@ -195,6 +200,7 @@ newtype Context cont stop msg state
   = Context
   { handleInfo :: Maybe (InfoFn cont stop msg state)
   , handleContinue :: Maybe (ContinueFn cont stop msg state)
+  , trapExits :: Maybe (ExitMessage -> msg)
   }
 
 defaultSpec :: forall cont stop msg state. InitFn cont stop msg state -> ServerSpec cont stop msg state
@@ -203,6 +209,7 @@ defaultSpec initFn =
   , init: initFn
   , handleInfo: Nothing
   , handleContinue: Nothing
+  , trapExits: Nothing
   }
 
 foreign import callFFI ::
@@ -245,18 +252,23 @@ stop ::
 stop r = stopFFI $ registryInstance r
 
 startLink :: forall cont stop msg state. (ServerSpec cont stop msg state) -> Effect (StartLinkResult (ServerPid cont stop msg state))
-startLink { name: maybeName, init: initFn, handleInfo: maybeHandleInfo, handleContinue: maybeHandleContinue } = startLinkFFI maybeName (nativeModuleName pintoGenServer) initEffect
+startLink { name: maybeName, init: initFn, handleInfo: maybeHandleInfo, handleContinue: maybeHandleContinue, trapExits: maybeTrapExits } = startLinkFFI maybeName (nativeModuleName pintoGenServer) initEffect
   where
   context =
     Context
       { handleInfo: maybeHandleInfo
       , handleContinue: maybeHandleContinue
+      , trapExits: maybeTrapExits
       }
 
   initEffect :: Effect (InitResult cont (OuterState cont stop msg state))
   initEffect = do
+    _ <- case maybeTrapExits of
+      Nothing -> pure unit
+      Just _ -> void $ setProcessFlagTrapExit true
     innerResult <- (runReaderT initFn) context
     pure $ mapInitResult (mkOuterState context) innerResult
+
 
 foreign import startLinkFFI ::
   forall cont stop msg state.
@@ -295,15 +307,26 @@ handle_cast =
     result <- (runReaderT $ f innerState) context
     pure $ export (mkOuterState context <$> result)
 
-handle_info :: forall cont stop msg state. EffectFn2 msg (OuterState cont stop msg state) (NativeReturnResult cont stop (OuterState cont stop msg state))
+handle_info :: forall cont stop msg state. EffectFn2 Foreign (OuterState cont stop msg state) (NativeReturnResult cont stop (OuterState cont stop msg state))
 handle_info =
-  mkEffectFn2 \msg state@{ innerState, context: context@(Context { handleInfo: maybeHandleInfo }) } ->
-    export
-      <$> case maybeHandleInfo of
-          Just f -> do
-            result <- (runReaderT $ f msg innerState) context
-            pure $ (mkOuterState context <$> result)
-          Nothing -> pure $ ReturnResult Nothing state
+  mkEffectFn2 \nativeMsg state@{ innerState, context: context@(Context { handleInfo: maybeHandleInfo, trapExits }) } ->
+    let
+      exitMessage = parseTrappedExitFFI nativeMsg Exit
+
+      msg :: msg
+      msg = fromMaybe' (\_ -> assumeExpectedMessage nativeMsg) $ trapExits <*> exitMessage
+    in
+      export
+        <$> case maybeHandleInfo of
+            Just f -> do
+              result <- (runReaderT $ f msg innerState) context
+              pure $ (mkOuterState context <$> result)
+            Nothing -> pure $ ReturnResult Nothing state
+
+foreign import parseTrappedExitFFI :: Foreign -> (Pid -> Foreign -> ExitMessage) -> Maybe ExitMessage
+
+assumeExpectedMessage :: forall msg. Foreign -> msg
+assumeExpectedMessage = unsafeCoerce
 
 handle_continue :: forall cont stop msg state. EffectFn2 cont (OuterState cont stop msg state) (NativeReturnResult cont stop (OuterState cont stop msg state))
 handle_continue =
