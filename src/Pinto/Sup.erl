@@ -74,7 +74,7 @@ stopFFI(Ref) ->
     Pid = whereis(Ref),
     if Pid == undefined -> ok;
        true ->
-        Ref = erlang:monitor(process, Pid),
+        MRef = erlang:monitor(process, Pid),
          sys:terminate(Pid, 'normal'),
          receive
            {'DOWN', _, process, Pid, normal} -> ok
