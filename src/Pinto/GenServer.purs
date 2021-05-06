@@ -41,24 +41,24 @@ module Pinto.GenServer
   , NativeInitResult
   , NativeCallResult
   , NativeReturnResult
-  , module Exports
   ) where
 
 import Prelude
+
 import Control.Monad.Reader (ReaderT, runReaderT)
-import Control.Monad.Reader (lift) as Exports
 import Control.Monad.Reader as Reader
 import Data.Maybe (Maybe(..), fromJust, fromMaybe')
 import Effect (Effect)
+import Effect.Class (class MonadEffect)
 import Effect.Uncurried (EffectFn1, EffectFn2, EffectFn3, mkEffectFn1, mkEffectFn2, mkEffectFn3)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, head)
 import Erl.Data.Tuple (tuple2, tuple3, tuple4)
 import Erl.ModuleName (NativeModuleName, nativeModuleName)
-import Erl.Process (class HasProcess, Process)
+import Erl.Process (class HasProcess, class HasMessage, Process)
 import Erl.Process.Raw (class HasPid, Pid, setProcessFlagTrapExit)
 import Foreign (Foreign)
-import Partial.Unsafe (unsafeCrashWith, unsafePartial)
+import Partial.Unsafe (unsafePartial)
 import Pinto.ModuleNames (pintoGenServer)
 import Pinto.Types (RegistryInstance, RegistryName, RegistryReference, StartLinkResult, registryInstance, class ExportsTo, export)
 import Unsafe.Coerce (unsafeCoerce)
@@ -108,8 +108,16 @@ returnWithAction action state = ReturnResult (Just action) state
 -- noReply...
 -- return state
 -- returnWithAction (Timeout 10) state
-type ResultT result cont stop msg state
-  = ReaderT (Context cont stop msg state) Effect result
+newtype ResultT cont stop msg state result
+  = ResultT (ReaderT (Context cont stop msg state) Effect result)
+
+derive newtype instance functorResultT :: Functor (ResultT cont stop msg state)
+derive newtype instance applyResultT :: Apply (ResultT cont stop msg state)
+derive newtype instance applicativeResultT :: Applicative (ResultT cont stop msg state)
+derive newtype instance bindResultT :: Bind (ResultT cont stop msg state)
+derive newtype instance monadResultT :: Monad (ResultT cont stop msg state)
+derive newtype instance monadEffectResultT :: MonadEffect (ResultT cont stop msg state)
+instance messageTypeResult :: HasMessage (ResultT cont stop msg state) msg
 
 foreign import data FromForeign :: Type
 
@@ -120,22 +128,22 @@ newtype From reply
 -- reply cont stop msg [Timeout] state
 -- TODO make order of type variables consistent
 type InitFn cont stop msg state
-  = ResultT (InitResult cont state) cont stop msg state
+  = ResultT cont stop msg state (InitResult cont state)
 
 type CallFn reply cont stop msg state
-  = From reply -> state -> ResultT (CallResult reply cont stop state) cont stop msg state
+  = From reply -> state -> ResultT cont stop msg state (CallResult reply cont stop state)
 
 type CastFn cont stop msg state
-  = state -> ResultT (ReturnResult cont stop state) cont stop msg state
+  = state -> ResultT cont stop msg state (ReturnResult cont stop state)
 
 type ContinueFn cont stop msg state
-  = cont -> state -> ResultT (ReturnResult cont stop state) cont stop msg state
+  = cont -> state -> ResultT cont stop msg state (ReturnResult cont stop state)
 
 type InfoFn cont stop msg state
-  = msg -> state -> ResultT (ReturnResult cont stop state) cont stop msg state
+  = msg -> state -> ResultT cont stop msg state (ReturnResult cont stop state)
 
 type TerminateFn cont stop msg state
-  = ShutdownReason -> state -> ResultT Unit cont stop msg state
+  = ShutdownReason -> state -> ResultT cont stop msg state Unit
 
 -- -- | Type of the callback invoked during a gen_server:handle_cast
 -- type Cast state msg = ResultT (CastResult state) state msg
@@ -276,7 +284,7 @@ startLink { name: maybeName, init: initFn, handleInfo, handleContinue, terminate
     _ <- case trapExits of
       Nothing -> pure unit
       Just _ -> void $ setProcessFlagTrapExit true
-    innerResult <- (runReaderT initFn) context
+    innerResult <- (runReaderT $ case initFn of ResultT inner -> inner) context
     pure $ mapInitResult (mkOuterState context) innerResult
 
 foreign import startLinkFFI ::
@@ -288,8 +296,8 @@ foreign import startLinkFFI ::
 
 self ::
   forall cont stop msg state.
-  ReaderT (Context cont stop msg state) Effect (ServerPid cont stop msg state)
-self = Reader.lift selfFFI
+  ResultT cont stop msg state (ServerPid cont stop msg state)
+self = ResultT $ Reader.lift selfFFI
 
 foreign import selfFFI ::
   forall cont stop msg state.
@@ -306,14 +314,14 @@ init =
 
 handle_call :: forall reply cont stop msg state. EffectFn3 (CallFn reply cont stop msg state) (From reply) (OuterState cont stop msg state) (NativeCallResult reply cont stop (OuterState cont stop msg state))
 handle_call =
-  mkEffectFn3 \f from state@{ innerState, context } -> do
-    result <- (runReaderT $ f from innerState) context
+  mkEffectFn3 \f from _state@{ innerState, context } -> do
+    result <- (runReaderT $ case f from innerState of ResultT inner -> inner) context
     pure $ export (mkOuterState context <$> result)
 
 handle_cast :: forall cont stop msg state. EffectFn2 (CastFn cont stop msg state) (OuterState cont stop msg state) (NativeReturnResult cont stop (OuterState cont stop msg state))
 handle_cast =
-  mkEffectFn2 \f state@{ innerState, context } -> do
-    result <- (runReaderT $ f innerState) context
+  mkEffectFn2 \f _state@{ innerState, context } -> do
+    result <- (runReaderT $ case f innerState of ResultT inner -> inner) context
     pure $ export (mkOuterState context <$> result)
 
 handle_info :: forall cont stop msg state. EffectFn2 Foreign (OuterState cont stop msg state) (NativeReturnResult cont stop (OuterState cont stop msg state))
@@ -328,15 +336,15 @@ handle_info =
       export
         <$> case maybeHandleInfo of
             Just f -> do
-              result <- (runReaderT $ f msg innerState) context
+              result <- (runReaderT $ case f msg innerState of ResultT inner -> inner) context
               pure $ (mkOuterState context <$> result)
             Nothing -> pure $ ReturnResult Nothing state
 
 terminate :: forall cont stop msg state. EffectFn2 Foreign (OuterState cont stop msg state) Atom
 terminate =
-  mkEffectFn2 \reason state@{ innerState, context: context@(Context { terminate: maybeTerminate }) } -> do
+  mkEffectFn2 \reason _state@{ innerState, context: context@(Context { terminate: maybeTerminate }) } -> do
     case maybeTerminate of
-      Just f -> (runReaderT $ f (parseShutdownReasonFFI reason) innerState) context
+      Just f -> (runReaderT $ case f (parseShutdownReasonFFI reason) innerState of ResultT inner -> inner) context
       Nothing -> pure unit
     pure $ atom "ok"
 
@@ -358,7 +366,7 @@ handle_continue =
     export
       <$> case maybeHandleContinue of
           Just f -> do
-            result <- (runReaderT $ f msg innerState) context
+            result <- (runReaderT $ case f msg innerState of ResultT inner -> inner) context
             pure $ (mkOuterState context <$> result)
           Nothing -> pure $ ReturnResult Nothing state
 
