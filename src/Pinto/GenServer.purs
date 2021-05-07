@@ -55,7 +55,7 @@ import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, head)
 import Erl.Data.Tuple (tuple2, tuple3, tuple4)
 import Erl.ModuleName (NativeModuleName, nativeModuleName)
-import Erl.Process (class HasProcess, class HasMessage, Process)
+import Erl.Process (class HasProcess, class ReceivesMessage, Process)
 import Erl.Process.Raw (class HasPid, Pid, setProcessFlagTrapExit)
 import Foreign (Foreign)
 import Partial.Unsafe (unsafePartial)
@@ -117,7 +117,7 @@ derive newtype instance applicativeResultT :: Applicative (ResultT cont stop msg
 derive newtype instance bindResultT :: Bind (ResultT cont stop msg state)
 derive newtype instance monadResultT :: Monad (ResultT cont stop msg state)
 derive newtype instance monadEffectResultT :: MonadEffect (ResultT cont stop msg state)
-instance messageTypeResult :: HasMessage (ResultT cont stop msg state) msg
+instance messageTypeResult :: ReceivesMessage (ResultT cont stop msg state) msg
 
 foreign import data FromForeign :: Type
 
