@@ -8,6 +8,8 @@ module Pinto.GenStatem
   , addReply
   , class SupportsAddTimeout
   , addTimeoutAction
+  , class SupportsNextEvent
+  , addNextEvent
   , class SupportsSelf
   , self
   , class SupportsNewActions
@@ -16,7 +18,7 @@ module Pinto.GenStatem
   , InitFn
   , InitResult(..)
   , InitT
-  , InitActionsBuilder
+  , InitActionsBuilder(..), EventAction(..), CommonAction(..)
   , CastFn
   , CallFn
   , HandleEventFn
@@ -37,6 +39,7 @@ module Pinto.GenStatem
   , Reply
   , mkReply
   , startLink
+  , procLibStartLink
   , mkSpec
   , call
   , cast
@@ -52,6 +55,7 @@ module Pinto.GenStatem
   ) where
 
 import Prelude
+
 import Control.Monad.State.Trans (StateT)
 import Control.Monad.State.Trans as StateT
 import Control.Monad.Trans.Class (class MonadTrans)
@@ -86,6 +90,9 @@ class SupportsReply builder where
 
 class SupportsAddTimeout builder timerContent where
   addTimeoutAction :: TimeoutAction timerContent -> builder timerContent -> builder timerContent
+
+class SupportsNextEvent builder event | builder -> event where
+  addNextEvent :: event -> builder -> builder
 
 class SupportsSelf :: (Type -> Type -> Type -> Type -> Type -> Type -> Type -> (Type -> Type) -> Type -> Type) -> Type -> Type -> Type -> Type -> Type -> Type -> Type -> Constraint
 class SupportsSelf context info internal timerName timerContent commonData stateId state where
@@ -133,6 +140,9 @@ instance supportsReplyInitActionsBuilder :: SupportsReply (InitActionsBuilder in
 
 instance supportsAddTimeoutInitActionsBuilder :: SupportsAddTimeout (InitActionsBuilder info internal timerName) timerContent where
   addTimeoutAction action (InitActionsBuilder actions) = InitActionsBuilder $ (CommonAction $ TimeoutAction action) : actions
+
+instance supportsNextEventInitActionsBuilder :: SupportsNextEvent (InitActionsBuilder info internal timerName timerContent) (Event info internal timerName timerContent) where
+  addNextEvent event (InitActionsBuilder actions) = InitActionsBuilder $ (NextEvent event) : actions
 
 type StateEnterContext :: forall k1 k2 k3 k4 k5 k6 k7. k1 -> k2 -> k3 -> k4 -> k5 -> k6 -> k7 -> Type
 type StateEnterContext info internal timerName timerContent commonData stateId state
@@ -207,6 +217,9 @@ instance supportsNewActionsEventActionsBuilder :: SupportsNewActions (EventActio
 instance supportsReplyEventActionsBuilder :: SupportsReply (EventActionsBuilder info internal timerName timerContent) where
   addReply reply (EventActionsBuilder actions) = EventActionsBuilder $ (CommonAction (ReplyAction reply)) : actions
 
+instance supportsNextEventEventActionsBuilder :: SupportsNextEvent (EventActionsBuilder info internal timerName timerContent) (Event info internal timerName timerContent) where
+  addNextEvent event (EventActionsBuilder actions) = EventActionsBuilder $ (NextEvent event) : actions
+
 newtype StatemType :: Type -> Type -> Type -> Type -> Type -> Type -> Type -> Type
 newtype StatemType info internal timerName timerContent commonData stateId state
   = StatemType Void
@@ -274,6 +287,7 @@ data EventResult info internal timerName timerContent commonData state
   | EventKeepStateWithActions commonData (EventActionsBuilder info internal timerName timerContent)
   | EventNextState state commonData
   | EventNextStateWithActions state commonData (EventActionsBuilder info internal timerName timerContent)
+  | EventStopNormal
 
 data StateEnterResult timerName timerContent commonData
   = StateEnterOk commonData
@@ -363,6 +377,7 @@ data OuterEventResult info internal timerName timerContent commonData stateId st
   | OuterEventKeepStateWithActions (OuterData info internal timerName timerContent commonData stateId state) (EventActionsBuilder info internal timerName timerContent)
   | OuterEventNextState stateId (OuterData info internal timerName timerContent commonData stateId state)
   | OuterEventNextStateWithActions stateId (OuterData info internal timerName timerContent commonData stateId state) (EventActionsBuilder info internal timerName timerContent)
+  | OuterEventStopNormal
 
 foreign import data Reply :: Type
 
@@ -373,6 +388,13 @@ newtype From reply
   = From FromForeign
 
 foreign import startLinkFFI ::
+  forall info internal timerName timerContent commonData stateId state.
+  Maybe (RegistryName (StatemType info internal timerName timerContent commonData stateId state)) ->
+  NativeModuleName ->
+  Spec info internal timerName timerContent commonData stateId state ->
+  Effect (StartLinkResult (StatemPid info internal timerName timerContent commonData stateId state))
+
+foreign import procLibStartLinkFFI ::
   forall info internal timerName timerContent commonData stateId state.
   Maybe (RegistryName (StatemType info internal timerName timerContent commonData stateId state)) ->
   NativeModuleName ->
@@ -403,6 +425,19 @@ startLink ::
   Spec info internal timerName timerContent commonData stateId state ->
   Effect (StartLinkResult (StatemPid info internal timerName timerContent commonData stateId state))
 startLink args@{ name: maybeName } = startLinkFFI maybeName (nativeModuleName pintoGenStatem) args
+
+procLibStartLink ::
+  forall info internal timerName timerContent commonData stateId state.
+  HasStateId stateId state =>
+  Spec info internal timerName timerContent commonData stateId state ->
+  Effect (StartLinkResult (StatemPid info internal timerName timerContent commonData stateId state))
+procLibStartLink args@{ name: maybeName } = procLibStartLinkFFI maybeName (nativeModuleName pintoGenStatem) args
+
+-- enterLoop ::
+--   forall info internal timerName timerContent commonData stateId state.
+--   HasStateId stateId state =>
+--   Spec info internal timerName timerContent commonData stateId state -> Effect Unit
+-- enterLoop = enterLoopFFI (nativeModuleName pintoGenStatem)
 
 mkSpec ::
   forall info internal timerName timerContent commonData stateId state.
@@ -463,6 +498,7 @@ runEventFn getStateId eventFn (OuterData outerData@{ state, commonData, context 
     EventKeepStateWithActions newData actions -> pure $ OuterEventKeepStateWithActions (OuterData $ outerData { commonData = newData, context = newContext }) actions
     EventNextState newState newData -> pure $ OuterEventNextState (getStateId newState) (OuterData $ outerData { state = newState, commonData = newData, context = newContext })
     EventNextStateWithActions newState newData actions -> pure $ OuterEventNextStateWithActions (getStateId newState) (OuterData $ outerData { state = newState, commonData = newData, context = newContext }) actions
+    EventStopNormal -> pure $ OuterEventStopNormal
 
 -- NOTE: we don't need to check whether the new state id matches the old one, Erlang does that, it treats things -- like keep_state_and_data as a synonym for {next_state, OldState, OldData}
 -- GenStatem API
@@ -573,6 +609,7 @@ instance exportOuterEventResult :: ExportsTo (OuterEventResult info internal tim
     OuterEventKeepStateWithActions newData actions -> unsafeCoerce $ tuple3 (atom "keep_state") newData (export actions :: List NativeAction)
     OuterEventNextState newState newData -> unsafeCoerce $ unsafeCoerce $ tuple3 (atom "next_state") newState newData
     OuterEventNextStateWithActions newState newData actions -> unsafeCoerce $ tuple4 (atom "next_state") newState newData (export actions :: List NativeAction)
+    OuterEventStopNormal -> unsafeCoerce $ atom "stop"
 
 instance exportOuterInitResult :: ExportsTo (OuterInitResult info internal timerName timerContent commonData stateId state) NativeInitResult where
   export = case _ of
@@ -594,13 +631,21 @@ instance exportEventAction :: ExportsTo (EventAction a b c d) NativeAction where
   export = case _ of
     CommonAction action -> export action
     Postpone -> unsafeCoerce $ atom "postpone"
-    NextEvent _ -> unsafeCrashWith "Not Implemented"
+    NextEvent event -> export event
+
+instance exportEvent :: ExportsTo (Event a b c d) NativeAction where
+  export = case _ of
+    EventInfo info -> unsafeCoerce $ tuple3 (atom "next_event") (atom "info") info
+    EventInternal internal -> unsafeCoerce $ tuple3 (atom "next_event") (atom "internal") internal
+    EventTimeout timerContent -> unsafeCoerce $ tuple3 (atom "next_event") (atom "timeout") timerContent
+    EventNamedTimeout timerName timerContent -> unsafeCoerce $ tuple3 (atom "next_event") (tuple2 (atom "timeout") timerName) timerContent
+    EventStateTimeout timerContent -> unsafeCoerce $ tuple3 (atom "next_event") (atom "state_timeout") timerContent
 
 instance exportCommonAction :: ExportsTo (CommonAction a b) NativeAction where
   export = case _ of
     Hibernate -> unsafeCoerce $ atom "hibernate"
     TimeoutAction timeout -> export timeout
-    NamedTimeoutAction named -> unsafeCrashWith "Not implemented"
+    NamedTimeoutAction _named -> unsafeCrashWith "Not implemented"
     ReplyAction reply -> unsafeCoerce reply
 
 instance exportTimeoutAction :: ExportsTo (TimeoutAction a) NativeAction where
