@@ -11,6 +11,10 @@ module Pinto.Types
   , registryInstance
   , RegistryInstance
   , RegistryReference(..)
+  , ExitMessage(..)
+  , ShutdownReason(..)
+  , parseShutdownReasonFFI
+  , parseTrappedExitFFI
   , class ExportsTo
   , export
   ) where
@@ -20,7 +24,7 @@ import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Erl.Atom (Atom)
 import Erl.ModuleName (NativeModuleName)
-import Erl.Process.Raw (class HasPid, getPid)
+import Erl.Process.Raw (class HasPid, Pid, getPid)
 import Foreign (Foreign)
 import Partial.Unsafe (unsafePartial)
 import Unsafe.Coerce (unsafeCoerce)
@@ -40,7 +44,8 @@ foreign import data RegistryInstance :: Type -> Type -> Type
 
 registryInstance ::
   forall serverPid serverType.
-  HasPid serverPid => RegistryReference serverPid serverType -> RegistryInstance serverPid serverType
+  HasPid serverPid =>
+  RegistryReference serverPid serverType -> RegistryInstance serverPid serverType
 registryInstance (ByPid pid) = registryPidToInstance pid
 
 registryInstance (ByName name) = registryNameToInstance name
@@ -52,6 +57,18 @@ registryNameToInstance :: forall serverPid serverType. RegistryName serverType -
 registryNameToInstance (Local atom) = unsafeCoerce atom
 
 registryNameToInstance other = unsafeCoerce other
+
+data ExitMessage
+  = Exit Pid Foreign
+
+data ShutdownReason
+  = ReasonNormal
+  | ReasonShutdown (Maybe Foreign)
+  | ReasonOther Foreign
+
+foreign import parseTrappedExitFFI :: Foreign -> (Pid -> Foreign -> ExitMessage) -> Maybe ExitMessage
+
+foreign import parseShutdownReasonFFI :: Foreign -> ShutdownReason
 
 data NotStartedReason serverProcess
   = Ignore

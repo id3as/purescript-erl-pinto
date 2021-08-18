@@ -9,7 +9,7 @@
         , callFFI/2
         , castFFI/2
         , mkReply/1
-        , parseEventFFI/2
+        , parseEventFFI/3
         ]).
 
 -import('pinto_types@foreign',
@@ -89,19 +89,19 @@ selfFFI() ->
       self()
   end.
 
-parseEventFFI(T, E) ->
+parseEventFFI(T, TE, E) ->
   case T of
     { call, From } -> {handleEventCall, From, E};
     cast -> {handleEventCast, E};
     enter -> {handleEventEnter, E};
-    _Event -> {handleEvent, event_to_ps(T, E)}
+    _Event -> {handleEvent, event_to_ps(T, TE, E)}
   end.
 
-event_to_ps(info, Info) -> {eventInfo, Info};
-event_to_ps(internal, Internal) -> {eventInternal, Internal};
-event_to_ps(timeout, Content) ->  {eventTimeout, Content};
-event_to_ps({timeout, Name}, Content) -> {eventNamedTimeout, Name, Content};
-event_to_ps(state_timeout, Content) -> {eventStateTimeout, Content}.
+event_to_ps(info, TE, Info) -> {eventInfo, TE(Info)};
+event_to_ps(internal,_, Internal) -> {eventInternal, Internal};
+event_to_ps(timeout, _, Content) ->  {eventTimeout, Content};
+event_to_ps({timeout, Name}, _, Content) -> {eventNamedTimeout, Name, Content};
+event_to_ps(state_timeout,_, Content) -> {eventStateTimeout, Content}.
 
 
 where({global, Name}) -> global:whereis_name(Name);

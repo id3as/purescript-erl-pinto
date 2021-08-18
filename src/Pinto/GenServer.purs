@@ -12,12 +12,10 @@ module Pinto.GenServer
   , TerminateFn
   , ContinueFn
   , ReturnResult(..)
-  , ShutdownReason(..)
   , From
   , ResultT
   , Context
   , Action(..)
-  , ExitMessage(..)
   , defaultSpec
   , startLink
   , call
@@ -31,6 +29,7 @@ module Pinto.GenServer
   , returnWithAction
   , replyTo
   , self
+  , module ReExports
   -- These probably need to go in a different module
   , init
   , handle_call
@@ -44,7 +43,6 @@ module Pinto.GenServer
   ) where
 
 import Prelude
-
 import Control.Monad.Reader (ReaderT, runReaderT)
 import Control.Monad.Reader as Reader
 import Data.Maybe (Maybe(..), fromJust, fromMaybe')
@@ -56,11 +54,12 @@ import Erl.Data.List (List, head)
 import Erl.Data.Tuple (tuple2, tuple3, tuple4)
 import Erl.ModuleName (NativeModuleName, nativeModuleName)
 import Erl.Process (class HasProcess, class ReceivesMessage, Process)
-import Erl.Process.Raw (class HasPid, Pid, setProcessFlagTrapExit)
+import Erl.Process.Raw (class HasPid, setProcessFlagTrapExit)
 import Foreign (Foreign)
 import Partial.Unsafe (unsafePartial)
 import Pinto.ModuleNames (pintoGenServer)
-import Pinto.Types (RegistryInstance, RegistryName, RegistryReference, StartLinkResult, registryInstance, class ExportsTo, export)
+import Pinto.Types (class ExportsTo, ExitMessage(..), RegistryInstance, RegistryName, RegistryReference, ShutdownReason, StartLinkResult, export, parseShutdownReasonFFI, parseTrappedExitFFI, registryInstance)
+import Pinto.Types (ShutdownReason(..), ExitMessage(..)) as ReExports
 import Unsafe.Coerce (unsafeCoerce)
 
 -- Sequence of types
@@ -154,10 +153,6 @@ data InitResult cont state
   | InitOkHibernate state
   | InitStop Foreign
   | InitIgnore
-
--- | A trapped exit
-data ExitMessage
-  = Exit Pid Foreign
 
 -- Can't do a functor instance over a type synonym, so just have a function instead
 mapInitResult :: forall state state' cont. (state -> state') -> InitResult cont state -> InitResult cont state'
@@ -347,15 +342,6 @@ terminate =
       Just f -> (runReaderT $ case f (parseShutdownReasonFFI reason) innerState of ResultT inner -> inner) context
       Nothing -> pure unit
     pure $ atom "ok"
-
-data ShutdownReason
-  = ReasonNormal
-  | ReasonShutdown (Maybe Foreign)
-  | ReasonOther Foreign
-
-foreign import parseTrappedExitFFI :: Foreign -> (Pid -> Foreign -> ExitMessage) -> Maybe ExitMessage
-
-foreign import parseShutdownReasonFFI :: Foreign -> ShutdownReason
 
 assumeExpectedMessage :: forall msg. Foreign -> msg
 assumeExpectedMessage = unsafeCoerce

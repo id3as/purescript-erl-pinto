@@ -8,8 +8,6 @@
         , castFFI/2
         , replyTo/2
         , stopFFI/1
-        , parseTrappedExitFFI/2
-        , parseShutdownReasonFFI/1
         ]).
 
 
@@ -59,22 +57,5 @@ stopFFI(ServerRef) ->
       unit
   end.
 
-parseTrappedExitFFI({ 'EXIT', Pid,  Reason }, ExitMsg) ->
-  {just, (ExitMsg(Pid))(Reason)};
-
-parseTrappedExitFFI(_,_) ->
-  {nothing}.
-
-parseShutdownReasonFFI(normal) ->
-  {reasonNormal};
-
-parseShutdownReasonFFI(shutdown) ->
-  {reasonShutdown, {nothing}};
-
-parseShutdownReasonFFI({shutdown, Reason}) ->
-  {reasonShutdown, {just, Reason}};
-
-parseShutdownReasonFFI(SomethingElse) ->
-  {reasonOther, SomethingElse}.
 
 

@@ -18,12 +18,15 @@ module Pinto.GenStatem
   , InitFn
   , InitResult(..)
   , InitT
-  , InitActionsBuilder(..), EventAction(..), CommonAction(..)
+  , InitActionsBuilder(..)
+  , EventAction(..)
+  , CommonAction(..)
   , CastFn
   , CallFn
   , HandleEventFn
   , EventFn
   , EventResult(..)
+  , TerminateFn
   , EventT
   , EventActionsBuilder
   , EnterFn
@@ -44,10 +47,12 @@ module Pinto.GenStatem
   , call
   , cast
   , module Exports
+  , module TypeExports
   -- As before, these could be adifferent module
   , init
   , callback_mode
   , handle_event
+  , terminate
   , NativeInitResult
   , NativeAction
   , OuterData
@@ -55,25 +60,25 @@ module Pinto.GenStatem
   ) where
 
 import Prelude
-
 import Control.Monad.State.Trans (StateT)
 import Control.Monad.State.Trans as StateT
 import Control.Monad.Trans.Class (class MonadTrans)
 import Control.Monad.Trans.Class (lift) as Exports
-import Data.Maybe (Maybe(..), fromMaybe)
+import Data.Maybe (Maybe(..), fromMaybe, fromMaybe')
 import Data.Tuple as Tuple
 import Effect (Effect)
-import Effect.Uncurried (EffectFn1, EffectFn4, mkEffectFn1, mkEffectFn4)
+import Effect.Uncurried (EffectFn1, EffectFn3, EffectFn4, mkEffectFn1, mkEffectFn3, mkEffectFn4)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, (:), nil)
 import Erl.Data.Tuple (tuple2, tuple3, tuple4)
 import Erl.ModuleName (NativeModuleName, nativeModuleName)
 import Erl.Process (Process, class HasProcess)
-import Erl.Process.Raw (class HasPid)
+import Erl.Process.Raw (class HasPid, setProcessFlagTrapExit)
 import Foreign (Foreign)
 import Partial.Unsafe (unsafeCrashWith)
 import Pinto.ModuleNames (pintoGenStatem)
-import Pinto.Types (class ExportsTo, RegistryInstance, RegistryName, RegistryReference, StartLinkResult, export, registryInstance)
+import Pinto.Types (ShutdownReason(..), ExitMessage(..)) as TypeExports
+import Pinto.Types (class ExportsTo, ExitMessage(..), RegistryInstance, RegistryName, RegistryReference, ShutdownReason(..), StartLinkResult, export, parseShutdownReasonFFI, parseTrappedExitFFI, registryInstance)
 import Unsafe.Coerce (unsafeCoerce)
 
 -- -----------------------------------------------------------------------------
@@ -245,6 +250,8 @@ type Spec info internal timerName timerContent commonData stateId state
     , init :: InitFn info internal timerName timerContent commonData stateId state
     , handleEvent :: HandleEventFn info internal timerName timerContent commonData stateId state
     , handleEnter :: Maybe (EnterFn info internal timerName timerContent commonData stateId state)
+    , terminate :: Maybe (TerminateFn info internal timerName timerContent commonData stateId state)
+    , trapExits :: Maybe (ExitMessage -> info)
     , getStateId :: state -> stateId
     }
 
@@ -271,6 +278,13 @@ type EventFn info internal timerName timerContent commonData stateId state
   = state ->
     commonData ->
     EventT info internal timerName timerContent commonData stateId state Effect (EventResult info internal timerName timerContent commonData state)
+
+type TerminateFn :: forall k. Type -> Type -> Type -> Type -> Type -> k -> Type -> Type
+type TerminateFn info internal timerName timerContent commonData stateId state
+  = ShutdownReason ->
+    state ->
+    commonData ->
+    EventT info internal timerName timerContent commonData stateId state Effect Unit
 
 type EnterFn :: forall k1 k2. k1 -> k2 -> Type -> Type -> Type -> Type -> Type -> Type
 type EnterFn info internal timerName timerContent commonData stateId state
@@ -352,8 +366,10 @@ newtype OuterData info internal timerName timerContent commonData stateId state
   = OuterData
   { state :: state
   , commonData :: commonData
+  , trapExits :: Maybe (ExitMessage -> info)
   , handleEnter :: EnterFn info internal timerName timerContent commonData stateId state
   , handleEvent :: HandleEventFn info internal timerName timerContent commonData stateId state
+  , terminate :: Maybe (TerminateFn info internal timerName timerContent commonData stateId state)
   , context :: Context info internal timerName timerContent commonData stateId state
   , getStateId :: state -> stateId
   }
@@ -438,7 +454,6 @@ procLibStartLink args@{ name: maybeName } = procLibStartLinkFFI maybeName (nativ
 --   HasStateId stateId state =>
 --   Spec info internal timerName timerContent commonData stateId state -> Effect Unit
 -- enterLoop = enterLoopFFI (nativeModuleName pintoGenStatem)
-
 mkSpec ::
   forall info internal timerName timerContent commonData stateId state.
   HasStateId stateId state =>
@@ -447,9 +462,11 @@ mkSpec ::
   Spec info internal timerName timerContent commonData stateId state
 mkSpec initFn handleEventFn =
   { name: Nothing
+  , trapExits: Nothing
   , init: initFn
   , handleEvent: handleEventFn
   , handleEnter: Nothing
+  , terminate: Nothing
   , getStateId: getStateId
   }
 
@@ -512,8 +529,13 @@ init =
   mkEffectFn1 \{ init: (InitT f)
   , handleEnter: maybeHandleEnter
   , handleEvent
+  , trapExits
+  , terminate
   , getStateId
   } -> do
+    _ <- case trapExits of
+      Nothing -> pure unit
+      Just _ -> void $ setProcessFlagTrapExit true
     result <- StateT.runStateT f {}
     let
       result' = Tuple.fst result
@@ -526,10 +548,13 @@ init =
           , commonData
           , handleEnter: fromMaybe (\_ _ _ _ -> pure StateEnterKeepData) maybeHandleEnter
           , handleEvent
+          , terminate
+          , trapExits
           , context: innerContext
           , getStateId: getStateId
           }
-    pure $ export
+    pure
+      $ export
       $ case result' of
           (InitOk state commonData) -> OuterInitOk (getStateId state) (mkOuterData state commonData contextResult)
           (InitOkWithActions state commonData actions) -> OuterInitOkWithActions (getStateId state) (mkOuterData state commonData contextResult) actions
@@ -570,12 +595,34 @@ handle_event ::
   forall info internal timerName timerContent commonData stateId state.
   EffectFn4 Foreign Foreign stateId (OuterData info internal timerName timerContent commonData stateId state) NativeHandleEventResult
 handle_event =
-  mkEffectFn4 \t e stateId dat@(OuterData { getStateId, handleEvent, handleEnter }) -> do
-    case parseEventFFI t e of
+  mkEffectFn4 \t e stateId dat@(OuterData { getStateId, handleEvent, handleEnter, trapExits }) -> do
+    let
+      parseTe :: Foreign -> info
+      parseTe =
+        ( \nativeMsg ->
+            fromMaybe' (\_ -> assumeExpectedMessage nativeMsg) $ trapExits <*> (parseTrappedExitFFI nativeMsg Exit)
+        )
+    case parseEventFFI t parseTe e of
       HandleEventEnter oldStateId -> export <$> runEnterState handleEnter getStateId oldStateId stateId dat
       HandleEventCall from f -> export <$> runEventFn getStateId (f from) dat
       HandleEventCast f -> export <$> runEventFn getStateId f dat
       HandleEvent ev -> export <$> runEventFn getStateId (handleEvent ev) dat
+
+assumeExpectedMessage :: forall msg. Foreign -> msg
+assumeExpectedMessage = unsafeCoerce
+
+terminate ::
+  forall info internal timerName timerContent commonData stateId state.
+  EffectFn3 Foreign stateId (OuterData info internal timerName timerContent commonData stateId state) Atom
+terminate =
+  mkEffectFn3 \reason stateId dat@(OuterData { getStateId, terminate: maybeTerminate, state, commonData, context }) -> do
+    case maybeTerminate of
+      Just f -> do
+        let (EventT stateT) = f (parseShutdownReasonFFI reason) state commonData
+        result <- StateT.runStateT stateT { context, changed: false }
+        pure unit
+      Nothing -> pure unit
+    pure $ atom "ok"
 
 data HandleEvent :: Type -> Type -> Type -> Type -> Type -> Type -> Type -> Type -> Type
 data HandleEvent reply info internal timerName timerContent commonData stateId state
@@ -586,7 +633,7 @@ data HandleEvent reply info internal timerName timerContent commonData stateId s
 
 foreign import parseEventFFI ::
   forall reply info internal timerName timerContent commonData stateId state.
-  Foreign -> Foreign -> HandleEvent reply info internal timerName timerContent commonData stateId state
+  Foreign -> (Foreign -> info) -> Foreign -> HandleEvent reply info internal timerName timerContent commonData stateId state
 
 foreign import data NativeInitResult :: Type
 
