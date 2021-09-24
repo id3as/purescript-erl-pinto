@@ -28,8 +28,9 @@ module Pinto.GenServer
   , return
   , returnWithAction
   , replyTo
-  , self
+  , whereIs
   , module ReExports
+  , module Lift
   -- These probably need to go in a different module
   , init
   , handle_call
@@ -48,12 +49,13 @@ import Control.Monad.Reader as Reader
 import Data.Maybe (Maybe(..), fromJust, fromMaybe')
 import Effect (Effect)
 import Effect.Class (class MonadEffect)
+import Effect.Class (liftEffect) as Lift
 import Effect.Uncurried (EffectFn1, EffectFn2, EffectFn3, mkEffectFn1, mkEffectFn2, mkEffectFn3)
 import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, head)
 import Erl.Data.Tuple (tuple2, tuple3, tuple4)
 import Erl.ModuleName (NativeModuleName, nativeModuleName)
-import Erl.Process (class HasProcess, class ReceivesMessage, Process)
+import Erl.Process (class HasProcess, getProcess, class HasSelf, class ReceivesMessage, Process)
 import Erl.Process.Raw (class HasPid, setProcessFlagTrapExit)
 import Foreign (Foreign)
 import Partial.Unsafe (unsafePartial)
@@ -186,6 +188,10 @@ type ServerRef cont stop msg state
 type ServerInstance cont stop msg state
   = RegistryInstance (ServerPid cont stop msg state) (ServerType cont stop msg state)
 
+whereIs :: forall cont stop msg state. RegistryName (ServerType cont stop msg state) -> Effect (Maybe (Process msg))
+whereIs name =
+  pure Nothing
+
 type ServerSpec cont stop msg state
   = { name :: Maybe (RegistryName (ServerType cont stop msg state))
     , init :: InitFn cont stop msg state
@@ -289,10 +295,10 @@ foreign import startLinkFFI ::
   Effect (InitResult cont (OuterState cont stop msg state)) ->
   Effect (StartLinkResult (ServerPid cont stop msg state))
 
-self ::
-  forall cont stop msg state.
-  ResultT cont stop msg state (ServerPid cont stop msg state)
-self = ResultT $ Reader.lift selfFFI
+instance resultT_HasSelf :: HasSelf (ResultT cont stop msg state) msg where
+  self = do
+    serverPid :: (ServerPid cont stop msg state) <- Lift.liftEffect selfFFI
+    pure $ getProcess serverPid
 
 foreign import selfFFI ::
   forall cont stop msg state.

@@ -13,7 +13,7 @@ import Erl.ModuleName (NativeModuleName(..))
 import Erl.Process.Raw (Pid)
 import Foreign (Foreign, unsafeToForeign)
 import Pinto.Types (RegistryName(..))
-import Pinto.Types (NotStartedReason(..), RegistryName(..), StartLinkResult, TerminateReason(..), crashIfNotRunning, crashIfNotStarted, maybeRunning, maybeStarted, startLinkResultFromPs) as PintoTypeExports
+import Pinto.Types (NotStartedReason(..), RegistryName(..), RegistryReference(..), StartLinkResult, TerminateReason(..), crashIfNotRunning, crashIfNotStarted, maybeRunning, maybeStarted, startLinkResultFromPs) as PintoTypeExports
 
 foreign import node :: Effect String
 

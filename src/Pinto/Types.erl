@@ -6,7 +6,18 @@
         , start_link_result_from_ps/1
         , parseTrappedExitFFI/2
         , parseShutdownReasonFFI/1
+        , whereIsNameFFI/1
         ]).
+
+
+whereIsNameFFI(Name) ->
+  fun() ->
+    case whereis(Name) of
+      undefined -> {nothing};
+      Pid -> {just, Pid}
+    end
+  end.
+
 
 start_link_result_to_ps({ok, Pid})                       -> {right, Pid};
 start_link_result_to_ps(ignore)                          -> {left, {ignore}};

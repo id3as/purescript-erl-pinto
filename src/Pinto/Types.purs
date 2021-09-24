@@ -20,6 +20,7 @@ module Pinto.Types
   ) where
 
 import Prelude
+import Effect (Effect)
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Erl.Atom (Atom)
