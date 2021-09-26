@@ -123,4 +123,17 @@ let additions =
 let upstream =
       https://github.com/purerl/package-sets/releases/download/erl-0.14.0-20210319/packages.dhall sha256:aa6d4bcef87080a6684464cfba5fb611b03c4a4372b1e08c77186de4a1f5b66f
 
-in  upstream
+let additions =
+      {
+      erl-process =
+        { repo = "https://github.com/id3as/purescript-erl-process.git"
+        , dependencies =
+          [ "console"
+          , "prelude"
+          , "effect"
+          ]
+        , version = "afbfa4e7a13c0d55609ff144d49982563fada7f5"
+        }
+      }
+
+in  upstream // additions

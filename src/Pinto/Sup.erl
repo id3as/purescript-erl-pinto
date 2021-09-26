@@ -7,6 +7,8 @@
         , startLink/2
         , stopFFI/1
         , startChildFFI/2
+        , terminateChildFFI/2
+        , deleteChildFFI/2
         ]).
 
 
@@ -89,6 +91,15 @@ startChildFFI(Ref, ChildSpec) ->
       start_child_result_to_ps(Result)
   end.
 
+terminateChildFFI(Ref, Id) ->
+  fun() ->
+      supervisor:terminate_child(Ref, Id),
+  end.
+
+deleteChildFFI(Ref, Id) ->
+  fun() ->
+      supervisor:delete_child(Ref, Id),
+  end.
 
 %%------------------------------------------------------------------------------
 %% erlang -> ps conversion helpers
@@ -99,6 +110,14 @@ start_child_result_to_ps({ok, Pid})                       -> {childStarted, #{pi
 start_child_result_to_ps({error, already_present})        -> {childAlreadyPresent};
 start_child_result_to_ps({error, {already_started, Pid}}) -> {childAlreadyStarted, Pid};
 start_child_result_to_ps({error, Other})                  -> {childFailed, Other}.
+
+%% These are deliberately not exhaustive, as this code path shouldn't be hit with simple_one_for_one
+delete_child_result_to_ps(ok)                 -> {childDeleted};
+delete_child_result_to_ps({error, running})                 -> {childRunning};
+delete_child_result_to_ps({error, not_found})                 -> {childNotFoundToDelete}.
+
+terminate_child_result_to_ps(ok)                 -> {childTerminated};
+terminate_child_result_to_ps({error, not_found})                 -> {childNotFoundToTerminate}.
 
 %%------------------------------------------------------------------------------
 %% ps -> erlang conversion helpers

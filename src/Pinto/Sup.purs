@@ -14,8 +14,13 @@ module Pinto.Sup
   , SupervisorType
   , Millisecond
   , Seconds
+  , TerminateChildResult(..)
+  , DeleteChildResult(..)
   , spec
   , startLink
+  , startChild
+  , terminateChild
+  , deleteChild
   , stop
   , maybeChildStarted
   , maybeChildRunning
@@ -44,6 +49,14 @@ data StartChildResult childProcess
     { pid :: childProcess
     , info :: Maybe Foreign
     }
+
+data DeleteChildResult
+  = ChildDeleted
+  | ChildNotFoundToDelete
+
+data TerminateChildResult
+  = ChildTerminated
+  | ChildNotFoundToTerminate
 
 data RestartStrategy
   = RestartTransient
@@ -140,6 +153,15 @@ startChild ::
   ChildSpec childProcess ->
   StartChildResult childProcess
 startChild r = startChildFFI $ registryInstance r
+
+foreign import terminateChildFFI :: SupervisorInstance -> String -> Effect TerminateChildResult
+foreign import deleteChildFFI :: SupervisorInstance -> String -> Effect DeleteChildResult
+
+terminateChild :: SupervisorRef -> String -> Effect TerminateChildResult
+terminateChild r id = terminateChildFFI (registryInstance r) id
+
+deleteChild :: SupervisorRef -> String -> Effect DeleteChildResult
+deleteChild r id = deleteChildFFI (registryInstance r) id
 
 maybeChildStarted :: forall childProcess. StartChildResult childProcess -> Maybe childProcess
 maybeChildStarted slr = case slr of
