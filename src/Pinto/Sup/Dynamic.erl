@@ -5,6 +5,8 @@
 %%------------------------------------------------------------------------------
 -export([ startLinkFFI/2
         , startChildFFI/2
+        , terminateChildFFI/2
+        , deleteChildFFI/2
         ]).
 
 
@@ -53,6 +55,18 @@ startChildFFI(Ref, ChildArg) ->
     start_child_result_to_ps(Result)
   end.
 
+terminateChildFFI(Ref, Id) ->
+  fun() ->
+      Result = supervisor:terminate_child(Ref, Id),
+      terminate_child_result_to_ps(Result)
+  end.
+
+deleteChildFFI(Ref, Id) ->
+  fun() ->
+      Result = supervisor:delete_child(Ref, Id),
+      delete_child_result_to_ps(Result)
+  end.
+
 %%------------------------------------------------------------------------------
 %% erlang -> ps conversion helpers
 %%------------------------------------------------------------------------------
@@ -62,6 +76,14 @@ start_child_result_to_ps({ok, Pid})                       -> {childStarted, #{pi
 start_child_result_to_ps({error, already_present})        -> {childAlreadyPresent};
 start_child_result_to_ps({error, {already_started, Pid}}) -> {childAlreadyStarted, Pid};
 start_child_result_to_ps({error, Other})                  -> {childFailed, Other}.
+
+%% These are deliberately not exhaustive, as this code path will only be hit with simple_one_for_one
+delete_child_result_to_ps(ok)                 -> {childDeleted};
+delete_child_result_to_ps({error, running})                 -> {childRunning};
+delete_child_result_to_ps({error, not_found})                 -> {childNotFoundToDelete}.
+
+terminate_child_result_to_ps(ok)                 -> {childTerminated};
+terminate_child_result_to_ps({error, not_found})                 -> {childNotFoundToTerminate}.
 
 %%------------------------------------------------------------------------------
 %% ps -> erlang conversion helpers

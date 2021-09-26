@@ -93,12 +93,14 @@ startChildFFI(Ref, ChildSpec) ->
 
 terminateChildFFI(Ref, Id) ->
   fun() ->
-      supervisor:terminate_child(Ref, Id),
+      Result = supervisor:terminate_child(Ref, Id),
+      terminate_child_result_to_ps(Result)
   end.
 
 deleteChildFFI(Ref, Id) ->
   fun() ->
-      supervisor:delete_child(Ref, Id),
+      Result = supervisor:delete_child(Ref, Id),
+      delete_child_result_to_ps(Result)
   end.
 
 %%------------------------------------------------------------------------------

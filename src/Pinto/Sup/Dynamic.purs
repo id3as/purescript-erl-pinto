@@ -5,13 +5,15 @@ module Pinto.Sup.Dynamic
   , DynamicType
   , startLink
   , startChild
+  , terminateChild
+  , deleteChild
   ) where
 
 import Prelude
 import Data.Maybe (Maybe)
 import Effect (Effect)
 import Erl.Process.Raw (Pid, class HasPid)
-import Pinto.Sup (ChildShutdownTimeoutStrategy, ChildType, RestartStrategy, Seconds, StartChildResult)
+import Pinto.Sup (ChildShutdownTimeoutStrategy, ChildType, RestartStrategy, Seconds, StartChildResult, TerminateChildResult, DeleteChildResult)
 import Pinto.Types (RegistryInstance, RegistryName, RegistryReference, StartLinkResult, registryInstance)
 
 newtype DynamicType :: Type -> Type -> Type
@@ -66,3 +68,12 @@ foreign import startChildFFI ::
   DynamicInstance childStartArg childProcess ->
   childStartArg ->
   Effect (StartChildResult childProcess)
+
+foreign import terminateChildFFI :: forall childStartArg childProcess. DynamicInstance childStartArg childProcess -> childProcess -> Effect TerminateChildResult
+foreign import deleteChildFFI :: forall childStartArg childProcess. DynamicInstance childStartArg childProcess -> childProcess -> Effect DeleteChildResult
+
+terminateChild :: forall childStartArg childProcess. DynamicRef childStartArg childProcess -> childProcess -> Effect TerminateChildResult
+terminateChild r p = terminateChildFFI (registryInstance r) p
+
+deleteChild :: forall childStartArg childProcess. DynamicRef childStartArg childProcess -> childProcess -> Effect DeleteChildResult
+deleteChild r p = deleteChildFFI (registryInstance r) p
