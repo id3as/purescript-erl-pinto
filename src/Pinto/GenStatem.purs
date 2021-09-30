@@ -1,3 +1,7 @@
+-- | This module represents gen_statem in OTP
+-- | See also gen_statem in the OTP docs (https://erlang.org/doc/man/gen_statem.html)
+-- | Note: This module is largely undocumented and is in alpha at the current time
+-- | it works largely like `Pinto.GenServer`, but with even more types
 module Pinto.GenStatem
   ( StatemType
   , StatemPid

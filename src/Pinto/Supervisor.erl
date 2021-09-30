@@ -1,4 +1,4 @@
--module(pinto_sup@foreign).
+-module(pinto_supervisor@foreign).
 
 %%------------------------------------------------------------------------------
 %% FFI API
@@ -130,7 +130,7 @@ flags_from_ps( #{ strategy := Strategy
                 }) ->
   #{ strategy => strategy_from_ps(Strategy)
    , intensity => Intensity
-   , period => Period
+   , period => round(Period)
    }.
 
 %% Note: These could be done in Purerl too and next time we're down thie way, probably will be
@@ -145,7 +145,7 @@ restart_from_ps({restartTemporary}) -> temporary.
 
 shutdown_from_ps({shutdownBrutal}) -> brutal;
 shutdown_from_ps({shutdownInfinity}) -> infinity;
-shutdown_from_ps({shutdownTimeout, Ms}) ->  Ms.
+shutdown_from_ps({shutdownTimeout, Ms}) ->  round(Ms).
 
 type_from_ps({supervisor}) -> supervisor;
 type_from_ps({worker}) -> worker.

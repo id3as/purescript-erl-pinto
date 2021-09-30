@@ -1,4 +1,6 @@
-module Pinto.Sup
+-- | This module represents supervisor in OTP
+-- | See also gen_supervisor in the OTP docs (https://erlang.org/doc/man/supervisor.html#)
+module Pinto.Supervisor
   ( ChildShutdownTimeoutStrategy(..)
   , ChildSpec(..)
   , ChildType(..)
@@ -12,8 +14,6 @@ module Pinto.Sup
   , SupervisorRef(..)
   , SupervisorPid
   , SupervisorType
-  , Millisecond
-  , Seconds
   , TerminateChildResult(..)
   , DeleteChildResult(..)
   , spec
@@ -29,7 +29,9 @@ module Pinto.Sup
   ) where
 
 import Prelude
+
 import Data.Maybe (Maybe(..))
+import Data.Time.Duration (Milliseconds, Seconds)
 import Effect (Effect)
 import Erl.Data.List (List)
 import Erl.Process.Raw (Pid, class HasPid)
@@ -58,26 +60,27 @@ data TerminateChildResult
   = ChildTerminated
   | ChildNotFoundToTerminate
 
+-- | This maps to transient | permanent | temporary as per the underlying supervisor API
 data RestartStrategy
   = RestartTransient
   | RestartPermanent
   | RestartTemporary
 
-type Millisecond
-  = Int
-
-type Seconds
-  = Int
-
+-- | This maps to brutal | infinity | { timeout, Milliseconds } as per the underlying supervisor API
 data ChildShutdownTimeoutStrategy
   = ShutdownBrutal
   | ShutdownInfinity
-  | ShutdownTimeout Millisecond
+  | ShutdownTimeout Milliseconds
 
+-- | This maps to supervisor | worker as per the underlying supervisor API
 data ChildType
   = Supervisor
   | Worker
 
+-- | The specification of a child process, this maps to ChildSpec in the underlying supervisor API
+-- | with the difference that none of them are optional.
+-- |
+-- | `childProcess` is the typed pid of the started process (commonly GenServer.ServerPid)
 type ChildSpec childProcess
   = { id :: String
     , start :: Effect (StartLinkResult childProcess)
@@ -86,11 +89,16 @@ type ChildSpec childProcess
     , childType :: ChildType
     }
 
+-- | The strategy employed by this supervision tree, this maps to
+-- | one_for_all | one_for_one | rest_for_one in the underlying supervisor API
+-- |
+-- | Note: simple_one_for_one is deliberately missing, see: `Supervisor.SimpleOneForOne`
 data Strategy
   = OneForAll
   | OneForOne
   | RestForOne
 
+-- | The flags for a supervision tree, mapping onto sup_flags from the underlying supervisor API
 type Flags
   = { strategy :: Strategy
     , intensity :: Int
@@ -111,11 +119,15 @@ type SupervisorRef
 type SupervisorInstance
   = RegistryInstance SupervisorPid SupervisorType
 
+-- | A complete specification for a supervisor, see `Result` in the underlying supervisor API
 type SupervisorSpec
   = { flags :: Flags
     , childSpecs :: List ErlChildSpec
     }
 
+-- | Given an (optional) name for the supervisor
+-- | an effect that will be executed within the context of the new supervisor
+-- | execute that effect to get the specification and start a supervisor with that specification
 foreign import startLink ::
   Maybe (RegistryName SupervisorType) ->
   Effect SupervisorSpec ->
@@ -123,6 +135,7 @@ foreign import startLink ::
 
 foreign import stopFFI :: SupervisorInstance -> Effect Unit
 
+-- | A convenience mechanism to stop a supervisor using sys:terminate
 stop :: SupervisorRef -> Effect Unit
 stop = registryInstance >>> stopFFI
 
@@ -146,6 +159,9 @@ foreign import startChildFFI ::
   ChildSpec childProcess ->
   StartChildResult childProcess
 
+-- | Given a supervisor reference and a child specification
+-- | start a new child within the context of that supervisor
+-- | See also supervisor:start_child
 startChild ::
   forall childProcess.
   HasPid childProcess =>
@@ -157,17 +173,30 @@ startChild r = startChildFFI $ registryInstance r
 foreign import terminateChildFFI :: SupervisorInstance -> String -> Effect TerminateChildResult
 foreign import deleteChildFFI :: SupervisorInstance -> String -> Effect DeleteChildResult
 
+-- | Given a supervisor reference and a child id
+-- | terminate that given child
+-- | See also supervisor:terminate_child
 terminateChild :: SupervisorRef -> String -> Effect TerminateChildResult
 terminateChild r id = terminateChildFFI (registryInstance r) id
 
+-- | Given a supervisor reference and a child id
+-- | delete that given child
+-- | See also supervisor:delete_child
 deleteChild :: SupervisorRef -> String -> Effect DeleteChildResult
 deleteChild r id = deleteChildFFI (registryInstance r) id
 
+-- | Converts a StartChildResult into a Maybe
+-- | returning Just if the child was started
+-- | and Nothing otherwise
 maybeChildStarted :: forall childProcess. StartChildResult childProcess -> Maybe childProcess
 maybeChildStarted slr = case slr of
   ChildStarted { pid: childProcess } -> Just childProcess
   _ -> Nothing
 
+-- | Converts a StartChildResult into a Maybe
+-- | returning Just if the child was started
+-- | and Just if the child was already running
+-- | and Nothing otherwise
 maybeChildRunning :: forall childProcess. StartChildResult childProcess -> Maybe childProcess
 maybeChildRunning slr = case slr of
   ChildStarted { pid: childProcess } -> Just childProcess

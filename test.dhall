@@ -4,5 +4,5 @@ in    base
     ⫽ { sources =
           base.sources # [ "test/**/*.purs" ]
       , dependencies =
-          base.dependencies # [ "assert", "console", "erl-test-eunit" ]
+          base.dependencies # [ "assert", "erl-test-eunit", "free" ]
       }

@@ -1,3 +1,5 @@
+-- | Module representing the gen_server in OTP
+-- | See also 'gen_server' in the OTP docs (https://erlang.org/doc/man/gen_server.html)
 module Pinto.GenServer
   ( InitFn
   , InitResult(..)
@@ -64,51 +66,17 @@ import Pinto.Types (class ExportsTo, ExitMessage(..), RegistryInstance, Registry
 import Pinto.Types (ShutdownReason(..), ExitMessage(..)) as ReExports
 import Unsafe.Coerce (unsafeCoerce)
 
--- Sequence of types
--- reply cont stop msg [Timeout] state
---------------------------------------------------------------------------------
--- Public types
---------------------------------------------------------------------------------
-data Action cont stop
-  = Timeout Int
-  | Hibernate
-  | Continue cont
-  | StopNormal
-  | StopOther stop
-
-data CallResult reply cont stop state
-  = CallResult (Maybe reply) (Maybe (Action cont stop)) state
-
-instance mapCallResult :: Functor (CallResult reply cont stop) where
-  map f (CallResult mReply mAction state) = CallResult mReply mAction (f state)
-
-data ReturnResult cont stop state
-  = ReturnResult (Maybe (Action cont stop)) state
-
-instance mapReturnResult :: Functor (ReturnResult cont stop) where
-  map f (ReturnResult mAction state) = ReturnResult mAction (f state)
-
-reply :: forall reply cont stop state. reply -> state -> CallResult reply cont stop state
-reply theReply state = CallResult (Just theReply) Nothing state
-
-replyWithAction :: forall reply cont stop state. reply -> Action cont stop -> state -> CallResult reply cont stop state
-replyWithAction theReply action state = CallResult (Just theReply) (Just action) state
-
-noReply :: forall reply cont stop state. state -> CallResult reply cont stop state
-noReply state = CallResult Nothing Nothing state
-
-noReplyWithAction :: forall reply cont stop state. Action cont stop -> state -> CallResult reply cont stop state
-noReplyWithAction action state = CallResult Nothing (Just action) state
-
-return :: forall cont stop state. state -> ReturnResult cont stop state
-return state = ReturnResult Nothing state
-
-returnWithAction :: forall cont stop state. Action cont stop -> state -> ReturnResult cont stop state
-returnWithAction action state = ReturnResult (Just action) state
-
--- noReply...
--- return state
--- returnWithAction (Timeout 10) state
+-- | The reader monad in which all GenServer operations take place
+-- |
+-- | - `cont` is the type that will be passed into a handle_continue callback,
+-- |   if there is no handleContinue present, this can just be 'Unit'
+-- | - `stop` is the data type that can be returned with the StopOther action
+-- |   if StopOther is not being used, then this can simply 'Unit'
+-- | - `msg` represents the type of message that this gen server will receive in its
+-- |   handleInfo callback, if no messages are expected, this can simply be 'Unit'
+-- | - `state` represents the internal state of this GenServer, created in 'init
+-- |   and then passed into each subsequent callback
+-- | - `result` is the result of any operation within a ResultT context
 newtype ResultT cont stop msg state result
   = ResultT (ReaderT (Context cont stop msg state) Effect result)
 
@@ -120,34 +88,95 @@ derive newtype instance monadResultT :: Monad (ResultT cont stop msg state)
 derive newtype instance monadEffectResultT :: MonadEffect (ResultT cont stop msg state)
 instance messageTypeResult :: ReceivesMessage (ResultT cont stop msg state) msg
 
+
+-- | An action to be returned to OTP
+-- | See {shutdown, reason}, {timeout...} etc in the gen_server documentation
+-- | This should be constructed and returned with the xxWithAction methods inside GenServer callbacks
+data Action cont stop
+  = Timeout Int
+  | Hibernate
+  | Continue cont
+  | StopNormal
+  | StopOther stop
+
+-- | The result of a GenServer.call (handle_call) action
+data CallResult reply cont stop state
+  = CallResult (Maybe reply) (Maybe (Action cont stop)) state
+
+instance mapCallResult :: Functor (CallResult reply cont stop) where
+  map f (CallResult mReply mAction state) = CallResult mReply mAction (f state)
+
+-- | The result of a GenServer.handle_info or GenServer.handle_cast callback
+data ReturnResult cont stop state
+  = ReturnResult (Maybe (Action cont stop)) state
+
+instance mapReturnResult :: Functor (ReturnResult cont stop) where
+  map f (ReturnResult mAction state) = ReturnResult mAction (f state)
+
+-- | Creates a result from inside a GenServer 'handle_call' that results in
+-- | the 'reply' result being sent to the caller and the new state being stored
+reply :: forall reply cont stop state. reply -> state -> CallResult reply cont stop state
+reply theReply state = CallResult (Just theReply) Nothing state
+
+-- | Creates a result from inside a GenServer 'handle_call' that results in
+-- | the 'reply' result being sent to the caller , the new state being stored
+-- | and the attached action being returned to OTP for processing
+replyWithAction :: forall reply cont stop state. reply -> Action cont stop -> state -> CallResult reply cont stop state
+replyWithAction theReply action state = CallResult (Just theReply) (Just action) state
+
+-- | Creates a result from inside a GenServer 'handle_call' that results in
+-- | the new state being stored and nothing being returned to the caller (yet)
+noReply :: forall reply cont stop state. state -> CallResult reply cont stop state
+noReply state = CallResult Nothing Nothing state
+
+-- | Creates a result from inside a GenServer 'handle_call' that results in
+-- | the new state being stored and nothing being returned to the caller (yet)
+-- | and the attached action being returned to OTP for processing
+noReplyWithAction :: forall reply cont stop state. Action cont stop -> state -> CallResult reply cont stop state
+noReplyWithAction action state = CallResult Nothing (Just action) state
+
+-- | Creates a result from inside a GenServer 'handle_info/handle_cast' that results in
+-- | the new state being stored
+return :: forall cont stop state. state -> ReturnResult cont stop state
+return state = ReturnResult Nothing state
+
+-- | Creates a result from inside a GenServer 'handle_info/handle_cast' that results in
+-- | the new state being stored and the attached action being returned to OTP for processing
+returnWithAction :: forall cont stop state. Action cont stop -> state -> ReturnResult cont stop state
+returnWithAction action state = ReturnResult (Just action) state
+
 foreign import data FromForeign :: Type
 
 newtype From :: Type -> Type
 newtype From reply
   = From FromForeign
 
--- reply cont stop msg [Timeout] state
--- TODO make order of type variables consistent
+-- | The callback invoked on GenServer startup: see gen_server:init
 type InitFn cont stop msg state
   = ResultT cont stop msg state (InitResult cont state)
 
+-- | The callback invoked within a GenServer.call: see gen_server:call
 type CallFn reply cont stop msg state
   = From reply -> state -> ResultT cont stop msg state (CallResult reply cont stop state)
 
+-- | The type of the handleCast callback see gen_server:cast
 type CastFn cont stop msg state
   = state -> ResultT cont stop msg state (ReturnResult cont stop state)
 
+-- | The type of the handleContinue callback see gen_server:handle_continue
 type ContinueFn cont stop msg state
   = cont -> state -> ResultT cont stop msg state (ReturnResult cont stop state)
 
+-- | The type of the handleInfo callback see gen_server:handle_info
 type InfoFn cont stop msg state
   = msg -> state -> ResultT cont stop msg state (ReturnResult cont stop state)
 
+-- | The type of the terminate callback see gen_server:terminate
 type TerminateFn cont stop msg state
   = ShutdownReason -> state -> ResultT cont stop msg state Unit
 
--- -- | Type of the callback invoked during a gen_server:handle_cast
--- type Cast state msg = ResultT (CastResult state) state msg
+-- | The various return values from an init callback
+-- | These roughly map onto the tuples in the OTP documentation
 data InitResult cont state
   = InitOk state
   | InitOkTimeout state Int
@@ -182,16 +211,26 @@ derive newtype instance serverPidHasRawPid :: HasPid (ServerPid cont stop msg st
 
 derive newtype instance serverPidHasProcess :: HasProcess msg (ServerPid const stop msg state)
 
+-- | The typed reference of a GenServer, containing all the information required to get hold of
+-- | an instance
 type ServerRef cont stop msg state
   = RegistryReference (ServerPid cont stop msg state) (ServerType cont stop msg state)
 
+-- | The typed instance of a GenServer, containing all the information required to call into
+-- | a GenServer
 type ServerInstance cont stop msg state
   = RegistryInstance (ServerPid cont stop msg state) (ServerType cont stop msg state)
 
+-- | Given a RegistryName with a valid (ServerType), get hold of a typed Process `msg` to which messages
+-- | can be sent (arriving in the handleInfo callback)
 whereIs :: forall cont stop msg state. RegistryName (ServerType cont stop msg state) -> Effect (Maybe (Process msg))
 whereIs name =
-  pure Nothing
+  pure Nothing -- TODO: implement
 
+-- | The configuration passed into startLink in order to start a gen server
+-- | Everything except the 'init' callback is optional
+-- | Note: GenServers started without a name will not be callable without some means
+-- | of retrieving the pid
 type ServerSpec cont stop msg state
   = { name :: Maybe (RegistryName (ServerType cont stop msg state))
     , init :: InitFn cont stop msg state
@@ -200,6 +239,48 @@ type ServerSpec cont stop msg state
     , terminate :: Maybe (TerminateFn cont stop msg state)
     , trapExits :: Maybe (ExitMessage -> msg)
     }
+
+-- | Given an InitFn callback, create a default GenServer specification with all of the optionals
+-- | set to default values
+-- | This is the preferred method of creating the config passed into GenServer.startLink
+defaultSpec :: forall cont stop msg state. InitFn cont stop msg state -> ServerSpec cont stop msg state
+defaultSpec initFn =
+  { name: Nothing
+  , init: initFn
+  , handleInfo: Nothing
+  , handleContinue: Nothing
+  , terminate: Nothing
+  , trapExits: Nothing
+  }
+
+-- | Given a specification, starts a GenServer
+-- |
+-- | Standard usage:
+-- |
+-- | ```purescript
+-- | GenServer.startLink $ GenServer.defaultSpec init
+-- |   where
+-- |   init :: InitFn Unit Unit Unit {}
+-- |   init = pure $ InitOk {}
+-- | ```
+startLink :: forall cont stop msg state. (ServerSpec cont stop msg state) -> Effect (StartLinkResult (ServerPid cont stop msg state))
+startLink { name: maybeName, init: initFn, handleInfo, handleContinue, terminate, trapExits } = startLinkFFI maybeName (nativeModuleName pintoGenServer) initEffect
+  where
+  context =
+    Context
+      { handleInfo
+      , handleContinue
+      , terminate
+      , trapExits
+      }
+
+  initEffect :: Effect (InitResult cont (OuterState cont stop msg state))
+  initEffect = do
+    _ <- case trapExits of
+      Nothing -> pure unit
+      Just _ -> void $ setProcessFlagTrapExit true
+    innerResult <- (runReaderT $ case initFn of ResultT inner -> inner) context
+    pure $ mapInitResult (mkOuterState context) innerResult
 
 --------------------------------------------------------------------------------
 -- Internal types
@@ -220,15 +301,6 @@ newtype Context cont stop msg state
   , trapExits :: Maybe (ExitMessage -> msg)
   }
 
-defaultSpec :: forall cont stop msg state. InitFn cont stop msg state -> ServerSpec cont stop msg state
-defaultSpec initFn =
-  { name: Nothing
-  , init: initFn
-  , handleInfo: Nothing
-  , handleContinue: Nothing
-  , terminate: Nothing
-  , trapExits: Nothing
-  }
 
 foreign import callFFI ::
   forall reply cont stop msg state.
@@ -269,24 +341,6 @@ stop ::
   Effect Unit
 stop r = stopFFI $ registryInstance r
 
-startLink :: forall cont stop msg state. (ServerSpec cont stop msg state) -> Effect (StartLinkResult (ServerPid cont stop msg state))
-startLink { name: maybeName, init: initFn, handleInfo, handleContinue, terminate, trapExits } = startLinkFFI maybeName (nativeModuleName pintoGenServer) initEffect
-  where
-  context =
-    Context
-      { handleInfo
-      , handleContinue
-      , terminate
-      , trapExits
-      }
-
-  initEffect :: Effect (InitResult cont (OuterState cont stop msg state))
-  initEffect = do
-    _ <- case trapExits of
-      Nothing -> pure unit
-      Just _ -> void $ setProcessFlagTrapExit true
-    innerResult <- (runReaderT $ case initFn of ResultT inner -> inner) context
-    pure $ mapInitResult (mkOuterState context) innerResult
 
 foreign import startLinkFFI ::
   forall cont stop msg state.

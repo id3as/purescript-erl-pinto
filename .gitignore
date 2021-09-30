@@ -4,3 +4,5 @@
 output/
 *beam
 tags
+_build
+generated-docs

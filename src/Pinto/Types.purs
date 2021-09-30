@@ -30,12 +30,26 @@ import Foreign (Foreign)
 import Partial.Unsafe (unsafePartial)
 import Unsafe.Coerce (unsafeCoerce)
 
+-- | The name of a registered process, these map to
+-- | `{local, Name}`
+-- | `{global, GlobalName}`
+-- | `{via, Module, ViaName}`
+-- | as per the docs for gen_server:start_link and similar
 data RegistryName :: Type -> Type
 data RegistryName serverType
   = Local Atom
   | Global Foreign
   | Via NativeModuleName Foreign
 
+-- | A means of looking up a typed process (such as a GenServer)
+-- | that may or may not be registered
+-- |
+-- | This is typically used by the APIs provided to gain access
+-- | to the ability to invoke code within the context of a started server
+-- |
+-- | ```purescript
+-- | GenServer.call (ByName serverName) \_from a...
+-- | ```
 data RegistryReference :: Type -> Type -> Type
 data RegistryReference serverPid serverType
   = ByPid serverPid
@@ -43,6 +57,10 @@ data RegistryReference serverPid serverType
 
 foreign import data RegistryInstance :: Type -> Type -> Type
 
+-- | Given a `RegistryReference serverPid serverType`
+-- |
+-- | Create a `RegistryInstance serverPid serverType` that can be used
+-- | to communicate with that process directly
 registryInstance ::
   forall serverPid serverType.
   HasPid serverPid =>

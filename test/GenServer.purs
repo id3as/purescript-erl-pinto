@@ -3,10 +3,12 @@ module Test.GenServer
   ) where
 
 import Prelude
+
 import Control.Monad.Free (Free)
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
+import Effect.Class (liftEffect)
 import Erl.Atom (atom)
 import Erl.Process (Process, (!))
 import Erl.Process.Raw (Pid)
@@ -14,7 +16,7 @@ import Erl.Process.Raw as Raw
 import Erl.Test.EUnit (TestF, suite, test)
 import Foreign (unsafeToForeign)
 import Partial.Unsafe (unsafeCrashWith)
-import Pinto.GenServer (Action(..), ExitMessage, From, InitResult(..), ServerRef(..), ServerSpec, ServerType)
+import Pinto.GenServer (Action(..), ExitMessage, From, InitResult(..), ServerRef, ServerSpec, ServerType)
 import Pinto.GenServer as GS
 import Pinto.Types (NotStartedReason(..), RegistryName(..), RegistryReference(..), StartLinkResult, crashIfNotStarted)
 import Test.Assert (assertEqual, assert')
@@ -183,7 +185,7 @@ testTrapExits =
       assert' "Terminate wasn't called on the genserver" receivedTerminate
   where
   init = do
-    pid <- GS.lift $ Raw.spawnLink $ Raw.receiveWithTimeout 0 unit
+    pid <- liftEffect $ Raw.spawnLink $ Raw.receiveWithTimeout 0 unit
     pure $ InitOk $ { testPid: pid, receivedExit: false, receivedTerminate: false }
 
   init2 pid = do
@@ -196,7 +198,7 @@ testTrapExits =
     unsafeCrashWith "Unexpected message"
 
   terminate reason s = do
-    GS.lift $ Raw.send s.testPid true
+    liftEffect $ Raw.send s.testPid true
 
 ---------------------------------------------------------------------------------
 -- Internal
@@ -239,7 +241,7 @@ testStartGetSet registryName = do
     unsafeCrashWith "Unexpected message"
 
   handleContinue cont (TestState x) =
-    GS.lift do
+    liftEffect do
       case cont of
         TestCont -> pure $ GS.return $ TestState $ x + 100
         TestContFrom from -> do
@@ -288,7 +290,7 @@ testStopNormal registryName = do
     unsafeCrashWith "Unexpected message"
 
   handleContinue cont (TestState x) =
-    GS.lift do
+    liftEffect do
       case cont of
         TestCont -> pure $ GS.return $ TestState $ x + 100
         TestContFrom from -> do

@@ -1,4 +1,4 @@
--module(pinto_sup_dynamic@foreign).
+-module(pinto_supervisor_simpleOneForOne@foreign).
 
 %%------------------------------------------------------------------------------
 %% FFI API
@@ -100,7 +100,7 @@ dynamic_spec_from_ps(#{ intensity := Intensity
   SupFlags =
     #{ strategy => simple_one_for_one
      , intensity => Intensity
-     , period => Period
+     , period => round(Period)
      },
 
   ChildSpec =

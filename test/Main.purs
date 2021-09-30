@@ -1,8 +1,10 @@
 module Test.Main where
 
 import Prelude
+
 import Control.Monad.Free (Free)
 import Data.Maybe (Maybe(..))
+import Data.Time.Duration (Milliseconds(..), Seconds(..))
 import Effect (Effect)
 import Effect.Unsafe (unsafePerformEffect)
 import Erl.Atom (atom)
@@ -11,10 +13,10 @@ import Erl.Test.EUnit (TestF, runTests, suite, test)
 import Pinto (StartLinkResult)
 import Pinto.GenServer (InitResult(..), ServerPid, ServerRef)
 import Pinto.GenServer as GS
-import Pinto.Sup (ChildShutdownTimeoutStrategy(..), ChildType(..), RestartStrategy(..), Strategy(..), SupervisorSpec, ChildSpec, spec)
-import Pinto.Sup as Sup
-import Pinto.Sup.Dynamic (DynamicSpec)
-import Pinto.Sup.Dynamic as DynamicSup
+import Pinto.Supervisor (ChildShutdownTimeoutStrategy(..), ChildType(..), RestartStrategy(..), Strategy(..), SupervisorSpec, ChildSpec, spec)
+import Pinto.Supervisor as Sup
+import Pinto.Supervisor.SimpleOneForOne
+import Pinto.Supervisor.SimpleOneForOne as DynamicSup
 import Pinto.Types (RegistryName(..), RegistryReference(..), crashIfNotStarted)
 import Test.Assert (assertEqual)
 import Test.DoorLock as DoorLock
@@ -77,7 +79,7 @@ testStartWithNamedChild =
       { flags:
           { strategy: OneForOne
           , intensity: 1
-          , period: 5
+          , period: Seconds 5.0
           }
       , childSpecs
       }
@@ -96,7 +98,7 @@ mkChildSpec id start =
   , childType: Worker
   , start
   , restartStrategy: RestartTemporary
-  , shutdownStrategy: ShutdownTimeout 5000
+  , shutdownStrategy: ShutdownTimeout $ Milliseconds 5000.0
   }
 
 --------------------------------------------------------------------------------
@@ -114,15 +116,15 @@ dynamicSupervisor =
       }
     pure unit
   where
-  supInit :: Effect (DynamicSpec Unit (ServerPid Void Void Void TestState))
+  supInit :: Effect (DynamicSup.ChildSpec Unit (ServerPid Void Void Void TestState))
   supInit =
     pure
       { intensity: 1
-      , period: 5
+      , period: Seconds 5.0
       , childType: Worker
       , start: childStart
       , restartStrategy: RestartTemporary
-      , shutdownStrategy: ShutdownTimeout 5000
+      , shutdownStrategy: ShutdownTimeout $ Milliseconds 5000.0
       }
 
   childStart unit = GS.startLink $ (GS.defaultSpec childInit)

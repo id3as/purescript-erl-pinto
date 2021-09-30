@@ -1,7 +1,7 @@
+-- | The base Pinto module re-exports most of the library's useful types and thats about it
 module Pinto
   ( isRegistered
   , node
-  , self
   , module PintoTypeExports
   ) where
 
@@ -15,14 +15,15 @@ import Foreign (Foreign, unsafeToForeign)
 import Pinto.Types (RegistryName(..))
 import Pinto.Types (NotStartedReason(..), RegistryName(..), RegistryReference(..), StartLinkResult, TerminateReason(..), crashIfNotRunning, crashIfNotStarted, maybeRunning, maybeStarted, startLinkResultFromPs) as PintoTypeExports
 
-foreign import node :: Effect String
-
-foreign import self :: Effect Pid
-
 foreign import isRegisteredImpl :: Foreign -> Effect Boolean
 
 foreign import alreadyStartedImpl :: Foreign -> Effect Pid
 
+foreign import node :: Effect String
+
+-- | Checks if a particular process name is registered using 'whereis_name'
+-- |
+-- | - `serverType` can be anything, but most likely it'll be GenServer.ServerType or GenStatem.ServerType
 isRegistered :: forall serverType. RegistryName serverType -> Effect Boolean
 isRegistered (Local name) = isRegisteredImpl $ unsafeToForeign $ tuple2 (atom "local") name
 
