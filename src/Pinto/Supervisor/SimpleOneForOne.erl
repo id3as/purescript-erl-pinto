@@ -22,7 +22,7 @@
         , start_link_result_from_ps/1
         ]).
 
--import('pinto_sup@foreign',
+-import('pinto_supervisor@foreign',
         [ restart_from_ps/1,
           shutdown_from_ps/1,
           type_from_ps/1
