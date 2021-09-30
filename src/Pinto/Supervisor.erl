@@ -25,6 +25,8 @@
           type_from_ps/1
         ]).
 
+-purs_ignore_exports([start_proxy/1, init/1, restart_from_ps/1, shutdown_from_ps/1, type_from_ps/1]). 
+
 -import('pinto_types@foreign',
         [ start_link_result_to_ps/1
         , start_link_result_from_ps/1
