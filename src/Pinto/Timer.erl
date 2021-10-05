@@ -1,8 +1,8 @@
 -module(pinto_timer@foreign).
 
 -export([ cancel/1,
-          sendEveryFFI/3,
-          sendAfterFFI/3 ]).
+          sendEveryToFFI/3,
+          sendAfterToFFI/3 ]).
 
 cancel(WrappedRef) ->
   fun() ->
@@ -14,14 +14,14 @@ cancel(WrappedRef) ->
       end
   end.
 
-sendEveryFFI(Milliseconds,Msg, Target) ->
+sendEveryToFFI(Milliseconds,Msg, Target) ->
   fun() ->
-    { ok, Ref } = timer:send_interval(Milliseconds, Target, Msg),
+    { ok, Ref } = timer:send_interval(round(Milliseconds), Target, Msg),
     { timer, Ref }
   end.
 
-sendAfterFFI(Milliseconds, Msg, Target) ->
+sendAfterToFFI(Milliseconds, Msg, Target) ->
   fun() ->
-    Ref = erlang:send_after(Milliseconds, Target, Msg),
+    Ref = erlang:send_after(round(Milliseconds), Target, Msg),
     { erlang, Ref }
   end.
