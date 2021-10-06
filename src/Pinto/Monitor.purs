@@ -2,6 +2,7 @@
 -- | back to the monitoring process
 module Pinto.Monitor
   ( monitor
+  , monitorTo
   , demonitor
   , MonitorMsg(..)
   , MonitorType(..)
@@ -12,9 +13,11 @@ module Pinto.Monitor
 
 import Prelude
 import Effect (Effect)
+import Effect.Class (class MonadEffect, liftEffect)
 import Foreign (Foreign)
 import Pinto.MessageRouting as MR
 import Erl.Process.Raw (Pid, class HasPid, getPid)
+import Erl.Process (class HasSelf, send, self, class HasProcess, getProcess)
 
 -- | Reference to a monitor, used to stop the monitor once it is started
 foreign import data MonitorRef :: Type
@@ -38,12 +41,42 @@ data MonitorMsg
   = Down (MR.RouterRef MonitorRef) MonitorType MonitorObject MonitorInfo
 
 -- | Given something that has a pid (A GenServer, a Process.. or just a Pid), attach a monitor by using
--- | erlang:monitor on the underlying pid, the supplied callback will be invoked should the monitor fire
-monitor :: forall process. HasPid process => process -> (MonitorMsg -> Effect Unit) -> Effect (MR.RouterRef MonitorRef)
-monitor process cb = MR.startRouter (startMonitor $ getPid process) stopMonitor handleMessage
+-- | erlang:monitor on the underlying pid, a message will be sent to the current process, lifted into the
+-- | constructor `f` provided
+monitor ::
+  forall msg process m.
+  HasPid process =>
+  MonadEffect m =>
+  HasSelf m msg =>
+  process ->
+  (MonitorMsg -> msg) ->
+  m (MR.RouterRef MonitorRef)
+monitor process f = do
+  me <- self
+  liftEffect $ MR.startRouter (startMonitor $ getPid process) stopMonitor (handleMessage me)
   where
-  handleMessage msg = do
-    _ <- handleMonitorMessage Down cb msg
+  handleMessage me msg = do
+    _ <-  handleMonitorMessage Down (send me <<< f) msg
+    _ <- MR.stopRouterFromCallback
+    pure unit
+
+-- | Given something that has a pid (A GenServer, a Process.. or just a Pid), attach a monitor by using
+-- | erlang:monitor on the underlying pid, a message will be sent to the current process, lifted into the
+-- | constructor `f` provided
+monitorTo ::
+  forall msg process target.
+  HasPid process =>
+  HasProcess msg target =>
+  process ->
+  target ->
+  (MonitorMsg -> msg) ->
+  Effect (MR.RouterRef MonitorRef)
+monitorTo process target f = do
+  let p = getProcess target
+  MR.startRouter (startMonitor $ getPid process) stopMonitor (handleMessage p)
+  where
+  handleMessage target msg = do
+    _ <-  handleMonitorMessage Down (send target <<< f) msg
     _ <- MR.stopRouterFromCallback
     pure unit
 
