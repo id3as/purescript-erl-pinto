@@ -10,77 +10,93 @@ Low level bindings to OTP aren't directly user friendly, so this library goes a 
 ```purescript
 
 module MyGenServer where
+import Pinto (RegistryName(..), StartLinkResult)
+import Pinto.GenServer (InitResult(..), ServerPid, ServerType)
+import Pinto.GenServer as GenServer
 
-import Pinto (ServerName(..), StartLinkResult)
-import Pinto.Gen as Gen
+type EmptyGenServerStartArgs
+  = {}
 
-type State = { }
+type State
+  = {}
 
-serverName :: ServerName State
-serverName = ServerName "some_uuid"
+serverName :: RegistryName (ServerType Unit Unit Unit State)
+serverName = Local $ atom "my_gen_server"
 
-doSomething :: Unit -> Effect Unit
-doSomething input = 
-  Gen.doCall serverName \state -> do
-    pure $ CallReply unit state
+startLink :: EmptyGenServerStartArgs -> Effect (StartLinkResult (ServerPid Unit Unit Unit State))
+startLink args = GenServer.startLink $ (GenServer.defaultSpec $ init args) { name = Just serverName }
 
-startLink :: Unit -> Effect StartLinkResult
-startLink args =
-  Gen.startLink serverName $ init args
+doSomething :: Effect String
+doSomething = GenServer.call (ByName serverName) (\_from state -> pure $ GenServer.reply "Hi" state)
 
-init :: Unit -> Effect State
-init args = do
-  pure $ {}
+init :: EmptyGenServerStartArgs -> GenServer.InitFn Unit Unit Unit State
+init _args = do
+  pure $ InitOk {}
+
+
 ```
 
 ## Define a gen supervisor that uses that gen server
 
 ```purescript
 
-module MyGenSup where
+module MySup where
 
-import Pinto as Pinto
-import Pinto.Sup 
+import Pinto (RegistryName(..), StartLinkResult)
+import Pinto.Supervisor
 
-startLink :: Effect Pinto.StartLinkResult
-startLink = Sup.startLink "my_cool_sup" init
+startLink :: Effect (StartLinkResult SupervisorPid)
+startLink = do
+  Sup.startLink (Just $ Local $ atom "my_sup") init
 
 init :: Effect SupervisorSpec
 init = do
-  pure $ buildSupervisor
-                # supervisorStrategy OneForOne
-                # supervisorChildren ( ( buildChild
-                                       # childType Worker
-                                       # childId "some_child"
-                                       # childStart MyGenServer.startLink unit)
-                                        : nil)
+  pure
+    { flags:
+        { strategy: OneForOne
+        , intensity: 1
+        , period: Seconds 5.0
+        }
+    , childSpecs:
+        (spec { id: "cool_worker",
+                start: MyGenServer.startLink {},
+                childType: Worker,
+                restartStrategy: RestartTransient,
+                shutdownStrategy: ShutdownTimeout $ Milliseconds 5000.0
+                })
+        : nil
+    }
+
 
 ```
 
 ## Define an application that uses this supervisor
 
 ```purescript
+module MyApp where
+
 import Pinto.App as App
 
-start = App.simpleStart MyGenSup.startLink
+start = App.simpleStart MySup.startLink
 ```
 
 ## Link to it in an ordinary erlang app.src
 
 ```erlang
 {application, my_amazing_app,
- [{description, "An OTP application"},
-  {vsn, "0.1.0"},
-  {registered, []},
-  {mod, { bookApp@ps, []}},
-  {applications,
-   [kernel,
-    stdlib
-   ]}
- ]}.
+[{description, "An OTP application"},
+{vsn, "0.1.0"},
+{registered, []},
+{mod, { myApp@ps, []}},
+{applications,
+[kernel,
+stdlib
+]}
+]}.
 ```
 
 An end-to-end example can be found in the [demo project](https://github.com/id3as/demo-ps)
+
 
 Disclaimer
 ==
