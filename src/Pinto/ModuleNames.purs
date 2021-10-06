@@ -5,17 +5,23 @@ import Erl.ModuleName (ModuleName(..))
 pintoApp :: ModuleName
 pintoApp = ModuleName "Pinto.App"
 
-pintoGen :: ModuleName
-pintoGen = ModuleName "Pinto.Gen"
+pintoGenServer :: ModuleName
+pintoGenServer = ModuleName "Pinto.GenServer"
+
+pintoGenStatem :: ModuleName
+pintoGenStatem = ModuleName "Pinto.GenStatem"
+
+pintoMessageRouting :: ModuleName
+pintoMessageRouting = ModuleName "Pinto.MessageRouting"
 
 pintoModuleNames :: ModuleName
 pintoModuleNames = ModuleName "Pinto.ModuleNames"
 
+pintoMonitor :: ModuleName
+pintoMonitor = ModuleName "Pinto.Monitor"
+
 pintoSup :: ModuleName
 pintoSup = ModuleName "Pinto.Sup"
-
-pintoTimer :: ModuleName
-pintoTimer = ModuleName "Pinto.Timer"
 
 pintoTypes :: ModuleName
 pintoTypes = ModuleName "Pinto.Types"

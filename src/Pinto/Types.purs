@@ -1,44 +1,101 @@
 module Pinto.Types
-       ( ServerName(..)
-       , GlobalName
-       , SupervisorName
-       , StartLinkResult(..)
-       , StartChildResult(..)
-       , ChildTemplate(..)
-       , TerminateReason(..)
-       , class StartOk
-       , startOk
-       , startOkAS
-       )
-       where
+  ( TerminateReason(..)
+  , RegistryName(..)
+  , StartLinkResult
+  , NotStartedReason(..)
+  , maybeStarted
+  , maybeRunning
+  , crashIfNotStarted
+  , crashIfNotRunning
+  , startLinkResultFromPs
+  , registryInstance
+  , RegistryInstance
+  , RegistryReference(..)
+  , ExitMessage(..)
+  , ShutdownReason(..)
+  , parseShutdownReasonFFI
+  , parseTrappedExitFFI
+  , class ExportsTo
+  , export
+  ) where
 
-import Data.Maybe (Maybe(..))
+import Prelude
 import Effect (Effect)
+import Data.Either (Either(..))
+import Data.Maybe (Maybe(..))
 import Erl.Atom (Atom)
 import Erl.ModuleName (NativeModuleName)
-import Erl.Process.Raw (Pid)
+import Erl.Process.Raw (class HasPid, Pid, getPid)
 import Foreign (Foreign)
-import Prelude (Unit)
+import Partial.Unsafe (unsafePartial)
+import Unsafe.Coerce (unsafeCoerce)
 
+-- | The name of a registered process, these map to
+-- | `{local, Name}`
+-- | `{global, GlobalName}`
+-- | `{via, Module, ViaName}`
+-- | as per the docs for gen_server:start_link and similar
+data RegistryName :: Type -> Type
+data RegistryName serverType
+  = Local Atom
+  | Global Foreign
+  | Via NativeModuleName Foreign
 
-foreign import data GlobalName :: Type
+-- | A means of looking up a typed process (such as a GenServer)
+-- | that may or may not be registered
+-- |
+-- | This is typically used by the APIs provided to gain access
+-- | to the ability to invoke code within the context of a started server
+-- |
+-- | ```purescript
+-- | GenServer.call (ByName serverName) \_from a...
+-- | ```
+data RegistryReference :: Type -> Type -> Type
+data RegistryReference serverPid serverType
+  = ByPid serverPid
+  | ByName (RegistryName serverType)
 
--- | Defines the server name for a gen server, along with the 'state' that the gen server
--- | will be using internally and the 'msg' type that will be received in the handleInfo calls
--- | this will be supplied to every call to the gen server API in order
--- | to enforce type safety across calls
-data ServerName state msg = Local Atom
-                          | Global GlobalName
-                          | Via NativeModuleName Foreign
+foreign import data RegistryInstance :: Type -> Type -> Type
 
-type SupervisorName = ServerName Unit Unit
+-- | Given a `RegistryReference serverPid serverType`
+-- |
+-- | Create a `RegistryInstance serverPid serverType` that can be used
+-- | to communicate with that process directly
+registryInstance ::
+  forall serverPid serverType.
+  HasPid serverPid =>
+  RegistryReference serverPid serverType -> RegistryInstance serverPid serverType
+registryInstance (ByPid pid) = registryPidToInstance pid
 
--- | The result of invoking gen_server:start_link
-data StartLinkResult
-  = Ok Pid
-  | Ignore
-  | AlreadyStarted Pid
+registryInstance (ByName name) = registryNameToInstance name
+
+registryPidToInstance :: forall serverPid serverType. HasPid serverPid => serverPid -> RegistryInstance serverPid serverType
+registryPidToInstance serverPid = unsafeCoerce $ getPid serverPid
+
+registryNameToInstance :: forall serverPid serverType. RegistryName serverType -> RegistryInstance serverPid serverType
+registryNameToInstance (Local atom) = unsafeCoerce atom
+
+registryNameToInstance other = unsafeCoerce other
+
+data ExitMessage
+  = Exit Pid Foreign
+
+data ShutdownReason
+  = ReasonNormal
+  | ReasonShutdown (Maybe Foreign)
+  | ReasonOther Foreign
+
+foreign import parseTrappedExitFFI :: Foreign -> (Pid -> Foreign -> ExitMessage) -> Maybe ExitMessage
+
+foreign import parseShutdownReasonFFI :: Foreign -> ShutdownReason
+
+data NotStartedReason serverProcess
+  = Ignore
+  | AlreadyStarted serverProcess
   | Failed Foreign
+
+type StartLinkResult serverProcess
+  = Either (NotStartedReason serverProcess) serverProcess
 
 data TerminateReason
   = Normal
@@ -46,35 +103,31 @@ data TerminateReason
   | ShutdownWithCustom Foreign
   | Custom Foreign
 
--- | The result of invoking gen_server:start_link
-data StartChildResult
-  = ChildStarted Pid
-  | ChildStartedWithInfo Pid Foreign
-  | ChildAlreadyStarted Pid
-  | ChildAlreadyPresent
-  | ChildFailed Foreign
+maybeStarted :: forall serverProcess. StartLinkResult serverProcess -> Maybe serverProcess
+maybeStarted slr = case slr of
+  Right serverProcess -> Just serverProcess
+  _ -> Nothing
 
--- | The type used to link startSimpleChild and startTemplate together
-data ChildTemplate args = ChildTemplate (args -> Effect StartLinkResult)
+maybeRunning :: forall serverProcess. StartLinkResult serverProcess -> Maybe serverProcess
+maybeRunning slr = case slr of
+  Right serverProcess -> Just serverProcess
+  Left (AlreadyStarted serverProcess) -> Just serverProcess
+  _ -> Nothing
 
-class StartOk a where
-  startOk :: a -> Maybe Pid
-  startOkAS :: a -> Maybe Pid
+crashIfNotStarted :: forall serverProcess. StartLinkResult serverProcess -> serverProcess
+crashIfNotStarted =
+  unsafePartial \slr -> case maybeStarted slr of
+    Just serverProcess -> serverProcess
 
-instance startLinkResultOk :: StartOk StartLinkResult where
-  startOk (Ok p) = Just p
-  startOk _ = Nothing
+crashIfNotRunning :: forall serverProcess. StartLinkResult serverProcess -> serverProcess
+crashIfNotRunning =
+  unsafePartial \slr -> case maybeRunning slr of
+    Just serverProcess -> serverProcess
 
-  startOkAS (Ok p) = Just p
-  startOkAS (AlreadyStarted p) = Just p
-  startOkAS _ = Nothing
+startLinkResultFromPs :: forall a. StartLinkResult a -> Foreign
+startLinkResultFromPs = start_link_result_from_ps
 
-instance startChildResultOk :: StartOk StartChildResult where
-  startOk (ChildStarted p) = Just p
-  startOk (ChildStartedWithInfo p _) = Just p
-  startOk _ = Nothing
+foreign import start_link_result_from_ps :: forall a. StartLinkResult a -> Foreign
 
-  startOkAS (ChildStarted p) = Just p
-  startOkAS (ChildStartedWithInfo p _) = Just p
-  startOkAS (ChildAlreadyStarted p) = Just p
-  startOkAS _ = Nothing
+class ExportsTo a b where
+  export :: a -> b

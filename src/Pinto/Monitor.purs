@@ -1,49 +1,95 @@
-module Pinto.Monitor ( pid
-                     , process
-                     , demonitor
-                     , MonitorMsg(..)
-                     , MonitorType(..)
-                     , MonitorRef
-                     , MonitorObject
-                     , MonitorInfo
+-- | This module wraps erlang:monitor in `Pinto.MessageRouting` so that sensible message structures can be sent
+-- | back to the monitoring process
+module Pinto.Monitor
+  ( monitor
+  , monitorTo
+  , demonitor
+  , MonitorMsg(..)
+  , MonitorType(..)
+  , MonitorRef
+  , MonitorObject
+  , MonitorInfo
   ) where
 
 import Prelude
-import Foreign (Foreign)
-import Erl.Process.Raw (Pid)
-import Erl.Process (Process, runProcess)
-import Pinto.MessageRouting as MR
 import Effect (Effect)
+import Effect.Class (class MonadEffect, liftEffect)
+import Foreign (Foreign)
+import Pinto.MessageRouting as MR
+import Erl.Process.Raw (Pid, class HasPid, getPid)
+import Erl.Process (class HasSelf, send, self, class HasProcess, getProcess)
 
-foreign import startMonitor :: Pid -> Effect MonitorRef
-foreign import stopMonitor :: MonitorRef -> Effect Unit
-foreign import handleMonitorMessage :: forall msg. (MR.RouterRef MonitorRef -> MonitorType -> MonitorObject -> MonitorInfo -> MonitorMsg) -> (MonitorMsg -> Effect Unit) -> msg -> Effect Unit
-
--- Doing this lazy for now, stand-in types
--- If you find yourself needing this data then the 'correct' thing to do
--- will be to create real types for them and pass in functions  for their construction to the Erlang code 
+-- | Reference to a monitor, used to stop the monitor once it is started
 foreign import data MonitorRef :: Type
-type MonitorObject = Foreign
-type MonitorInfo =  Foreign
 
-data MonitorType = Process | Port
+-- | This is probably a Pid, but until it is needed it will be Foreign
+type MonitorObject
+  = Foreign
 
-data MonitorMsg = Down (MR.RouterRef MonitorRef) MonitorType MonitorObject MonitorInfo
+-- | The 'reason' for the monitor being invoked, if this needs unpacking
+-- | then FFI will need to be written
+type MonitorInfo
+  = Foreign
 
-pid :: Pid -> (MonitorMsg -> Effect Unit) -> Effect (MR.RouterRef MonitorRef)
-pid p cb = 
-  MR.startRouter (startMonitor p) stopMonitor $ (\msg -> do
-                                                      _ <- handleMonitorMessage Down cb msg
-                                                      _ <- MR.stopRouterFromCallback
-                                                      pure unit)
-                                                      
-process :: forall msg. Process msg -> (MonitorMsg -> Effect Unit) -> Effect (MR.RouterRef MonitorRef)
-process p cb = 
-  MR.startRouter (startMonitor $ runProcess p) stopMonitor $ (\msg -> do
-                                                      _ <- handleMonitorMessage Down cb msg
-                                                      _ <- MR.stopRouterFromCallback
-                                                      pure unit)
+-- | The type of monitor this message is being sent on behalf
+data MonitorType
+  = Process
+  | Port
 
+-- | Reference to a monitor, used to stop the monitor once it is started
+data MonitorMsg
+  = Down (MR.RouterRef MonitorRef) MonitorType MonitorObject MonitorInfo
+
+-- | Given something that has a pid (A GenServer, a Process.. or just a Pid), attach a monitor by using
+-- | erlang:monitor on the underlying pid, a message will be sent to the current process, lifted into the
+-- | constructor `f` provided
+monitor ::
+  forall msg process m.
+  HasPid process =>
+  MonadEffect m =>
+  HasSelf m msg =>
+  process ->
+  (MonitorMsg -> msg) ->
+  m (MR.RouterRef MonitorRef)
+monitor process f = do
+  me <- self
+  liftEffect $ MR.startRouter (startMonitor $ getPid process) stopMonitor (handleMessage me)
+  where
+  handleMessage me msg = do
+    _ <-  handleMonitorMessage Down (send me <<< f) msg
+    _ <- MR.stopRouterFromCallback
+    pure unit
+
+-- | Given something that has a pid (A GenServer, a Process.. or just a Pid), attach a monitor by using
+-- | erlang:monitor on the underlying pid, a message will be sent to the current process, lifted into the
+-- | constructor `f` provided
+monitorTo ::
+  forall msg process target.
+  HasPid process =>
+  HasProcess msg target =>
+  process ->
+  target ->
+  (MonitorMsg -> msg) ->
+  Effect (MR.RouterRef MonitorRef)
+monitorTo process target f = do
+  let p = getProcess target
+  MR.startRouter (startMonitor $ getPid process) stopMonitor (handleMessage p)
+  where
+  handleMessage target msg = do
+    _ <-  handleMonitorMessage Down (send target <<< f) msg
+    _ <- MR.stopRouterFromCallback
+    pure unit
+
+-- | Stops a monitor started with Monitor.monitor, using erlang:demonitor and subject to the same restrictions/caveats
 demonitor :: MR.RouterRef MonitorRef -> Effect Unit
 demonitor = MR.stopRouter
 
+foreign import startMonitor :: Pid -> Effect MonitorRef
+foreign import stopMonitor :: MonitorRef -> Effect Unit
+
+foreign import handleMonitorMessage ::
+  forall msg.
+  (MR.RouterRef MonitorRef -> MonitorType -> MonitorObject -> MonitorInfo -> MonitorMsg) ->
+  (MonitorMsg -> Effect Unit) ->
+  msg ->
+  Effect Unit
