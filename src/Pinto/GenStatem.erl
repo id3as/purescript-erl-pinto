@@ -8,7 +8,7 @@
         , selfFFI/0
         , callFFI/2
         , castFFI/2
-        , mkReply/1
+        , reply/1
         , parseEventFFI/3
         ]).
 
@@ -19,7 +19,7 @@
 %%% ----------------------------------------------------------------------------
 %%% Directly Exported FFI
 %%% ----------------------------------------------------------------------------
-mkReply(To) ->
+reply(To) ->
   fun(Reply) ->
       {reply, To, Reply}
   end.

@@ -44,10 +44,10 @@ module Pinto.GenStatem
   , Spec
   , From
   , Reply
-  , mkReply
+  , reply
   , startLink
   , procLibStartLink
-  , mkSpec
+  , defaultSpec
   , call
   , cast
   , module Exports
@@ -425,7 +425,7 @@ foreign import selfFFI ::
   forall info internal timerName timerContent commonData stateId state.
   Effect (StatemPid info internal timerName timerContent commonData stateId state)
 
-foreign import mkReply :: forall reply. From reply -> reply -> Reply
+foreign import reply :: forall reply. From reply -> reply -> Reply
 
 foreign import callFFI ::
   forall reply info internal timerName timerContent commonData stateId state.
@@ -458,13 +458,13 @@ procLibStartLink args@{ name: maybeName } = procLibStartLinkFFI maybeName (nativ
 --   HasStateId stateId state =>
 --   Spec info internal timerName timerContent commonData stateId state -> Effect Unit
 -- enterLoop = enterLoopFFI (nativeModuleName pintoGenStatem)
-mkSpec ::
+defaultSpec ::
   forall info internal timerName timerContent commonData stateId state.
   HasStateId stateId state =>
   InitFn info internal timerName timerContent commonData stateId state ->
   HandleEventFn info internal timerName timerContent commonData stateId state ->
   Spec info internal timerName timerContent commonData stateId state
-mkSpec initFn handleEventFn =
+defaultSpec initFn handleEventFn =
   { name: Nothing
   , trapExits: Nothing
   , init: initFn

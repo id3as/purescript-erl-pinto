@@ -127,7 +127,7 @@ name = Local $ atom "doorLock"
 
 startLink :: Effect DoorLockPid
 startLink = do
-  DoorLockPid <$> crashIfNotStarted <$> (Statem.startLink $ ((Statem.mkSpec init handleEvent) { name = Just name, handleEnter = Just handleEnter }))
+  DoorLockPid <$> crashIfNotStarted <$> (Statem.startLink $ ((Statem.defaultSpec init handleEvent) { name = Just name, handleEnter = Just handleEnter }))
   where
   init =
     let
@@ -202,16 +202,16 @@ unlock code = Statem.call (ByName name) impl
   impl from (Locked stateData) commonData@{ code: actualCode } =
     if actualCode == code then do
       let
-        actions = Statem.newActions # Statem.addReply (Statem.mkReply from UnlockSuccess)
+        actions = Statem.newActions # Statem.addReply (Statem.reply from UnlockSuccess)
       pure $ EventNextStateWithActions (UnlockedClosed { failedAttemptsBeforeUnlock: stateData.failedAttempts }) commonData actions
     else do
       let
-        actions = Statem.newActions # Statem.addReply (Statem.mkReply from InvalidCode)
+        actions = Statem.newActions # Statem.addReply (Statem.reply from InvalidCode)
       pure $ EventNextStateWithActions (Locked (stateData { failedAttempts = stateData.failedAttempts + 1 })) commonData actions
 
   impl from _invalidState _commonData = do
     let
-      actions = Statem.newActions # Statem.addReply (Statem.mkReply from InvalidState)
+      actions = Statem.newActions # Statem.addReply (Statem.reply from InvalidState)
     pure $ EventKeepStateAndDataWithActions actions
 
 -- -----------------------------------------------------------------------------
@@ -232,12 +232,12 @@ open = Statem.call (ByName name) impl
   where
   impl from (UnlockedClosed { failedAttemptsBeforeUnlock }) commonData =
     let
-      actions = Statem.newActions # Statem.addReply (Statem.mkReply from OpenSuccess)
+      actions = Statem.newActions # Statem.addReply (Statem.reply from OpenSuccess)
     in
       pure $ EventNextStateWithActions (UnlockedOpen { failedAttemptsBeforeUnlock }) commonData actions
 
   impl from _invalidState _commonData =
     let
-      actions = Statem.newActions # Statem.addReply (Statem.mkReply from OpenFailedInvalidState)
+      actions = Statem.newActions # Statem.addReply (Statem.reply from OpenFailedInvalidState)
     in
       pure $ EventKeepStateAndDataWithActions actions
