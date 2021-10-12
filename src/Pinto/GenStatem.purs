@@ -82,7 +82,7 @@ import Foreign (Foreign)
 import Partial.Unsafe (unsafeCrashWith)
 import Pinto.ModuleNames (pintoGenStatem)
 import Pinto.Types (ShutdownReason(..), ExitMessage(..)) as TypeExports
-import Pinto.Types (class ExportsTo, ExitMessage(..), RegistryInstance, RegistryName, RegistryReference, ShutdownReason(..), StartLinkResult, export, parseShutdownReasonFFI, parseTrappedExitFFI, registryInstance)
+import Pinto.Types (class ExportsTo, ExitMessage(..), RegistryInstance, RegistryName, RegistryReference, ShutdownReason, StartLinkResult, export, parseShutdownReasonFFI, parseTrappedExitFFI, registryInstance)
 import Unsafe.Coerce (unsafeCoerce)
 
 -- -----------------------------------------------------------------------------
@@ -145,7 +145,7 @@ instance supportsNewActionsInitActionsBuilder :: SupportsNewActions (InitActions
   newActions = InitActionsBuilder nil
 
 instance supportsReplyInitActionsBuilder :: SupportsReply (InitActionsBuilder info internal timerName timerContent) where
-  addReply reply (InitActionsBuilder actions) = InitActionsBuilder $ (CommonAction $ ReplyAction reply) : actions
+  addReply reply' (InitActionsBuilder actions) = InitActionsBuilder $ (CommonAction $ ReplyAction reply') : actions
 
 instance supportsAddTimeoutInitActionsBuilder :: SupportsAddTimeout (InitActionsBuilder info internal timerName) timerContent where
   addTimeoutAction action (InitActionsBuilder actions) = InitActionsBuilder $ (CommonAction $ TimeoutAction action) : actions
@@ -186,7 +186,7 @@ instance supportsNewActionsStateEnterActionsBuilder :: SupportsNewActions (State
   newActions = StateEnterActionsBuilder nil
 
 instance supportsReplyStateEnterActionsBuilder :: SupportsReply (StateEnterActionsBuilder timerName timerContent) where
-  addReply reply (StateEnterActionsBuilder actions) = StateEnterActionsBuilder $ (ReplyAction reply) : actions
+  addReply reply' (StateEnterActionsBuilder actions) = StateEnterActionsBuilder $ (ReplyAction reply') : actions
 
 instance supportsAddTimeoutStateEnterActionsBuilder :: SupportsAddTimeout (StateEnterActionsBuilder timerName) timerContent where
   addTimeoutAction action (StateEnterActionsBuilder actions) = StateEnterActionsBuilder $ (TimeoutAction action) : actions
@@ -224,7 +224,7 @@ instance supportsNewActionsEventActionsBuilder :: SupportsNewActions (EventActio
   newActions = EventActionsBuilder nil
 
 instance supportsReplyEventActionsBuilder :: SupportsReply (EventActionsBuilder info internal timerName timerContent) where
-  addReply reply (EventActionsBuilder actions) = EventActionsBuilder $ (CommonAction (ReplyAction reply)) : actions
+  addReply reply' (EventActionsBuilder actions) = EventActionsBuilder $ (CommonAction (ReplyAction reply')) : actions
 
 instance supportsNextEventEventActionsBuilder :: SupportsNextEvent (EventActionsBuilder info internal timerName timerContent) (Event info internal timerName timerContent) where
   addNextEvent event (EventActionsBuilder actions) = EventActionsBuilder $ (NextEvent event) : actions
@@ -534,7 +534,7 @@ init =
   , handleEnter: maybeHandleEnter
   , handleEvent
   , trapExits
-  , terminate
+  , terminate: terminate'
   , getStateId
   } -> do
     _ <- case trapExits of
@@ -552,7 +552,7 @@ init =
           , commonData
           , handleEnter: fromMaybe (\_ _ _ _ -> pure StateEnterKeepData) maybeHandleEnter
           , handleEvent
-          , terminate
+          , terminate: terminate'
           , trapExits
           , context: innerContext
           , getStateId: getStateId
@@ -568,12 +568,11 @@ init =
 runEnterState ::
   forall info internal timerName timerContent commonData stateId state.
   EnterFn info internal timerName timerContent commonData stateId state ->
-  (state -> stateId) ->
   stateId ->
   stateId ->
   OuterData info internal timerName timerContent commonData stateId state ->
   Effect (OuterStateEnterResult info internal timerName timerContent commonData stateId state)
-runEnterState handleEnter getStateId oldStateId newStateId (OuterData currentData@{ state, commonData, context }) = do
+runEnterState handleEnter oldStateId newStateId (OuterData currentData@{ state, commonData, context }) = do
   let
     (StateEnterT stateT) = handleEnter oldStateId newStateId state commonData
   result <- StateT.runStateT stateT { context, changed: false }
@@ -607,7 +606,7 @@ handle_event =
             fromMaybe' (\_ -> assumeExpectedMessage nativeMsg) $ trapExits <*> (parseTrappedExitFFI nativeMsg Exit)
         )
     case parseEventFFI t parseTe e of
-      HandleEventEnter oldStateId -> export <$> runEnterState handleEnter getStateId oldStateId stateId dat
+      HandleEventEnter oldStateId -> export <$> runEnterState handleEnter oldStateId stateId dat
       HandleEventCall from f -> export <$> runEventFn getStateId (f from) dat
       HandleEventCast f -> export <$> runEventFn getStateId f dat
       HandleEvent ev -> export <$> runEventFn getStateId (handleEvent ev) dat
@@ -619,11 +618,11 @@ terminate ::
   forall info internal timerName timerContent commonData stateId state.
   EffectFn3 Foreign stateId (OuterData info internal timerName timerContent commonData stateId state) Atom
 terminate =
-  mkEffectFn3 \reason stateId dat@(OuterData { getStateId, terminate: maybeTerminate, state, commonData, context }) -> do
+  mkEffectFn3 \reason _stateId (OuterData { terminate: maybeTerminate, state, commonData, context }) -> do
     case maybeTerminate of
       Just f -> do
         let (EventT stateT) = f (parseShutdownReasonFFI reason) state commonData
-        result <- StateT.runStateT stateT { context, changed: false }
+        _ <- StateT.runStateT stateT { context, changed: false }
         pure unit
       Nothing -> pure unit
     pure $ atom "ok"
@@ -697,7 +696,7 @@ instance exportCommonAction :: ExportsTo (CommonAction a b) NativeAction where
     Hibernate -> unsafeCoerce $ atom "hibernate"
     TimeoutAction timeout -> export timeout
     NamedTimeoutAction _named -> unsafeCrashWith "Not implemented"
-    ReplyAction reply -> unsafeCoerce reply
+    ReplyAction reply' -> unsafeCoerce reply'
 
 instance exportTimeoutAction :: ExportsTo (TimeoutAction a) NativeAction where
   export = case _ of

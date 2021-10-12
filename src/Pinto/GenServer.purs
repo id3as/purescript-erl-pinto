@@ -47,7 +47,6 @@ module Pinto.GenServer
 
 import Prelude
 import Control.Monad.Reader (ReaderT, runReaderT)
-import Control.Monad.Reader as Reader
 import Data.Maybe (Maybe(..), fromJust, fromMaybe')
 import Effect (Effect)
 import Effect.Class (class MonadEffect)
@@ -224,7 +223,7 @@ type ServerInstance cont stop msg state
 -- | Given a RegistryName with a valid (ServerType), get hold of a typed Process `msg` to which messages
 -- | can be sent (arriving in the handleInfo callback)
 whereIs :: forall cont stop msg state. RegistryName (ServerType cont stop msg state) -> Effect (Maybe (Process msg))
-whereIs name =
+whereIs _name =
   pure Nothing -- TODO: implement
 
 -- | The configuration passed into startLink in order to start a gen server
@@ -264,13 +263,13 @@ defaultSpec initFn =
 -- |   init = pure $ InitOk {}
 -- | ```
 startLink :: forall cont stop msg state. (ServerSpec cont stop msg state) -> Effect (StartLinkResult (ServerPid cont stop msg state))
-startLink { name: maybeName, init: initFn, handleInfo, handleContinue, terminate, trapExits } = startLinkFFI maybeName (nativeModuleName pintoGenServer) initEffect
+startLink { name: maybeName, init: initFn, handleInfo, handleContinue, terminate: terminate', trapExits } = startLinkFFI maybeName (nativeModuleName pintoGenServer) initEffect
   where
   context =
     Context
       { handleInfo
       , handleContinue
-      , terminate
+      , terminate: terminate'
       , trapExits
       }
 

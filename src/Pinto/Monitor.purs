@@ -75,8 +75,8 @@ monitorTo process target f = do
   let p = getProcess target
   MR.startRouter (startMonitor $ getPid process) stopMonitor (handleMessage p)
   where
-  handleMessage target msg = do
-    _ <-  handleMonitorMessage Down (send target <<< f) msg
+  handleMessage target' msg = do
+    _ <-  handleMonitorMessage Down (send target' <<< f) msg
     _ <- MR.stopRouterFromCallback
     pure unit
 

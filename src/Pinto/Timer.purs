@@ -13,7 +13,7 @@ module Pinto.Timer
 import Prelude
 import Effect (Effect)
 import Effect.Class (liftEffect, class MonadEffect)
-import Data.Time.Duration (Milliseconds(..))
+import Data.Time.Duration (Milliseconds)
 import Erl.Process (class HasProcess, Process, getProcess, class HasSelf, self)
 
 foreign import data TimerRef :: Type
