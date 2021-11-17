@@ -87,7 +87,6 @@ derive newtype instance monadResultT :: Monad (ResultT cont stop msg state)
 derive newtype instance monadEffectResultT :: MonadEffect (ResultT cont stop msg state)
 instance messageTypeResult :: ReceivesMessage (ResultT cont stop msg state) msg
 
-
 -- | An action to be returned to OTP
 -- | See {shutdown, reason}, {timeout...} etc in the gen_server documentation
 -- | This should be constructed and returned with the xxWithAction methods inside GenServer callbacks
@@ -300,7 +299,6 @@ newtype Context cont stop msg state
   , trapExits :: Maybe (ExitMessage -> msg)
   }
 
-
 foreign import callFFI ::
   forall reply cont stop msg state.
   ServerInstance cont stop msg state ->
@@ -314,7 +312,10 @@ call ::
   Effect reply
 call r callFn = callFFI (registryInstance r) callFn
 
-foreign import replyTo :: forall reply. From reply -> reply -> Effect Unit
+foreign import replyToFFI :: forall reply. From reply -> reply -> Effect Unit
+
+replyTo :: forall cont stop msg state reply. From reply -> reply -> ResultT cont stop msg state Unit
+replyTo from reply = Lift.liftEffect $ replyToFFI from reply
 
 foreign import castFFI ::
   forall cont stop msg state.
@@ -339,7 +340,6 @@ stop ::
   ServerRef cont stop msg state ->
   Effect Unit
 stop r = stopFFI $ registryInstance r
-
 
 foreign import startLinkFFI ::
   forall cont stop msg state.
@@ -432,7 +432,7 @@ instance exportCallResult :: ExportsTo (CallResult reply cont stop outerState) (
     CallResult (Just r) (Just (Continue cont)) newState -> unsafeCoerce $ tuple4 (atom "reply") r newState $ tuple2 (atom "continue") cont
     CallResult (Just r) (Just StopNormal) newState -> unsafeCoerce $ tuple4 (atom "stop") (atom "normal") r newState
     CallResult (Just r) (Just (StopOther reason)) newState -> unsafeCoerce $ tuple4 (atom "stop") reason r newState
-    CallResult Nothing Nothing newState -> unsafeCoerce $ tuple2 (atom "reply") newState
+    CallResult Nothing Nothing newState -> unsafeCoerce $ tuple2 (atom "noreply") newState
     CallResult Nothing (Just (Timeout timeout)) newState -> unsafeCoerce $ tuple3 (atom "noreply") newState timeout
     CallResult Nothing (Just Hibernate) newState -> unsafeCoerce $ tuple3 (atom "noreply") newState (atom "hibernate")
     CallResult Nothing (Just (Continue cont)) newState -> unsafeCoerce $ tuple3 (atom "noreply") newState $ tuple2 (atom "continue") cont
