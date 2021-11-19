@@ -43,11 +43,16 @@ module Pinto.GenServer
   , NativeInitResult
   , NativeCallResult
   , NativeReturnResult
+  -- these are only exported to get uncurried versions in the erlang
+  , exportInitResult
+  , exportCallResult
+  , exportReturnResult
   ) where
 
 import Prelude
 import Control.Monad.Reader (ReaderT, runReaderT)
-import Data.Maybe (Maybe(..), fromJust, fromMaybe')
+import Data.Function.Uncurried (mkFn2, runFn2)
+import Data.Maybe (Maybe(..), fromJust, maybe)
 import Effect (Effect)
 import Effect.Class (class MonadEffect)
 import Effect.Class (liftEffect) as Lift
@@ -58,10 +63,10 @@ import Erl.Data.Tuple (tuple2, tuple3, tuple4)
 import Erl.ModuleName (NativeModuleName, nativeModuleName)
 import Erl.Process (class HasProcess, getProcess, class HasSelf, class ReceivesMessage, Process)
 import Erl.Process.Raw (class HasPid, setProcessFlagTrapExit)
-import Foreign (Foreign)
+import Foreign (Foreign, unsafeFromForeign)
 import Partial.Unsafe (unsafePartial)
 import Pinto.ModuleNames (pintoGenServer)
-import Pinto.Types (class ExportsTo, ExitMessage(..), RegistryInstance, RegistryName, RegistryReference, ShutdownReason, StartLinkResult, export, parseShutdownReasonFFI, parseTrappedExitFFI, registryInstance)
+import Pinto.Types (ExitMessage(..), RegistryInstance, RegistryName, RegistryReference, ShutdownReason, StartLinkResult, parseShutdownReasonFFI, parseTrappedExitFFI, registryInstance)
 import Pinto.Types (ShutdownReason(..), ExitMessage(..)) as ReExports
 import Unsafe.Coerce (unsafeCoerce)
 
@@ -86,7 +91,6 @@ derive newtype instance bindResultT :: Bind (ResultT cont stop msg state)
 derive newtype instance monadResultT :: Monad (ResultT cont stop msg state)
 derive newtype instance monadEffectResultT :: MonadEffect (ResultT cont stop msg state)
 instance messageTypeResult :: ReceivesMessage (ResultT cont stop msg state) msg
-
 
 -- | An action to be returned to OTP
 -- | See {shutdown, reason}, {timeout...} etc in the gen_server documentation
@@ -300,7 +304,6 @@ newtype Context cont stop msg state
   , trapExits :: Maybe (ExitMessage -> msg)
   }
 
-
 foreign import callFFI ::
   forall reply cont stop msg state.
   ServerInstance cont stop msg state ->
@@ -340,7 +343,6 @@ stop ::
   Effect Unit
 stop r = stopFFI $ registryInstance r
 
-
 foreign import startLinkFFI ::
   forall cont stop msg state.
   Maybe (RegistryName (ServerType cont stop msg state)) ->
@@ -364,35 +366,40 @@ init =
   mkEffectFn1 \args -> do
     let
       impl = unsafePartial $ fromJust $ head args
-    export <$> impl
+    exportInitResult <$> impl
 
 handle_call :: forall reply cont stop msg state. EffectFn3 (CallFn reply cont stop msg state) (From reply) (OuterState cont stop msg state) (NativeCallResult reply cont stop (OuterState cont stop msg state))
 handle_call =
   mkEffectFn3 \f from _state@{ innerState, context } -> do
     result <- (runReaderT $ case f from innerState of ResultT inner -> inner) context
-    pure $ export (mkOuterState context <$> result)
+    pure $ exportCallResult (mkOuterState context <$> result)
 
 handle_cast :: forall cont stop msg state. EffectFn2 (CastFn cont stop msg state) (OuterState cont stop msg state) (NativeReturnResult cont stop (OuterState cont stop msg state))
 handle_cast =
   mkEffectFn2 \f _state@{ innerState, context } -> do
     result <- (runReaderT $ case f innerState of ResultT inner -> inner) context
-    pure $ export (mkOuterState context <$> result)
+    pure $ exportReturnResult (mkOuterState context <$> result)
 
 handle_info :: forall cont stop msg state. EffectFn2 Foreign (OuterState cont stop msg state) (NativeReturnResult cont stop (OuterState cont stop msg state))
 handle_info =
   mkEffectFn2 \nativeMsg state@{ innerState, context: context@(Context { handleInfo: maybeHandleInfo, trapExits }) } ->
-    let
-      exitMessage = parseTrappedExitFFI nativeMsg Exit
-
-      msg :: msg
-      msg = fromMaybe' (\_ -> assumeExpectedMessage nativeMsg) $ trapExits <*> exitMessage
-    in
-      export
-        <$> case maybeHandleInfo of
-            Just f -> do
-              result <- (runReaderT $ case f msg innerState of ResultT inner -> inner) context
-              pure $ (mkOuterState context <$> result)
-            Nothing -> pure $ ReturnResult Nothing state
+    exportReturnResult
+      <$> case maybeHandleInfo of
+          Just f -> do
+            let
+              exitMessage = parseTrappedExitFFI nativeMsg Exit
+              processMsg =
+                mkFn2
+                  ( \f msg -> do
+                      ReturnResult mAction state <- (runReaderT $ case f msg innerState of ResultT inner -> inner) context
+                      -- pure $ (mkOuterState context <$> result)
+                      pure $ ReturnResult mAction (mkOuterState context state)
+                  )
+              msg :: msg
+              msg = unsafeFromForeign nativeMsg
+            maybe (runFn2 processMsg f msg) (\_ -> maybe (pure $ ReturnResult Nothing state) (\e -> runFn2 processMsg f e) (trapExits <*> exitMessage)) exitMessage
+          Nothing ->
+            pure $ ReturnResult Nothing state
 
 terminate :: forall cont stop msg state. EffectFn2 Foreign (OuterState cont stop msg state) Atom
 terminate =
@@ -402,51 +409,48 @@ terminate =
       Nothing -> pure unit
     pure $ atom "ok"
 
-assumeExpectedMessage :: forall msg. Foreign -> msg
-assumeExpectedMessage = unsafeCoerce
-
 handle_continue :: forall cont stop msg state. EffectFn2 cont (OuterState cont stop msg state) (NativeReturnResult cont stop (OuterState cont stop msg state))
 handle_continue =
   mkEffectFn2 \msg state@{ innerState, context: context@(Context { handleContinue: maybeHandleContinue }) } ->
-    export
+    exportReturnResult
       <$> case maybeHandleContinue of
           Just f -> do
             result <- (runReaderT $ case f msg innerState of ResultT inner -> inner) context
             pure $ (mkOuterState context <$> result)
           Nothing -> pure $ ReturnResult Nothing state
 
-instance exportInitResult :: ExportsTo (InitResult cont state) (NativeInitResult state) where
-  export = case _ of
-    InitStop err -> unsafeCoerce $ tuple2 (atom "stop") err
-    InitIgnore -> unsafeCoerce $ atom "ignore"
-    InitOk state -> unsafeCoerce $ tuple2 (atom "ok") state
-    InitOkTimeout state timeout -> unsafeCoerce $ tuple3 (atom "timeout") state timeout
-    InitOkContinue state cont -> unsafeCoerce $ tuple3 (atom "ok") state $ tuple2 (atom "continue") cont
-    InitOkHibernate state -> unsafeCoerce $ tuple3 (atom "ok") state (atom "hibernate")
+exportInitResult :: forall cont state. InitResult cont state -> NativeInitResult state
+exportInitResult = case _ of
+  InitStop err -> unsafeCoerce $ tuple2 (atom "stop") err
+  InitIgnore -> unsafeCoerce $ atom "ignore"
+  InitOk state -> unsafeCoerce $ tuple2 (atom "ok") state
+  InitOkTimeout state timeout -> unsafeCoerce $ tuple3 (atom "timeout") state timeout
+  InitOkContinue state cont -> unsafeCoerce $ tuple3 (atom "ok") state $ tuple2 (atom "continue") cont
+  InitOkHibernate state -> unsafeCoerce $ tuple3 (atom "ok") state (atom "hibernate")
 
-instance exportCallResult :: ExportsTo (CallResult reply cont stop outerState) (NativeCallResult reply cont stop outerState) where
-  export = case _ of
-    CallResult (Just r) Nothing newState -> unsafeCoerce $ tuple3 (atom "reply") r newState
-    CallResult (Just r) (Just (Timeout timeout)) newState -> unsafeCoerce $ tuple4 (atom "reply") r newState timeout
-    CallResult (Just r) (Just Hibernate) newState -> unsafeCoerce $ tuple4 (atom "reply") r newState (atom "hibernate")
-    CallResult (Just r) (Just (Continue cont)) newState -> unsafeCoerce $ tuple4 (atom "reply") r newState $ tuple2 (atom "continue") cont
-    CallResult (Just r) (Just StopNormal) newState -> unsafeCoerce $ tuple4 (atom "stop") (atom "normal") r newState
-    CallResult (Just r) (Just (StopOther reason)) newState -> unsafeCoerce $ tuple4 (atom "stop") reason r newState
-    CallResult Nothing Nothing newState -> unsafeCoerce $ tuple2 (atom "reply") newState
-    CallResult Nothing (Just (Timeout timeout)) newState -> unsafeCoerce $ tuple3 (atom "noreply") newState timeout
-    CallResult Nothing (Just Hibernate) newState -> unsafeCoerce $ tuple3 (atom "noreply") newState (atom "hibernate")
-    CallResult Nothing (Just (Continue cont)) newState -> unsafeCoerce $ tuple3 (atom "noreply") newState $ tuple2 (atom "continue") cont
-    CallResult Nothing (Just StopNormal) newState -> unsafeCoerce $ tuple3 (atom "stop") (atom "normal") newState
-    CallResult Nothing (Just (StopOther reason)) newState -> unsafeCoerce $ tuple3 (atom "stop") reason newState
+exportCallResult :: forall reply cont stop outerState. CallResult reply cont stop outerState -> NativeCallResult reply cont stop outerState
+exportCallResult = case _ of
+  CallResult (Just r) Nothing newState -> unsafeCoerce $ tuple3 (atom "reply") r newState
+  CallResult (Just r) (Just (Timeout timeout)) newState -> unsafeCoerce $ tuple4 (atom "reply") r newState timeout
+  CallResult (Just r) (Just Hibernate) newState -> unsafeCoerce $ tuple4 (atom "reply") r newState (atom "hibernate")
+  CallResult (Just r) (Just (Continue cont)) newState -> unsafeCoerce $ tuple4 (atom "reply") r newState $ tuple2 (atom "continue") cont
+  CallResult (Just r) (Just StopNormal) newState -> unsafeCoerce $ tuple4 (atom "stop") (atom "normal") r newState
+  CallResult (Just r) (Just (StopOther reason)) newState -> unsafeCoerce $ tuple4 (atom "stop") reason r newState
+  CallResult Nothing Nothing newState -> unsafeCoerce $ tuple2 (atom "noreply") newState
+  CallResult Nothing (Just (Timeout timeout)) newState -> unsafeCoerce $ tuple3 (atom "noreply") newState timeout
+  CallResult Nothing (Just Hibernate) newState -> unsafeCoerce $ tuple3 (atom "noreply") newState (atom "hibernate")
+  CallResult Nothing (Just (Continue cont)) newState -> unsafeCoerce $ tuple3 (atom "noreply") newState $ tuple2 (atom "continue") cont
+  CallResult Nothing (Just StopNormal) newState -> unsafeCoerce $ tuple3 (atom "stop") (atom "normal") newState
+  CallResult Nothing (Just (StopOther reason)) newState -> unsafeCoerce $ tuple3 (atom "stop") reason newState
 
-instance exportReturnResult :: ExportsTo (ReturnResult cont stop outerState) (NativeReturnResult cont stop outerState) where
-  export = case _ of
-    ReturnResult Nothing newState -> unsafeCoerce $ tuple2 (atom "noreply") newState
-    ReturnResult (Just (Timeout timeout)) newState -> unsafeCoerce $ tuple3 (atom "noreply") newState timeout
-    ReturnResult (Just Hibernate) newState -> unsafeCoerce $ tuple3 (atom "noreply") newState $ atom "hibernate"
-    ReturnResult (Just (Continue cont)) newState -> unsafeCoerce $ tuple3 (atom "noreply") newState $ tuple2 (atom "continue") cont
-    ReturnResult (Just StopNormal) newState -> unsafeCoerce $ tuple3 (atom "stop") (atom "normal") newState
-    ReturnResult (Just (StopOther reason)) newState -> unsafeCoerce $ tuple3 (atom "stop") reason newState
+exportReturnResult :: forall cont stop outerState. ReturnResult cont stop outerState -> NativeReturnResult cont stop outerState
+exportReturnResult = case _ of
+  ReturnResult Nothing newState -> unsafeCoerce $ tuple2 (atom "noreply") newState
+  ReturnResult (Just (Timeout timeout)) newState -> unsafeCoerce $ tuple3 (atom "noreply") newState timeout
+  ReturnResult (Just Hibernate) newState -> unsafeCoerce $ tuple3 (atom "noreply") newState $ atom "hibernate"
+  ReturnResult (Just (Continue cont)) newState -> unsafeCoerce $ tuple3 (atom "noreply") newState $ tuple2 (atom "continue") cont
+  ReturnResult (Just StopNormal) newState -> unsafeCoerce $ tuple3 (atom "stop") (atom "normal") newState
+  ReturnResult (Just (StopOther reason)) newState -> unsafeCoerce $ tuple3 (atom "stop") reason newState
 
 foreign import data NativeInitResult :: Type -> Type
 
