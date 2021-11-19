@@ -422,38 +422,38 @@ handle_continue =
             pure $ (mkOuterState context <$> result)
           Nothing -> pure $ ReturnResult Nothing state
 
-instance exportInitResult :: ExportsTo (InitResult cont state) (NativeInitResult state) where
-  export = case _ of
-    InitStop err -> unsafeCoerce $ tuple2 (atom "stop") err
-    InitIgnore -> unsafeCoerce $ atom "ignore"
-    InitOk state -> unsafeCoerce $ tuple2 (atom "ok") state
-    InitOkTimeout state timeout -> unsafeCoerce $ tuple3 (atom "timeout") state timeout
-    InitOkContinue state cont -> unsafeCoerce $ tuple3 (atom "ok") state $ tuple2 (atom "continue") cont
-    InitOkHibernate state -> unsafeCoerce $ tuple3 (atom "ok") state (atom "hibernate")
+exportInitResult :: forall cont state. InitResult cont state -> NativeInitResult state
+exportInitResult = case _ of
+  InitStop err -> unsafeCoerce $ tuple2 (atom "stop") err
+  InitIgnore -> unsafeCoerce $ atom "ignore"
+  InitOk state -> unsafeCoerce $ tuple2 (atom "ok") state
+  InitOkTimeout state timeout -> unsafeCoerce $ tuple3 (atom "timeout") state timeout
+  InitOkContinue state cont -> unsafeCoerce $ tuple3 (atom "ok") state $ tuple2 (atom "continue") cont
+  InitOkHibernate state -> unsafeCoerce $ tuple3 (atom "ok") state (atom "hibernate")
 
-instance exportCallResult :: ExportsTo (CallResult reply cont stop outerState) (NativeCallResult reply cont stop outerState) where
-  export = case _ of
-    CallResult (Just r) Nothing newState -> unsafeCoerce $ tuple3 (atom "reply") r newState
-    CallResult (Just r) (Just (Timeout timeout)) newState -> unsafeCoerce $ tuple4 (atom "reply") r newState timeout
-    CallResult (Just r) (Just Hibernate) newState -> unsafeCoerce $ tuple4 (atom "reply") r newState (atom "hibernate")
-    CallResult (Just r) (Just (Continue cont)) newState -> unsafeCoerce $ tuple4 (atom "reply") r newState $ tuple2 (atom "continue") cont
-    CallResult (Just r) (Just StopNormal) newState -> unsafeCoerce $ tuple4 (atom "stop") (atom "normal") r newState
-    CallResult (Just r) (Just (StopOther reason)) newState -> unsafeCoerce $ tuple4 (atom "stop") reason r newState
-    CallResult Nothing Nothing newState -> unsafeCoerce $ tuple2 (atom "noreply") newState
-    CallResult Nothing (Just (Timeout timeout)) newState -> unsafeCoerce $ tuple3 (atom "noreply") newState timeout
-    CallResult Nothing (Just Hibernate) newState -> unsafeCoerce $ tuple3 (atom "noreply") newState (atom "hibernate")
-    CallResult Nothing (Just (Continue cont)) newState -> unsafeCoerce $ tuple3 (atom "noreply") newState $ tuple2 (atom "continue") cont
-    CallResult Nothing (Just StopNormal) newState -> unsafeCoerce $ tuple3 (atom "stop") (atom "normal") newState
-    CallResult Nothing (Just (StopOther reason)) newState -> unsafeCoerce $ tuple3 (atom "stop") reason newState
+exportCallResult :: forall reply cont stop outerState. CallResult reply cont stop outerState -> NativeCallResult reply cont stop outerState
+exportCallResult = case _ of
+  CallResult (Just r) Nothing newState -> unsafeCoerce $ tuple3 (atom "reply") r newState
+  CallResult (Just r) (Just (Timeout timeout)) newState -> unsafeCoerce $ tuple4 (atom "reply") r newState timeout
+  CallResult (Just r) (Just Hibernate) newState -> unsafeCoerce $ tuple4 (atom "reply") r newState (atom "hibernate")
+  CallResult (Just r) (Just (Continue cont)) newState -> unsafeCoerce $ tuple4 (atom "reply") r newState $ tuple2 (atom "continue") cont
+  CallResult (Just r) (Just StopNormal) newState -> unsafeCoerce $ tuple4 (atom "stop") (atom "normal") r newState
+  CallResult (Just r) (Just (StopOther reason)) newState -> unsafeCoerce $ tuple4 (atom "stop") reason r newState
+  CallResult Nothing Nothing newState -> unsafeCoerce $ tuple2 (atom "noreply") newState
+  CallResult Nothing (Just (Timeout timeout)) newState -> unsafeCoerce $ tuple3 (atom "noreply") newState timeout
+  CallResult Nothing (Just Hibernate) newState -> unsafeCoerce $ tuple3 (atom "noreply") newState (atom "hibernate")
+  CallResult Nothing (Just (Continue cont)) newState -> unsafeCoerce $ tuple3 (atom "noreply") newState $ tuple2 (atom "continue") cont
+  CallResult Nothing (Just StopNormal) newState -> unsafeCoerce $ tuple3 (atom "stop") (atom "normal") newState
+  CallResult Nothing (Just (StopOther reason)) newState -> unsafeCoerce $ tuple3 (atom "stop") reason newState
 
-instance exportReturnResult :: ExportsTo (ReturnResult cont stop outerState) (NativeReturnResult cont stop outerState) where
-  export = case _ of
-    ReturnResult Nothing newState -> unsafeCoerce $ tuple2 (atom "noreply") newState
-    ReturnResult (Just (Timeout timeout)) newState -> unsafeCoerce $ tuple3 (atom "noreply") newState timeout
-    ReturnResult (Just Hibernate) newState -> unsafeCoerce $ tuple3 (atom "noreply") newState $ atom "hibernate"
-    ReturnResult (Just (Continue cont)) newState -> unsafeCoerce $ tuple3 (atom "noreply") newState $ tuple2 (atom "continue") cont
-    ReturnResult (Just StopNormal) newState -> unsafeCoerce $ tuple3 (atom "stop") (atom "normal") newState
-    ReturnResult (Just (StopOther reason)) newState -> unsafeCoerce $ tuple3 (atom "stop") reason newState
+exportReturnResult :: forall cont stop outerState. ReturnResult cont stop outerState -> NativeReturnResult cont stop outerState
+exportReturnResult = case _ of
+  ReturnResult Nothing newState -> unsafeCoerce $ tuple2 (atom "noreply") newState
+  ReturnResult (Just (Timeout timeout)) newState -> unsafeCoerce $ tuple3 (atom "noreply") newState timeout
+  ReturnResult (Just Hibernate) newState -> unsafeCoerce $ tuple3 (atom "noreply") newState $ atom "hibernate"
+  ReturnResult (Just (Continue cont)) newState -> unsafeCoerce $ tuple3 (atom "noreply") newState $ tuple2 (atom "continue") cont
+  ReturnResult (Just StopNormal) newState -> unsafeCoerce $ tuple3 (atom "stop") (atom "normal") newState
+  ReturnResult (Just (StopOther reason)) newState -> unsafeCoerce $ tuple3 (atom "stop") reason newState
 
 foreign import data NativeInitResult :: Type -> Type
 
