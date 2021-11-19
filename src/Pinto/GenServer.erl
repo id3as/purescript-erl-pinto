@@ -6,7 +6,7 @@
         , startLinkFFI/3
         , callFFI/2
         , castFFI/2
-        , replyTo/2
+        , replyToFFI/2
         , stopFFI/1
         ]).
 
@@ -40,7 +40,7 @@ callFFI(ServerRef, CallFn) ->
       gen_server:call(ServerRef, CallFn)
   end.
 
-replyTo(From, Reply) ->
+replyToFFI(From, Reply) ->
   fun() ->
       gen_server:reply(From, Reply),
       unit
