@@ -121,68 +121,17 @@ let additions =
 -}
 
 let upstream =
-      https://github.com/purerl/package-sets/releases/download/erl-0.14.3-20210709/packages.dhall sha256:9b07e1fe89050620e2ad7f7623d409f19b5e571f43c2bdb61242377f7b89d941
+      https://github.com/purerl/package-sets/releases/download/erl-0.14.4-20211012-1/packages.dhall sha256:04b7cb6aaf4cc7323c2560c7b5c2f5e8459d2951997cf5084748e0f1cdbabd26
 
 let additions =
-      {
-      erl-process =
-        { repo = "https://github.com/id3as/purescript-erl-process.git"
-        , dependencies =
-          [ "console"
-          , "prelude"
-          , "effect"
-          ]
-        , version = "afbfa4e7a13c0d55609ff144d49982563fada7f5"
-        }
-      , erl-kernel =
-        { dependencies =
-          [ "convertable-options"
-          , "datetime"
-          , "effect"
-          , "either"
-          , "erl-atom"
-          , "erl-binary"
-          , "erl-lists"
-          , "erl-process"
-          , "erl-tuples"
-          , "erl-untagged-union"
-          , "foldable-traversable"
-          , "foreign"
-          , "functions"
-          , "integers"
-          , "maybe"
-          , "newtype"
-          , "partial"
-          , "prelude"
-          , "record"
-          , "typelevel-prelude"
-          , "unsafe-coerce"
-          ]
-        , repo = "https://github.com/id3as/purescript-erl-kernel.git"
-        , version = "2c1f78a3aa6993e91e342a984c522b87b98bbb2b"
-        }
-      , erl-untagged-union =
-        { dependencies =
-          [ "erl-atom"
-          , "erl-binary"
-          , "erl-lists"
-          , "erl-tuples"
-          , "debug"
-          , "foreign"
-          , "typelevel-prelude"
-          , "maybe"
-          , "partial"
-          , "prelude"
-          , "unsafe-coerce"
-          ]
-        , repo = "https://github.com/id3as/purescript-erl-untagged-union.git"
-        , version = "eb7a10c7930c4b99f1a6bfce767daa814d45dd2b"
-        }
-      , convertable-options =
+      { convertable-options =
         { repo = "https://github.com/natefaubion/purescript-convertable-options"
         , dependencies = [ "effect", "maybe", "record" ]
         , version = "f20235d464e8767c469c3804cf6bec4501f970e6"
         }
       }
 
-in  upstream // additions
+in (upstream // additions)
+  with erl-process.repo = "https://github.com/id3as/purescript-erl-process.git"
+  with erl-process.version = "67787f787d3f6a0523f931e651156ec82709e7f1"
+  with erl-untagged-union.version = "781b2894f9ffcc91b7aea482e435bb9284596f62"
