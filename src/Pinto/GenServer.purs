@@ -50,9 +50,10 @@ module Pinto.GenServer
   ) where
 
 import Prelude
+
 import Control.Monad.Reader (ReaderT, runReaderT)
 import Data.Function.Uncurried (mkFn2, runFn2)
-import Data.Maybe (Maybe(..), fromJust, maybe)
+import Data.Maybe (Maybe(..), fromJust)
 import Effect (Effect)
 import Effect.Class (class MonadEffect)
 import Effect.Class (liftEffect) as Lift
@@ -211,6 +212,7 @@ newtype ServerPid :: Type -> Type -> Type -> Type -> Type
 newtype ServerPid cont stop msg state
   = ServerPid (Process msg)
 
+derive newtype instance eqServerPid :: Eq (ServerPid cont stop msg state)
 derive newtype instance serverPidHasRawPid :: HasPid (ServerPid cont stop msg state)
 
 derive newtype instance serverPidHasProcess :: HasProcess msg (ServerPid const stop msg state)
@@ -390,18 +392,22 @@ handle_info =
     exportReturnResult
       <$> case maybeHandleInfo of
           Just f -> do
+            --------------------------------------------------------------------
+            -- Note we use mkFn2 for performance reasons - it's potentially very
+            -- hot code.  Similarly we manually deconstruct the Maybe to save
+            -- using maybe' and constructing an extra (\unit -> ...) fn
+            --------------------------------------------------------------------
             let
-              exitMessage = parseTrappedExitFFI nativeMsg Exit
-              processMsg =
-                mkFn2
-                  ( \f msg -> do
-                      ReturnResult mAction state <- (runReaderT $ case f msg innerState of ResultT inner -> inner) context
-                      -- pure $ (mkOuterState context <$> result)
-                      pure $ ReturnResult mAction (mkOuterState context state)
-                  )
-              msg :: msg
-              msg = unsafeFromForeign nativeMsg
-            maybe (runFn2 processMsg f msg) (\_ -> maybe (pure $ ReturnResult Nothing state) (\e -> runFn2 processMsg f e) (trapExits <*> exitMessage)) exitMessage
+              maybeClientExitMessage = trapExits <*> parseTrappedExitFFI nativeMsg Exit
+              processMsg = mkFn2
+                \f msg -> do
+                  ReturnResult mAction state <- (runReaderT $ case f msg innerState of ResultT inner -> inner) context
+                  pure $ ReturnResult mAction (mkOuterState context state)
+            case maybeClientExitMessage of
+              Nothing ->
+                runFn2 processMsg f $ unsafeFromForeign nativeMsg
+              Just cem ->
+                runFn2 processMsg f cem
           Nothing ->
             pure $ ReturnResult Nothing state
 

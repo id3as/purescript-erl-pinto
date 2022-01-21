@@ -7,6 +7,7 @@ import Prelude
 import Control.Monad.Free (Free)
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
+import Data.Time.Duration (Milliseconds(..))
 import Effect (Effect)
 import Effect.Class (liftEffect)
 import Erl.Atom (atom)
@@ -19,7 +20,7 @@ import Partial.Unsafe (unsafeCrashWith)
 import Pinto.GenServer (Action(..), ExitMessage, From, InitResult(..), ServerRef, ServerSpec, ServerType)
 import Pinto.GenServer as GS
 import Pinto.Types (NotStartedReason(..), RegistryName(..), RegistryReference(..), StartLinkResult, crashIfNotStarted)
-import Test.Assert (assertEqual, assert')
+import Test.Assert (assert', assertEqual)
 import Test.ValueServer as ValueServer
 import Unsafe.Coerce (unsafeCoerce)
 
@@ -181,11 +182,11 @@ testTrapExits =
     test "Parent exits arrive in the terminate callback" do
       testPid <- Raw.self
       void $ Raw.spawnLink $ void $ crashIfNotStarted <$> (GS.startLink $ (GS.defaultSpec $ init2 testPid) { terminate = Just terminate, trapExits = Just TrappedExit })
-      receivedTerminate <- Raw.receiveWithTimeout 500 false
+      receivedTerminate <- Raw.receiveWithTimeout (Milliseconds  500.0) false
       assert' "Terminate wasn't called on the genserver" receivedTerminate
   where
   init = do
-    pid <- liftEffect $ Raw.spawnLink $ Raw.receiveWithTimeout 0 unit
+    pid <- liftEffect $ Raw.spawnLink $ Raw.receiveWithTimeout (Milliseconds 0.0) unit
     pure $ InitOk $ { testPid: pid, receivedExit: false, receivedTerminate: false }
 
   init2 pid = do
@@ -194,10 +195,10 @@ testTrapExits =
   handleInfo (TrappedExit exit) s = do
     pure $ GS.return $ s { receivedExit = true }
 
-  handleInfo _ s = do
+  handleInfo _ _s = do
     unsafeCrashWith "Unexpected message"
 
-  terminate reason s = do
+  terminate _reason s = do
     liftEffect $ Raw.send s.testPid true
 
 ---------------------------------------------------------------------------------
@@ -216,19 +217,19 @@ testStartGetSet registryName = do
 
     instanceRef = ByName registryName
   serverPid <- crashIfNotStarted <$> (GS.startLink gsSpec)
-  getState instanceRef >>= expect 0 -- Starts with initial state 0
-  setState instanceRef (TestState 1) >>= expect 0 -- Set new as 1, old is 0
-  getState instanceRef >>= expect 1 -- Previsouly set state returned
+  getState instanceRef >>= expectState 0 -- Starts with initial state 0
+  setState instanceRef (TestState 1) >>= expectState 0 -- Set new as 1, old is 0
+  getState instanceRef >>= expectState 1 -- Previsouly set state returned
   setStateCast instanceRef (TestState 2) -- Set new state async
-  getState instanceRef >>= expect 2 -- Previsouly set state returned
+  getState instanceRef >>= expectState 2 -- Previsouly set state returned
   (unsafeCoerce serverPid :: Process TestMsg) ! TestMsg -- Trigger HandleInfo to add 100
-  getState instanceRef >>= expect 102 -- Previsouly set state returned
-  callContinueReply instanceRef >>= expect 102 -- Trigger a continue - returning old state
-  getState instanceRef >>= expect 202 -- The continue fires updating state befor the next get
-  callContinueNoReply instanceRef >>= expect 202 -- Tigger a continue that replies in the continuation
-  getState instanceRef >>= expect 302 -- Post the reply, the continuation updates the state
+  getState instanceRef >>= expectState 102 -- Previsouly set state returned
+  callContinueReply instanceRef >>= expectState 102 -- Trigger a continue - returning old state
+  getState instanceRef >>= expectState 202 -- The continue fires updating state befor the next get
+  callContinueNoReply instanceRef >>= expectState 202 -- Tigger a continue that replies in the continuation
+  getState instanceRef >>= expectState 302 -- Post the reply, the continuation updates the state
   castContinue instanceRef -- Continues are triggered by casts as well
-  getState instanceRef >>= expect 402 -- As evidenced by the updated state
+  getState instanceRef >>= expectState 402 -- As evidenced by the updated state
   pure unit
   where
   init = do
@@ -237,11 +238,10 @@ testStartGetSet registryName = do
   handleInfo TestMsg (TestState x) = do
     pure $ GS.return $ TestState $ x + 100
 
-  handleInfo _ s = do
+  handleInfo _ _s = do
     unsafeCrashWith "Unexpected message"
 
   handleContinue cont (TestState x) =
-    liftEffect do
       case cont of
         TestCont -> pure $ GS.return $ TestState $ x + 100
         TestContFrom from -> do
@@ -266,17 +266,17 @@ testStopNormal registryName = do
         }
 
     instanceRef = ByName registryName
-  serverPid <- crashIfNotStarted <$> (GS.startLink gsSpec)
-  getState instanceRef >>= expect 0 -- Starts with initial state 0
+  void $ crashIfNotStarted <$> (GS.startLink gsSpec)
+  getState instanceRef >>= expectState 0 -- Starts with initial state 0
   -- Try to start the server again - should fail with already running
-  (GS.startLink gsSpec) <#> isAlreadyRunning >>= expectBool true
+  (GS.startLink gsSpec) <#> isAlreadyRunning >>= expect true
   triggerStopCast instanceRef
   sleep 1 -- allow the async cast to execute -- TODO maybe use a monitor with timeout
   void $ crashIfNotStarted <$> (GS.startLink gsSpec)
-  (GS.startLink gsSpec) <#> isAlreadyRunning >>= expectBool true
-  triggerStopCallReply instanceRef >>= expect 42 -- New instance starts with initial state 0
+  (GS.startLink gsSpec) <#> isAlreadyRunning >>= expect true
+  triggerStopCallReply instanceRef >>= expectState 42 -- New instance starts with initial state 0
   void $ crashIfNotStarted <$> (GS.startLink gsSpec)
-  getState instanceRef >>= expect 0 -- New instance starts with initial state 0
+  getState instanceRef >>= expectState 0 -- New instance starts with initial state 0
   -- TODO trigger stop from a handle_info
   pure unit
   where
@@ -286,37 +286,32 @@ testStopNormal registryName = do
   handleInfo TestMsg (TestState x) = do
     pure $ GS.return $ TestState $ x + 100
 
-  handleInfo _ _ = do
+  handleInfo _ _s = do
     unsafeCrashWith "Unexpected message"
 
+  handleContinue :: GS.ContinueFn _ _ _ _
   handleContinue cont (TestState x) =
-    liftEffect do
       case cont of
         TestCont -> pure $ GS.return $ TestState $ x + 100
         TestContFrom from -> do
           GS.replyTo from (TestState x)
           pure $ GS.return $ TestState $ x + 100
 
-  callContinueReply handle = GS.call handle \_from state -> pure $ GS.replyWithAction state (Continue TestCont) state
-
-  callContinueNoReply handle = GS.call handle \from state -> pure $ GS.noReplyWithAction (Continue $ TestContFrom from) state
-
-  castContinue handle = GS.cast handle \state -> pure $ GS.returnWithAction (Continue TestCont) state
-
   triggerStopCast handle = GS.cast handle \state -> pure $ GS.returnWithAction StopNormal state
 
-  triggerStopCallReply handle = GS.call handle \from state -> pure $ GS.replyWithAction (TestState 42) StopNormal state
+  triggerStopCallReply handle = GS.call handle \_from state -> pure $ GS.replyWithAction (TestState 42) StopNormal state
 
 isAlreadyRunning :: forall serverType. StartLinkResult serverType -> Boolean
 isAlreadyRunning = case _ of
   Left (AlreadyStarted _) -> true
   _ -> false
 
-expect :: Int -> TestState -> Effect Unit
-expect expected actual = assertEqual { actual, expected: TestState expected }
+expectState :: Int -> TestState -> Effect Unit
+expectState expected actual = assertEqual { actual, expected: TestState expected }
 
-expectBool :: Boolean -> Boolean -> Effect Unit
-expectBool expected actual = assertEqual { actual, expected: expected }
+expect :: forall a. Eq a => Show a => a -> a -> Effect Unit
+expect expected actual = assertEqual { actual, expected: expected }
+
 
 getState :: forall cont stop msg state. ServerRef cont stop msg state -> Effect state
 getState handle =
