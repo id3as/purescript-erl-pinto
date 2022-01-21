@@ -217,6 +217,8 @@ testStartGetSet registryName = do
 
     instanceRef = ByName registryName
   serverPid <- crashIfNotStarted <$> (GS.startLink gsSpec)
+  maybeServerPid <- GS.whereIs registryName
+  assert' "The pid that is looked up should be that returned by start" $ maybeServerPid == Just serverPid
   getState instanceRef >>= expectState 0 -- Starts with initial state 0
   setState instanceRef (TestState 1) >>= expectState 0 -- Set new as 1, old is 0
   getState instanceRef >>= expectState 1 -- Previsouly set state returned

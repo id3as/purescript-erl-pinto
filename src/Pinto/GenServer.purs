@@ -229,9 +229,7 @@ type ServerInstance cont stop msg state
 
 -- | Given a RegistryName with a valid (ServerType), get hold of a typed Process `msg` to which messages
 -- | can be sent (arriving in the handleInfo callback)
-whereIs :: forall cont stop msg state. RegistryName (ServerType cont stop msg state) -> Effect (Maybe (Process msg))
-whereIs _name =
-  pure Nothing -- TODO: implement
+foreign import whereIs :: forall cont stop msg state. RegistryName (ServerType cont stop msg state) -> Effect (Maybe (ServerPid cont stop msg state))
 
 -- | The configuration passed into startLink in order to start a gen server
 -- | Everything except the 'init' callback is optional
