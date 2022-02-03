@@ -93,6 +93,13 @@ data NotStartedReason serverProcess
   | AlreadyStarted serverProcess
   | Failed Foreign
 
+derive instance Functor NotStartedReason
+
+instance (Show serverProcess) => Show (NotStartedReason serverProcess) where
+  show Ignore = "Ignore"
+  show (AlreadyStarted process) = "(AlreadyStarted " <> show process <> ")"
+  show (Failed _) = "Failed (foreign)"
+
 type StartLinkResult serverProcess
   = Either (NotStartedReason serverProcess) serverProcess
 

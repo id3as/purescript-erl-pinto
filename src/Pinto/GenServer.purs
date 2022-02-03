@@ -50,7 +50,6 @@ module Pinto.GenServer
   ) where
 
 import Prelude
-
 import Control.Monad.Reader (ReaderT, runReaderT)
 import Data.Function.Uncurried (mkFn2, runFn2)
 import Data.Maybe (Maybe(..), fromJust)
@@ -214,8 +213,10 @@ newtype ServerPid cont stop msg state
 
 derive newtype instance eqServerPid :: Eq (ServerPid cont stop msg state)
 derive newtype instance serverPidHasRawPid :: HasPid (ServerPid cont stop msg state)
-
 derive newtype instance serverPidHasProcess :: HasProcess msg (ServerPid const stop msg state)
+
+instance Show (ServerPid cont stop msg state) where
+  show (ServerPid pid) = "(ServerPid " <> show pid <> ")"
 
 -- | The typed reference of a GenServer, containing all the information required to get hold of
 -- | an instance
@@ -397,8 +398,8 @@ handle_info =
             --------------------------------------------------------------------
             let
               maybeClientExitMessage = trapExits <*> parseTrappedExitFFI nativeMsg Exit
-              processMsg = mkFn2
-                \f msg -> do
+              processMsg =
+                mkFn2 \f msg -> do
                   ReturnResult mAction state <- (runReaderT $ case f msg innerState of ResultT inner -> inner) context
                   pure $ ReturnResult mAction (mkOuterState context state)
             case maybeClientExitMessage of
