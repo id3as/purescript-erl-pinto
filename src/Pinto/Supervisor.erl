@@ -69,20 +69,24 @@ startLinkPure({just, Name}, EffectSupervisorSpec) ->
   Result = supervisor:start_link(Name, ?MODULE, EffectSupervisorSpec),
   start_link_result_to_ps(Result).
 
-stopFFI(Ref) ->
+stopFFI(RefOrPid) ->
   fun() ->
       %% Note: There is no supervisor:stop in OTP, but for convenience
       %% here is an implementation of one, if you want more behaviour than this
       %% then you're best off calling sys:terminate yourself with your own monitoring
       %% behaviour
-    Pid = whereis(Ref),
+    Pid = if is_pid(RefOrPid) -> RefOrPid;
+             true -> whereis(RefOrPid)
+          end,
     if Pid == undefined -> ok;
        true ->
         MRef = erlang:monitor(process, Pid),
          sys:terminate(Pid, 'normal'),
          receive
-           {'DOWN', _, process, Pid, normal} -> ok
-         after 1000 -> ok %% shrug
+           {'DOWN', _, process, Pid, normal} ->
+             ok
+         after 1000 ->
+             ok %% shrug
          end
     end
   end.
