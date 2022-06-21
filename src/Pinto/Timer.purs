@@ -21,7 +21,8 @@ foreign import data TimerRef :: Type
 -- | sends a message to 'self' every 'N' milliseconds
 -- | See also timer:send_every in the OTP docs
 -- | Note: This uses the old Timer API
-sendEvery :: forall m msg.
+sendEvery ::
+  forall m msg.
   MonadEffect m =>
   HasSelf m msg =>
   Milliseconds ->
@@ -33,7 +34,8 @@ sendEvery t m = do
 -- | sends a message to 'self' after 'N' milliseconds
 -- | See also erlang:send_after in the OTP docs
 -- | Note: This uses the new Timer API
-sendAfter :: forall m msg.
+sendAfter ::
+  forall m msg.
   MonadEffect m =>
   HasSelf m msg =>
   Milliseconds ->

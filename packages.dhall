@@ -121,7 +121,7 @@ let additions =
 -}
 
 let upstream =
-      https://github.com/purerl/package-sets/releases/download/erl-0.14.4-20211012-1/packages.dhall sha256:04b7cb6aaf4cc7323c2560c7b5c2f5e8459d2951997cf5084748e0f1cdbabd26
+      https://github.com/purerl/package-sets/releases/download/erl-0.14.5-20220204-2/packages.dhall sha256:bf284d597ad053b43591b964a52aa0f41ed12a576c3efde85ba999ad65072fc9
 
 let additions =
       { convertable-options =
@@ -132,6 +132,3 @@ let additions =
       }
 
 in (upstream // additions)
-  with erl-process.repo = "https://github.com/id3as/purescript-erl-process.git"
-  with erl-process.version = "67787f787d3f6a0523f931e651156ec82709e7f1"
-  with erl-untagged-union.version = "781b2894f9ffcc91b7aea482e435bb9284596f62"

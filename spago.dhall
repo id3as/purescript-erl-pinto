@@ -19,7 +19,6 @@ You can edit this file as you like.
   , "maybe"
   , "partial"
   , "prelude"
-  , "psci-support"
   , "transformers"
   , "tuples"
   , "unsafe-coerce"

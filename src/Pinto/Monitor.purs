@@ -56,7 +56,7 @@ monitor process f = do
   liftEffect $ MR.startRouter (startMonitor $ getPid process) stopMonitor (handleMessage me)
   where
   handleMessage me msg = do
-    _ <-  handleMonitorMessage Down (send me <<< f) msg
+    _ <- handleMonitorMessage Down (send me <<< f) msg
     _ <- MR.stopRouterFromCallback
     pure unit
 
@@ -76,7 +76,7 @@ monitorTo process target f = do
   MR.startRouter (startMonitor $ getPid process) stopMonitor (handleMessage p)
   where
   handleMessage target' msg = do
-    _ <-  handleMonitorMessage Down (send target' <<< f) msg
+    _ <- handleMonitorMessage Down (send target' <<< f) msg
     _ <- MR.stopRouterFromCallback
     pure unit
 

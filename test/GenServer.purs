@@ -3,7 +3,6 @@ module Test.GenServer
   ) where
 
 import Prelude
-
 import Control.Monad.Free (Free)
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
@@ -182,7 +181,7 @@ testTrapExits =
     test "Parent exits arrive in the terminate callback" do
       testPid <- Raw.self
       void $ Raw.spawnLink $ void $ crashIfNotStarted <$> (GS.startLink $ (GS.defaultSpec $ init2 testPid) { terminate = Just terminate, trapExits = Just TrappedExit })
-      receivedTerminate <- Raw.receiveWithTimeout (Milliseconds  500.0) false
+      receivedTerminate <- Raw.receiveWithTimeout (Milliseconds 500.0) false
       assert' "Terminate wasn't called on the genserver" receivedTerminate
   where
   init = do
@@ -244,11 +243,11 @@ testStartGetSet registryName = do
     unsafeCrashWith "Unexpected message"
 
   handleContinue cont (TestState x) =
-      case cont of
-        TestCont -> pure $ GS.return $ TestState $ x + 100
-        TestContFrom from -> do
-          GS.replyTo from (TestState x)
-          pure $ GS.return $ TestState $ x + 100
+    case cont of
+      TestCont -> pure $ GS.return $ TestState $ x + 100
+      TestContFrom from -> do
+        GS.replyTo from (TestState x)
+        pure $ GS.return $ TestState $ x + 100
 
   callContinueReply handle = GS.call handle \_from state -> pure $ GS.replyWithAction state (Continue TestCont) state
 
@@ -293,11 +292,11 @@ testStopNormal registryName = do
 
   handleContinue :: GS.ContinueFn _ _ _ _
   handleContinue cont (TestState x) =
-      case cont of
-        TestCont -> pure $ GS.return $ TestState $ x + 100
-        TestContFrom from -> do
-          GS.replyTo from (TestState x)
-          pure $ GS.return $ TestState $ x + 100
+    case cont of
+      TestCont -> pure $ GS.return $ TestState $ x + 100
+      TestContFrom from -> do
+        GS.replyTo from (TestState x)
+        pure $ GS.return $ TestState $ x + 100
 
   triggerStopCast handle = GS.cast handle \state -> pure $ GS.returnWithAction StopNormal state
 
@@ -313,7 +312,6 @@ expectState expected actual = assertEqual { actual, expected: TestState expected
 
 expect :: forall a. Eq a => Show a => a -> a -> Effect Unit
 expect expected actual = assertEqual { actual, expected: expected }
-
 
 getState :: forall cont stop msg state. ServerRef cont stop msg state -> Effect state
 getState handle =

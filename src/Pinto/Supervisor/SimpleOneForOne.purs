@@ -13,7 +13,6 @@ module Pinto.Supervisor.SimpleOneForOne
   ) where
 
 import Prelude
-
 import Data.Maybe (Maybe)
 import Data.Time.Duration (Seconds)
 import Effect (Effect)

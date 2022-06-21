@@ -29,7 +29,6 @@ module Pinto.Supervisor
   ) where
 
 import Prelude
-
 import Data.Maybe (Maybe(..))
 import Data.Time.Duration (Milliseconds, Seconds)
 import Effect (Effect)

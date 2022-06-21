@@ -1,7 +1,6 @@
 module Test.Main where
 
 import Prelude
-
 import Control.Monad.Free (Free)
 import Data.Maybe (Maybe(..))
 import Data.Time.Duration (Milliseconds(..), Seconds(..))
