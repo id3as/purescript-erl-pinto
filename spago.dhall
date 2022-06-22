@@ -10,6 +10,7 @@ You can edit this file as you like.
   , "either"
   , "erl-atom"
   , "erl-lists"
+  , "erl-maps"
   , "erl-modules"
   , "erl-process"
   , "erl-tuples"
@@ -21,6 +22,7 @@ You can edit this file as you like.
   , "prelude"
   , "transformers"
   , "tuples"
+  , "typelevel-prelude"
   , "unsafe-coerce"
   ]
 , packages = ./packages.dhall

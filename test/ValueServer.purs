@@ -9,11 +9,13 @@ module Test.ValueServer
   ) where
 
 import Prelude
+
+import Bar (ProcessM)
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Process.Raw (class HasPid)
-import Pinto.GenServer (InitResult(..), ServerType, ServerPid, ServerRef(..))
+import Pinto.GenServer (InitResult(..), ServerPid, ServerRef(..), ServerType, InitFn)
 import Pinto.GenServer as GS
 import Pinto.Types (RegistryName(..), RegistryReference(..), crashIfNotStarted)
 
@@ -48,6 +50,7 @@ startLink = do
     <$> crashIfNotStarted
     <$> (GS.startLink $ (GS.defaultSpec init) { name = Just serverName })
   where
+  init :: InitFn ProcessM Unit Cont Stop Msg State
   init =
     let
       state = { value: 0 }
