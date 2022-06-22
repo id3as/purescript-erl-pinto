@@ -31,9 +31,9 @@ main =
     void
       $ runTests do
           TGS.genServerSuite
-          DoorLock.testSuite
-          supervisorSuite
-
+          --DoorLock.testSuite
+          --supervisorSuite
+{-
 supervisorSuite :: Free TestF Unit
 supervisorSuite =
   suite "Pinto supervisor tests" do
@@ -152,3 +152,4 @@ setState handle newState =
 
 setStateCast :: forall cont stop msg state. ServerRef cont stop msg state -> state -> Effect Unit
 setStateCast handle newState = GS.cast handle \_state -> pure $ GS.return newState
+-}

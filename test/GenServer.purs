@@ -31,15 +31,15 @@ type TestServerType
 genServerSuite :: Free TestF Unit
 genServerSuite =
   suite "Pinto genServer tests" do
-    testStartLinkAnonymous
-    testStartLinkLocal
-    testStartLinkGlobal
-    testStopNormalLocal
-    testHandleInfo
-    testCall
-    testCast
+    -- testStartLinkAnonymous
+    -- testStartLinkLocal
+    -- testStartLinkGlobal
+    -- testStopNormalLocal
+    -- testHandleInfo
+    -- testCall
+    -- testCast
     testValueServer
-    testTrapExits
+--    testTrapExits
 
 data TestState
   = TestState Int
@@ -60,6 +60,7 @@ data TestMsg
 data TestStop
   = StopReason
 
+{-
 testStartLinkAnonymous :: Free TestF Unit
 testStartLinkAnonymous =
   test "Can start an anonymous GenServer" do
@@ -147,6 +148,7 @@ testCast =
   init = do
     pure $ InitOk $ TestState 0
 
+-}
 testValueServer :: Free TestF Unit
 testValueServer =
   test "Interaction with gen_server with closed API" do
@@ -160,6 +162,8 @@ testValueServer =
     assertEqual { actual: v2, expected: 43 }
     assertEqual { actual: v3, expected: 50 }
     pure unit
+
+{-
 
 type TrapExitState
   = { testPid :: Pid
@@ -331,3 +335,5 @@ setState handle newState =
 
 setStateCast :: forall cont stop msg state. ServerRef cont stop msg state -> state -> Effect Unit
 setStateCast handle newState = GS.cast handle \_state -> pure $ GS.return newState
+
+-}
