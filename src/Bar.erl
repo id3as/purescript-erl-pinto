@@ -4,6 +4,8 @@
         , bar/1
         , parseMonitorMsg/1
         , parseExitMsg/1
+        , monitorImpl/1
+        , demonitorImpl/1
         ]).
 
 
@@ -19,6 +21,19 @@ parseExitMsg(_) -> 1.
 -define(kill, {kill}).
 -define(normal, {normal}).
 -define(other(X), {other, X}).
+
+
+
+
+monitorImpl(Pid) ->
+  fun() ->
+    erlang:monitor(process, Pid)
+  end.
+
+demonitorImpl(Ref) ->
+  fun() ->
+    erlang:demonitor(Ref)
+  end.
 
 
 foo(Msg) ->

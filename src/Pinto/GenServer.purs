@@ -93,13 +93,13 @@ newtype ResultT cont stop msg state result
   = ResultT (ReaderT (Context cont stop msg state) Effect result)
 
 newtype ResultT2 m ms cont stop msg state result
-  = ResultT2 (ReaderT (Context2 m ms cont stop msg state) (m msg) result)
-derive newtype instance Functor (m msg) => Functor (ResultT2 m ms cont stop msg state)
-derive newtype instance Apply (m msg) => Apply (ResultT2 m ms cont stop msg state)
-derive newtype instance Applicative (m msg) => Applicative (ResultT2 m ms cont stop msg state)
-derive newtype instance Bind (m msg) => Bind (ResultT2 m ms cont stop msg state)
-derive newtype instance Monad (m msg) => Monad (ResultT2 m ms cont stop msg state)
-derive newtype instance MonadEffect (m msg) => MonadEffect (ResultT2 m ms cont stop msg state)
+  = ResultT2 (ReaderT (Context2 m ms cont stop msg state) m result)
+derive newtype instance Functor m => Functor (ResultT2 m ms cont stop msg state)
+derive newtype instance Apply m => Apply (ResultT2 m ms cont stop msg state)
+derive newtype instance Applicative m => Applicative (ResultT2 m ms cont stop msg state)
+derive newtype instance Bind m => Bind (ResultT2 m ms cont stop msg state)
+derive newtype instance Monad m => Monad (ResultT2 m ms cont stop msg state)
+derive newtype instance MonadEffect m => MonadEffect (ResultT2 m ms cont stop msg state)
 instance ReceivesMessage (ResultT2 m ms cont stop msg state) msg
 
 
@@ -296,7 +296,7 @@ startLink
   :: forall m ms cont stop msg state.
      RunT (m msg) ms =>
      Monoid ms =>
-     (ServerSpec m ms cont stop msg state) -> Effect (StartLinkResult (ServerPid cont stop msg state))
+     (ServerSpec (m msg) ms cont stop msg state) -> Effect (StartLinkResult (ServerPid cont stop msg state))
 startLink { name: maybeName, init: initFn, handleInfo, handleContinue, terminate: terminate', trapExits } = startLinkFFI maybeName (nativeModuleName pintoGenServer) initEffect
   where
   initialMState = mempty
@@ -309,7 +309,7 @@ startLink { name: maybeName, init: initFn, handleInfo, handleContinue, terminate
 
   context = Context2 ctx
 
-  initEffect :: Effect (InitResult cont (OuterState2 m ms cont stop msg state))
+  initEffect :: Effect (InitResult cont (OuterState2 (m msg) ms cont stop msg state))
   initEffect = do
     _ <- case trapExits of
       Nothing -> pure unit
@@ -438,10 +438,10 @@ handle_cast =
 
 handle_info
   :: forall m ms cont stop msg state.
-     MonadEffect (m msg)=>
-     FFIParseT m msg =>
+     MonadEffect (m msg) =>
+     FFIParseT (m msg) msg  =>
      RunT (m msg) ms =>
-     EffectFn2 Foreign (OuterState2 m ms cont stop msg state) (NativeReturnResult cont stop (OuterState2 m ms cont stop msg state))
+     EffectFn2 Foreign (OuterState2 (m msg) ms cont stop msg state) (NativeReturnResult cont stop (OuterState2 (m msg) ms cont stop msg state))
 handle_info =
   mkEffectFn2 \nativeMsg state@{ innerState, context: context@(Context2 ctx@{ handleInfo: maybeHandleInfo, trapExits, mState }) } ->
     exportReturnResult
@@ -453,7 +453,7 @@ handle_info =
                   Tuple (ReturnResult mAction state) newMState <- runT ((runReaderT $ case fn msg innerState of ResultT2 inner -> inner) context) mState
                   pure $ ReturnResult mAction (mkOuterState2 (Context2 ctx{mState = newMState}) state)
 
-            runFn2 processMsg f $ psFromFFI (Proxy :: _ m) nativeMsg
+            runFn2 processMsg f $ psFromFFI (Proxy :: _ (m msg)) nativeMsg
 
           --   --------------------------------------------------------------------
           --   -- Note we use mkFn2 for performance reasons - it's potentially very

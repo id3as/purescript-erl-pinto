@@ -5,15 +5,19 @@ import Prelude
 
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
-import Data.Tuple (Tuple(..), fst)
+import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Effect.Class (class MonadEffect, liftEffect)
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
+import Erl.Process.Raw (Pid)
 import Foreign (Foreign)
-import Pinto.Monitor (MonitorRef)
 import Type.Prelude (Proxy(..))
 import Unsafe.Coerce (unsafeCoerce)
+
+
+-- | Reference to a monitor, used to stop the monitor once it is started
+foreign import data MonitorRef :: Type
 
 
 newtype ProcessM (msg :: Type) res
@@ -36,34 +40,35 @@ rawReceive :: Effect Foreign
 rawReceive = unsafeCoerce 1
 
 data TrapExitMsg = TrapExitMsg
-newtype TrapExitT m msg res = TrapExitT (m msg res)
+--newtype TrapExitT :: (Type -> Type -> Type) -> Type -> Type -> Type
+newtype TrapExitT m res = TrapExitT (m res)
 
-instance MonadEffect (TrapExitT m msg) where
+instance MonadEffect (TrapExitT m) where
   liftEffect = unsafeCoerce
 
 
-instance Functor (TrapExitT m msg) where
+instance Functor (TrapExitT m) where
   map = unsafeCoerce
-instance Apply (TrapExitT m msg) where
+instance Apply (TrapExitT m) where
   apply = unsafeCoerce
-instance Applicative (TrapExitT m msg) where
+instance Applicative (TrapExitT m) where
   pure = unsafeCoerce
-instance Bind (TrapExitT m msg) where
+instance Bind (TrapExitT m) where
   bind = unsafeCoerce
-instance Monad (TrapExitT m msg)
+instance Monad (TrapExitT m)
 
 instance
-  FFIParseT (m msg) msg2 =>
-  FFIParseT (TrapExitT m msg) (Either TrapExitMsg msg2) where
+  FFIParseT m msg2 =>
+  FFIParseT (TrapExitT m) (Either TrapExitMsg msg2) where
   psFromFFI :: _ -> Foreign -> Either TrapExitMsg msg2
   psFromFFI _ fgn = do
     case parseExitMsg fgn of
       Just psMsg -> Left psMsg
-      Nothing -> Right $ psFromFFI (Proxy ::_ (m msg)) fgn
+      Nothing -> Right $ psFromFFI (Proxy ::_ m) fgn
 
 instance
-  RunT (m msg) is =>
-  RunT (TrapExitT m msg) is where
+  RunT m is =>
+  RunT (TrapExitT m) is where
   runT (TrapExitT inner) is = do
     runT inner is
 
@@ -72,9 +77,28 @@ instance
 class RunT m ms | m -> ms where
   runT :: forall a. m a -> ms -> Effect (Tuple a ms)
 
+class FFIParseT :: (Type -> Type) -> Type -> Constraint
 class FFIParseT m outMsg | m -> outMsg where
   psFromFFI :: Proxy m  -> Foreign -> outMsg
 
+foreign import monitorImpl :: Pid -> Effect MonitorRef
+
+
+
+
+
+--              MonitorMap monitorMsg -> (m (Tuple res (MonitorMap monitorMsg)))
+monitor
+  :: forall monitorMsg m.
+  MonadEffect m =>
+  Pid -> (MonitorRef -> monitorMsg) -> MonitorT monitorMsg m MonitorRef
+monitor pid mapper =
+  MonitorT (\mMap -> do
+               ref <- liftEffect $ monitorImpl pid
+               pure $ Tuple ref $ Map.insert ref mapper mMap
+               --unsafeCoerce 1
+
+             )
 
 instance FFIParseT (ProcessM outMsg) outMsg where
   psFromFFI :: Proxy _ -> Foreign -> outMsg
@@ -87,36 +111,53 @@ instance RunT (ProcessM outMsg) Unit where
 
 data MonitorMsg = MonitorMsg
 
-type MonitorMap msg = Map MonitorRef (MonitorMsg -> msg)
-newtype MonitorT monitorMsg m appMsg res = MonitorT (MonitorMap monitorMsg -> (m appMsg (Tuple res (MonitorMap monitorMsg))))
+type MonitorMap msg = Map MonitorRef (MonitorRef -> msg)
 
-instance MonadEffect (MonitorT monitorMsg m appMsg) where
+
+--newtype MonitorT :: Type -> (Type -> Type -> Type) -> Type -> Type -> Type
+
+newtype MonitorT monitorMsg m res = MonitorT (MonitorMap monitorMsg -> m (Tuple res (MonitorMap monitorMsg)))
+
+-- runMonitorT ::
+--   forall monitorMsg m res.
+--   MonitorT (MonitorMap monitorMsg -> (m (Tuple res (MonitorMap monitorMsg)))) -> MonitorMap monitorMsg -> m (Tuple res (MonitorMap monitorMsg))
+--runMonitorT:: forall monitorMsg m a. MonitorT MonitorMsg m a -> MonitorMap monitorMsg -> m (Tuple a (MonitorMap monitorMsg))
+--runMonitorT :: forall monitorMsg m res. MonitorT (MonitorMap monitorMsg -> m (Tuple res (MonitorMap monitorMsg))) ->  MonitorMap monitorMsg -> m (Tuple res (MonitorMap monitorMsg))
+--runMonitorT :: forall t415 t416 t417 t418. MonitorT t415 t416 t417 t418 -> Map MonitorRef (MonitorRef -> t415) -> t416 t417 (Tuple t418 (Map MonitorRef (MonitorRef -> t415)))
+--runMonitorT (MonitorT mt) = mt
+
+instance Monad m => Functor (MonitorT monitorMsg m) where
+  map f (MonitorT mt) = MonitorT \monitorMap -> do
+    (Tuple res newMontorMap) <- mt monitorMap
+    pure $ Tuple (f res) newMontorMap
+
+instance Monad m => Apply (MonitorT monitorMsg m) where
+  apply = unsafeCoerce
+instance Monad m => Applicative (MonitorT monitorMsg m) where
+  pure = unsafeCoerce
+instance Monad m => Bind (MonitorT monitorMsg m) where
+  bind = unsafeCoerce
+instance Monad m => Monad (MonitorT monitorMsg m)
+
+instance Monad m => MonadEffect (MonitorT monitorMsg m) where
   liftEffect = unsafeCoerce
 
-instance Functor (MonitorT monitorMsg m appMsg) where
-  map = unsafeCoerce
-instance Apply (MonitorT monitorMsg m appMsg) where
-  apply = unsafeCoerce
-instance Applicative (MonitorT monitorMsg m appMsg) where
-  pure = unsafeCoerce
-instance Bind (MonitorT monitorMsg m appMsg) where
-  bind = unsafeCoerce
-instance Monad (MonitorT monitorMsg m appMsg)
+
 
 instance
-  RunT (m appMsg) is =>
-  RunT (MonitorT monitorMsg m appMsg) (Tuple (MonitorMap monitorMsg) is) where
+  RunT m is =>
+  RunT (MonitorT monitorMsg m) (Tuple (MonitorMap monitorMsg) is) where
   runT (MonitorT mt) (Tuple mtState is) = do
     (Tuple (Tuple res newMtState) newIs) <- runT (mt mtState) is
     pure $ Tuple res $ Tuple newMtState newIs
 
-instance  FFIParseT (m appMsg) msg2 =>
-  FFIParseT (MonitorT monitorMsg m appMsg) (Either MonitorMsg msg2) where
+instance  FFIParseT m msg2 =>
+  FFIParseT (MonitorT monitorMsg m) (Either MonitorMsg msg2) where
   psFromFFI :: _ -> Foreign -> Either MonitorMsg msg2
   psFromFFI _ fgn = do
     case parseMonitorMsg fgn of
       Just monitorMsg -> Left monitorMsg
-      Nothing -> Right $ psFromFFI (Proxy ::_ (m appMsg)) fgn
+      Nothing -> Right $ psFromFFI (Proxy ::_ m) fgn
 
 
 
@@ -139,7 +180,18 @@ receive =
 -- m is MonitorT (TrapExitT ProcessM) AppMsg
 -- msg  Either MonitorMsg (Either TrapExitMsg AppMsg)
 
-y :: MonitorT AppMonitorMsg (TrapExitT ProcessM) AppMsg Unit
+
+z :: MonitorT AppMonitorMsg (ProcessM AppMsg) Unit
+z = do
+  msg :: Either MonitorMsg  AppMsg
+   <- receive
+  case msg of
+    Left MonitorMsg -> pure unit
+    Right myApplevelMsg -> pure unit
+
+
+
+y :: MonitorT AppMonitorMsg (TrapExitT (ProcessM AppMsg)) Unit
 y = do
   msg :: Either MonitorMsg (Either TrapExitMsg AppMsg)
    <- receive
@@ -149,11 +201,10 @@ y = do
 
 
 
-x :: TrapExitT ProcessM AppMsg Unit
+x :: TrapExitT (ProcessM AppMsg) Unit
 x = do
   msg :: Either TrapExitMsg AppMsg
     <- receive
   case msg of
     Left TrapExitMsg -> pure unit
     Right myApplevelMsg -> pure unit
-
