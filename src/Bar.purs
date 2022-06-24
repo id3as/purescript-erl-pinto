@@ -9,6 +9,7 @@ import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Data.Newtype (over)
 import Data.Tuple (Tuple(..))
+import Debug (spy)
 import Effect (Effect)
 import Effect.Class (class MonadEffect, liftEffect)
 import Erl.Data.Map (Map)
@@ -16,6 +17,7 @@ import Erl.Data.Map as Map
 import Erl.Process.Raw (Pid)
 import Erl.Process.Raw as Raw
 import Foreign (Foreign)
+import Partial.Unsafe (unsafeCrashWith)
 import Type.Prelude (Proxy(..))
 import Unsafe.Coerce (unsafeCoerce)
 
@@ -73,13 +75,13 @@ derive newtype instance Monad m => Monad (TrapExitT m)
 derive newtype instance MonadEffect m => MonadEffect (TrapExitT m)
 
 instance
-  FFIParseT m msg2 =>
-  FFIParseT (TrapExitT m) (Either TrapExitMsg msg2) where
-  psFromFFI :: _ -> Foreign -> Either TrapExitMsg msg2
-  psFromFFI _ fgn = do
+  (FFIParseT m is msg2 )  =>
+  FFIParseT (TrapExitT m) is (Either TrapExitMsg msg2) where
+  psFromFFI _ is fgn = do
     case parseExitMsg fgn of
       Just psMsg -> Left psMsg
-      Nothing -> Right $ psFromFFI (Proxy ::_ m) fgn
+      Nothing -> do
+        Right $ psFromFFI (Proxy :: _ m) is fgn
 
 instance
   RunT m is =>
@@ -92,16 +94,15 @@ instance
 class RunT m ms | m -> ms where
   runT :: forall a. m a -> ms -> Effect (Tuple a ms)
 
-class FFIParseT :: (Type -> Type) -> Type -> Constraint
-class FFIParseT m outMsg | m -> outMsg where
-  psFromFFI :: Proxy m  -> Foreign -> outMsg
+class FFIParseT m s outMsg | m -> s outMsg where
+  psFromFFI :: Proxy m -> s -> Foreign -> outMsg
 
 foreign import monitorImpl :: Pid -> Effect MonitorRef
 
 monitor ::
   forall monitorMsg m.
   MonadEffect m =>
-  Pid -> (MonitorRef -> monitorMsg) -> MonitorT monitorMsg m MonitorRef
+  Pid -> (MonitorMsg -> monitorMsg) -> MonitorT monitorMsg m MonitorRef
 monitor pid mapper = do
     MonitorT do
       ref <- liftEffect $ monitorImpl pid
@@ -122,18 +123,32 @@ monitor pid mapper = do
 
 --              )
 
-instance FFIParseT (ProcessM outMsg) outMsg where
-  psFromFFI :: Proxy _ -> Foreign -> outMsg
-  psFromFFI  = unsafeCoerce
+instance FFIParseT (ProcessM outMsg) Unit outMsg where
+  psFromFFI _ _  = unsafeCoerce
 
 instance RunT (ProcessM outMsg) Unit where
   runT t _ = do
     res <-  unsafeRunProcessM t
     pure $ Tuple res unit
 
-data MonitorMsg = MonitorMsg
 
-newtype MonitorMap msg = MonitorMap (Map MonitorRef (MonitorRef -> msg))
+type MonitorObject
+  = Foreign
+
+-- | The 'reason' for the monitor being invoked, if this needs unpacking
+-- | then FFI will need to be written
+type MonitorInfo
+  = Foreign
+
+-- | The type of monitor this message is being sent on behalf
+data MonitorType
+  = Process
+  | Port
+
+data MonitorMsg
+  = Down MonitorRef MonitorType MonitorObject MonitorInfo
+
+newtype MonitorMap msg = MonitorMap (Map MonitorRef (MonitorMsg -> msg))
 instance Default (MonitorMap msg) where
   def = MonitorMap Map.empty
 
@@ -172,13 +187,15 @@ instance
     (Tuple (Tuple res newMtState) newIs) <- runT (runStateT mt mtState) is
     pure $ Tuple res $ Tuple newMtState newIs
 
-instance  FFIParseT m msg2 =>
-  FFIParseT (MonitorT monitorMsg m) (Either MonitorMsg msg2) where
-  psFromFFI :: _ -> Foreign -> Either MonitorMsg msg2
-  psFromFFI _ fgn = do
+instance  FFIParseT m is msg2 =>
+  FFIParseT (MonitorT monitorMsg m) (Tuple (MonitorMap monitorMsg) is) (Either monitorMsg msg2) where
+  psFromFFI _ (Tuple (MonitorMap mtState) is) fgn = do
+    let _ = spy "Fgn" {fgn}
     case parseMonitorMsg fgn of
-      Just monitorMsg -> Left monitorMsg
-      Nothing -> Right $ psFromFFI (Proxy ::_ m) fgn
+      Just down@(Down ref _ _ _) ->
+        Left $ (unsafeFromJust "Unknown monitor ref" $ Map.lookup ref mtState) down
+      Nothing -> do
+        Right $ psFromFFI (Proxy :: _ m) is fgn
 
 
 
@@ -193,39 +210,42 @@ data AppMsg = AppMsg
 data AppMonitorMsg = AppMonitorMsg
 
 
-receive :: forall m outMsg. MonadEffect m => FFIParseT m outMsg => m outMsg
-receive =
-  psFromFFI (Proxy :: _ m) <$> liftEffect rawReceive
+-- receive :: forall m outMsg. MonadEffect m => FFIParseT m outMsg => m outMsg
+-- receive =
+--   psFromFFI =<< liftEffect rawReceive
 
 -- y----
 -- m is MonitorT (TrapExitT ProcessM) AppMsg
 -- msg  Either MonitorMsg (Either TrapExitMsg AppMsg)
 
 
-z :: MonitorT AppMonitorMsg (ProcessM AppMsg) Unit
-z = do
-  msg :: Either MonitorMsg  AppMsg
-   <- receive
-  case msg of
-    Left MonitorMsg -> pure unit
-    Right myApplevelMsg -> pure unit
+-- z :: MonitorT AppMonitorMsg (ProcessM AppMsg) Unit
+-- z = do
+--   msg <- receive
+--   case msg of
+--     Left AppMonitorMsg -> pure unit
+--     Right myApplevelMsg -> pure unit
 
 
 
-y :: MonitorT AppMonitorMsg (TrapExitT (ProcessM AppMsg)) Unit
-y = do
-  msg :: Either MonitorMsg (Either TrapExitMsg AppMsg)
-   <- receive
-  case msg of
-    Left MonitorMsg -> pure unit
-    Right myApplevelMsg -> pure unit
+-- y :: MonitorT AppMonitorMsg (TrapExitT (ProcessM AppMsg)) Unit
+-- y = do
+--   msg <- receive
+--   case msg of
+--     Left AppMonitorMsg -> pure unit
+--     Right myApplevelMsg -> pure unit
 
 
 
-x :: TrapExitT (ProcessM AppMsg) Unit
-x = do
-  msg :: Either TrapExitMsg AppMsg
-    <- receive
-  case msg of
-    Left TrapExitMsg -> pure unit
-    Right myApplevelMsg -> pure unit
+-- x :: TrapExitT (ProcessM AppMsg) Unit
+-- x = do
+--   msg :: Either TrapExitMsg AppMsg
+--     <- receive
+--   case msg of
+--     Left TrapExitMsg -> pure unit
+--     Right myApplevelMsg -> pure unit
+
+
+unsafeFromJust :: forall a. String -> Maybe a -> a
+unsafeFromJust _ (Just a) = a
+unsafeFromJust message Nothing = unsafeCrashWith message

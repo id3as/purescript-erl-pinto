@@ -4,10 +4,16 @@ module Test.ProcessT
 
 import Prelude
 
-import Bar (MonitorT(..), ProcessM, MonitorMap)
+import Bar (MonitorMap, MonitorT(..), ProcessM, monitor)
 import Control.Monad.Free (Free)
+import Control.Monad.Trans.Class (lift)
 import Data.Maybe (Maybe(..))
+import Data.Time.Duration (Milliseconds(..))
+import Debug (spy)
+import Effect.Class (liftEffect)
+import Erl.Kernel.Erlang (sleep)
 import Erl.Process (Process, (!))
+import Erl.Process.Raw as Raw
 import Erl.Test.EUnit (TestF, suite, test)
 import Pinto (crashIfNotStarted)
 import Pinto.GenServer (InfoFn2, InitFn, InitResult(..), ServerSpec)
@@ -44,23 +50,24 @@ processTSuite =
 testMonitorT :: Free TestF Unit
 testMonitorT =
   test "HandleInfo receives app messages and monitor message" do
-    let
-      --x :: ServerSpec (MonitorT MonitorMsg (ProcessM Msg)) Cont Stop Msg State
-      x = (GS.defaultSpec init) { handleInfo = Just handleInfo }
-
-    serverPid <- crashIfNotStarted <$> (GS.startLink $ x)
+    _ <- pure $ spy "Hello from the mice" {}
+    serverPid <- crashIfNotStarted <$> (GS.startLink $ (GS.defaultSpec init) { handleInfo = Just handleInfo })
+    _ <- pure $ spy "The pid is" {serverPid}
+    sleep (Milliseconds 2000.0)
     pure unit
   where
-  init :: InitFn (MonitorT MonitorMsg (ProcessM Msg)) Cont Stop Msg State
+  init :: InitFn Cont Stop Msg State (MonitorT MonitorMsg (ProcessM Msg))
   -- init :: InitFn (ProcessM Msg) Unit Cont Stop Msg State
   -- init :: ?t
   init = do
-    unsafeCoerce 1
-    --pure $ InitOk $ TestState 0
+    pid <- liftEffect $ Raw.spawn do
+      sleep (Milliseconds 1000.0)
+    _ <- lift $ monitor pid (const Boom)
+    pure $ InitOk $ TestState 0
 
-  --handleInfo :: InfoFn2 (MonitorT MonitorMsg (ProcessM Msg)) Cont Stop Msg State
+  handleInfo :: InfoFn2 Cont Stop Msg State (MonitorT MonitorMsg (ProcessM Msg))
   -- handleInfo :: InfoFn2 ProcessM Unit Cont Stop Msg State
   -- handleInfo :: ?t
   handleInfo msg (TestState x) = do
-    unsafeCoerce 1
-    -- pure $ GS.return $ TestState $ x + 1
+    _ <- pure $ spy "We are gods walking the earth" msg
+    pure $ GS.return $ TestState $ x + 1

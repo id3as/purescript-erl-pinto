@@ -50,7 +50,7 @@ startLink = do
     <$> crashIfNotStarted
     <$> (GS.startLink $ (GS.defaultSpec init) { name = Just serverName })
   where
-  init :: InitFn (ProcessM Msg) Unit Cont Stop Msg State
+  init :: InitFn Cont Stop Msg State (ProcessM Msg)
   init =
     let
       state = { value: 0 }

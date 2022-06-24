@@ -1,22 +1,21 @@
 -module(bar@foreign).
 
--export([ foo/1
-        , bar/1
-        , parseMonitorMsg/1
+-export([ parseMonitorMsg/1
         , parseExitMsg/1
         , monitorImpl/1
         , demonitorImpl/1
         ]).
 
 
-parseMonitorMsg(_) -> 1.
-parseExitMsg(_) -> 1.
 %%------------------------------------------------------------------------------
 %% PS representation helpers
 %%------------------------------------------------------------------------------
 -define(left(X), {left, X}).
 -define(right(X), {right, X}).
 
+
+-define(just(X), {just, X}).
+-define(nothing, {nothing}).
 -define(exitMsg(Pid, Reason), {exitMsg, Pid, Reason}).
 -define(kill, {kill}).
 -define(normal, {normal}).
@@ -27,7 +26,9 @@ parseExitMsg(_) -> 1.
 
 monitorImpl(Pid) ->
   fun() ->
-    erlang:monitor(process, Pid)
+    Ref = erlang:monitor(process, Pid),
+    io:format(user, "Called monitor ~p ~p~n", [Ref, Pid]),
+    Ref
   end.
 
 demonitorImpl(Ref) ->
@@ -52,15 +53,13 @@ exit_reason_to_ps(Other) -> ?other(Other).
 -define(down(Ref, Type, Object, Info), {down, Ref, Type, Object, Info}).
 
 
-bar_receive() ->
-    receive
-        X -> bar(X)
-    end.
-
-bar(Msg) ->
+parseMonitorMsg(Msg) ->
     case Msg of
         {'DOWN', MonitorRef, MonitorType, MonitorObject, MonitorInfo} ->
-            ?left(?down(MonitorRef, MonitorType, MonitorObject, MonitorInfo));
+            ?just(?down(MonitorRef, MonitorType, MonitorObject, MonitorInfo));
         _ ->
-            ?right(Msg)
+            ?nothing
     end.
+
+parseExitMsg(_) ->
+     1.

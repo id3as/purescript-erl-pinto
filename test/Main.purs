@@ -31,8 +31,8 @@ main =
   in
     void
       $ runTests do
-          TGS.genServerSuite
-         -- TPT.genServerSuite
+         --TGS.genServerSuite
+         TPT.processTSuite
           --DoorLock.testSuite
           --supervisorSuite
 {-
