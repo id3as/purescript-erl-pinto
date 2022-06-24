@@ -302,11 +302,11 @@ defaultSpec initFn =
 -- |   init = pure $ InitOk {}
 -- | ```
 startLink
-  :: forall m ms cont stop msg state outMsg a.
+  :: forall m ms cont stop state msg a.
      RunT m ms =>
      Default ms =>
-     IsValidChain m msg =>
-     FFIParseT m ms outMsg =>
+     --IsValidChain m msg =>
+     FFIParseT m ms msg =>
      (ServerSpec cont stop msg state m) -> Effect (StartLinkResult (ServerPid cont stop msg state))
 startLink { name: maybeName, init: initFn, handleInfo, handleContinue, terminate: terminate', trapExits } = startLinkFFI maybeName (nativeModuleName pintoGenServer) initEffect
   where
@@ -316,7 +316,7 @@ startLink { name: maybeName, init: initFn, handleInfo, handleContinue, terminate
         , terminate: terminate'
         , trapExits
         , mState : unsafeCoerce initialMState
-        , psFromFFI : unsafeCoerce (psFromFFI (Proxy :: _ m) :: ms -> Foreign -> outMsg)
+        , psFromFFI : unsafeCoerce (psFromFFI (Proxy :: _ m) :: ms -> Foreign -> msg)
         , runT : unsafeCoerce (runT :: m a -> ms -> Effect (Tuple a ms))
         }
 

@@ -7,6 +7,7 @@ import Prelude
 import Bar (MonitorMap, MonitorT(..), ProcessM, monitor)
 import Control.Monad.Free (Free)
 import Control.Monad.Trans.Class (lift)
+import Data.Either (Either)
 import Data.Maybe (Maybe(..))
 import Data.Time.Duration (Milliseconds(..))
 import Debug (spy)
@@ -39,7 +40,7 @@ data Msg
   = TestMsg
 
 
-data MonitorMsg = Boom
+data AppMonitorMsg = Boom
 
 processTSuite :: Free TestF Unit
 processTSuite =
@@ -56,7 +57,7 @@ testMonitorT =
     sleep (Milliseconds 2000.0)
     pure unit
   where
-  init :: InitFn Cont Stop Msg State (MonitorT MonitorMsg (ProcessM Msg))
+  init :: InitFn Cont Stop (Either AppMonitorMsg Msg) State (MonitorT AppMonitorMsg (ProcessM Msg))
   -- init :: InitFn (ProcessM Msg) Unit Cont Stop Msg State
   -- init :: ?t
   init = do
@@ -65,9 +66,10 @@ testMonitorT =
     _ <- lift $ monitor pid (const Boom)
     pure $ InitOk $ TestState 0
 
-  handleInfo :: InfoFn2 Cont Stop Msg State (MonitorT MonitorMsg (ProcessM Msg))
+  --handleInfo :: InfoFn2 Cont Stop Msg State (MonitorT MonitorMsg (ProcessM Msg))
   -- handleInfo :: InfoFn2 ProcessM Unit Cont Stop Msg State
   -- handleInfo :: ?t
   handleInfo msg (TestState x) = do
+    -- let _ = msg :: ?t
     _ <- pure $ spy "We are gods walking the earth" msg
     pure $ GS.return $ TestState $ x + 1
