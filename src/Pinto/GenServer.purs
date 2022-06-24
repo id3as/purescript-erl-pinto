@@ -54,7 +54,7 @@ module Pinto.GenServer
 
 import Prelude
 
-import Bar (class Default, class FFIParseT, class IsValidChain, class RunT, def, psFromFFI, runT)
+import Bar (class Default, class FFIParseT, class RunT, def, psFromFFI, runT)
 import Control.Monad.Cont (class MonadTrans)
 import Control.Monad.Cont.Trans (lift)
 import Control.Monad.Reader (ReaderT, runReaderT)
@@ -62,7 +62,7 @@ import Data.Function.Uncurried (mkFn2, runFn2)
 import Data.Maybe (Maybe(..), fromJust)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
-import Effect.Class (class MonadEffect, liftEffect)
+import Effect.Class (class MonadEffect)
 import Effect.Class (liftEffect) as Lift
 import Effect.Uncurried (EffectFn1, EffectFn2, EffectFn3, mkEffectFn1, mkEffectFn2, mkEffectFn3)
 import Erl.Atom (Atom, atom)
@@ -305,7 +305,6 @@ startLink
   :: forall m ms cont stop state msg a.
      RunT m ms =>
      Default ms =>
-     --IsValidChain m msg =>
      FFIParseT m ms msg =>
      (ServerSpec cont stop msg state m) -> Effect (StartLinkResult (ServerPid cont stop msg state))
 startLink { name: maybeName, init: initFn, handleInfo, handleContinue, terminate: terminate', trapExits } = startLinkFFI maybeName (nativeModuleName pintoGenServer) initEffect
@@ -457,7 +456,7 @@ handle_cast =
     pure $ exportReturnResult (mkOuterState context <$> result)
 
 handle_info
-  :: forall m cont stop msg state.
+  :: forall m cont stop msg state is.
      EffectFn2 Foreign (OuterState2 cont stop msg state m) (NativeReturnResult cont stop (OuterState2 cont stop msg state m))
 handle_info =
   mkEffectFn2 \nativeMsg state@{ innerState, context: context@(Context2 ctx@{ handleInfo: maybeHandleInfo, trapExits, mState, psFromFFI, runT }) } ->
@@ -465,7 +464,9 @@ handle_info =
       <$> case maybeHandleInfo of
           Just f -> do
             let
+              psFromFFI' :: (TransState -> Foreign -> msg)
               psFromFFI' = unsafeCoerce psFromFFI
+              runT' :: m (ReturnResult cont stop state) -> is -> Effect (Tuple (ReturnResult cont stop state) is)
               runT'  = unsafeCoerce runT
               processMsg =
                 mkFn2 \fn msg -> do

@@ -7,7 +7,7 @@ import Prelude
 import Bar (MonitorMap, MonitorT(..), ProcessM, monitor)
 import Control.Monad.Free (Free)
 import Control.Monad.Trans.Class (lift)
-import Data.Either (Either)
+import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Data.Time.Duration (Milliseconds(..))
 import Debug (spy)
@@ -70,6 +70,9 @@ testMonitorT =
   -- handleInfo :: InfoFn2 ProcessM Unit Cont Stop Msg State
   -- handleInfo :: ?t
   handleInfo msg (TestState x) = do
-    -- let _ = msg :: ?t
-    _ <- pure $ spy "We are gods walking the earth" msg
+    case msg of
+      Left Boom -> do
+        void $ pure $ spy "We are gods walking the earth" msg
+      Right _ ->
+        pure unit
     pure $ GS.return $ TestState $ x + 1

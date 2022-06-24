@@ -25,10 +25,6 @@ import Unsafe.Coerce (unsafeCoerce)
 -- | Reference to a monitor, used to stop the monitor once it is started
 foreign import data MonitorRef :: Type
 
-
-
-class IsValidChain m msg | m -> msg
-
 class Default a where
   def :: a
 
@@ -168,17 +164,6 @@ derive newtype instance Monad m => Bind (MonitorT monitorMsg m)
 derive newtype instance Monad m => Monad (MonitorT monitorMsg m)
 
 derive newtype instance MonadEffect m => MonadEffect (MonitorT monitorMsg m)
-
-
-
-instance IsValidChain m msg =>
-  IsValidChain (MonitorT monitorMsg m) msg
-
-
-instance IsValidChain (ProcessM msg) msg
-
-
-
 
 instance
   RunT m is =>
