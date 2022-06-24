@@ -25,7 +25,7 @@ foreign import data MonitorRef :: Type
 
 
 
-class IsValidChain m minner msg | m -> minner msg
+class IsValidChain m msg | m -> msg
 
 class Default a where
   def :: a
@@ -156,11 +156,11 @@ derive newtype instance MonadEffect m => MonadEffect (MonitorT monitorMsg m)
 
 
 
-instance IsValidChain m minner msg =>
-  IsValidChain (MonitorT monitorMsg) (m minner) msg
+instance IsValidChain m msg =>
+  IsValidChain (MonitorT monitorMsg m) msg
 
 
-instance IsValidChain ProcessM msg msg
+instance IsValidChain (ProcessM msg) msg
 
 
 

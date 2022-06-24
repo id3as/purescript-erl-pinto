@@ -51,7 +51,7 @@ testMonitorT =
     serverPid <- crashIfNotStarted <$> (GS.startLink $ x)
     pure unit
   where
-  init :: InitFn (MonitorT MonitorMsg (ProcessM Unit)) Cont Stop Msg State
+  init :: InitFn (MonitorT MonitorMsg (ProcessM Msg)) Cont Stop Msg State
   -- init :: InitFn (ProcessM Msg) Unit Cont Stop Msg State
   -- init :: ?t
   init = do

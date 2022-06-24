@@ -293,11 +293,11 @@ defaultSpec initFn =
 -- |   init = pure $ InitOk {}
 -- | ```
 startLink
-  :: forall m minner ms cont stop msg state.
-     RunT (m minner) ms =>
+  :: forall m ms cont stop msg state.
+     RunT m ms =>
      Default ms =>
-     IsValidChain m minner msg =>
-     (ServerSpec (m minner) cont stop msg state) -> Effect (StartLinkResult (ServerPid cont stop msg state))
+     IsValidChain m  msg =>
+     (ServerSpec m cont stop msg state) -> Effect (StartLinkResult (ServerPid cont stop msg state))
 startLink { name: maybeName, init: initFn, handleInfo, handleContinue, terminate: terminate', trapExits } = startLinkFFI maybeName (nativeModuleName pintoGenServer) initEffect
   where
   initialMState = def :: ms
@@ -310,7 +310,7 @@ startLink { name: maybeName, init: initFn, handleInfo, handleContinue, terminate
 
   context = Context2 ctx
 
-  initEffect :: Effect (InitResult cont (OuterState2 (m minner) cont stop msg state))
+  initEffect :: Effect (InitResult cont (OuterState2 m cont stop msg state))
   initEffect = do
     _ <- case trapExits of
       Nothing -> pure unit
