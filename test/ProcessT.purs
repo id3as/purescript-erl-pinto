@@ -4,13 +4,13 @@ module Test.ProcessT
 
 import Prelude
 
-import Bar (MonitorT(..), ProcessM)
+import Bar (MonitorT(..), ProcessM, MonitorMap)
 import Control.Monad.Free (Free)
 import Data.Maybe (Maybe(..))
 import Erl.Process (Process, (!))
 import Erl.Test.EUnit (TestF, suite, test)
 import Pinto (crashIfNotStarted)
-import Pinto.GenServer (InitFn, InitResult(..), InfoFn2)
+import Pinto.GenServer (InfoFn2, InitFn, InitResult(..), ServerSpec)
 import Pinto.GenServer as GS
 import Unsafe.Coerce (unsafeCoerce)
 
@@ -44,18 +44,21 @@ processTSuite =
 testMonitorT :: Free TestF Unit
 testMonitorT =
   test "HandleInfo receives app messages and monitor message" do
-    serverPid <- crashIfNotStarted <$> (GS.startLink $ (GS.defaultSpec init) { handleInfo = Just handleInfo })
-    (unsafeCoerce serverPid :: Process Msg) ! TestMsg
+    let
+      --x :: ServerSpec (MonitorT MonitorMsg (ProcessM Msg)) Cont Stop Msg State
+      x = (GS.defaultSpec init) { handleInfo = Just handleInfo }
+
+    serverPid <- crashIfNotStarted <$> (GS.startLink $ x)
     pure unit
   where
-  -- init :: InitFn (MonitorT MonitorMsg (ProcessM Msg)) Unit Cont Stop Msg State
-  init :: InitFn (ProcessM Msg) Unit Cont Stop Msg State
+  init :: InitFn (MonitorT MonitorMsg (ProcessM Unit)) Cont Stop Msg State
+  -- init :: InitFn (ProcessM Msg) Unit Cont Stop Msg State
   -- init :: ?t
   init = do
     unsafeCoerce 1
     --pure $ InitOk $ TestState 0
 
-  --handleInfo :: InfoFn2 (MonitorT MonitorMsg ProcessM) Unit Cont Stop Msg State
+  --handleInfo :: InfoFn2 (MonitorT MonitorMsg (ProcessM Msg)) Cont Stop Msg State
   -- handleInfo :: InfoFn2 ProcessM Unit Cont Stop Msg State
   -- handleInfo :: ?t
   handleInfo msg (TestState x) = do
