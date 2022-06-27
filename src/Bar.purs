@@ -14,6 +14,7 @@ import Data.Tuple (Tuple(..))
 import Debug (spy)
 import Effect (Effect)
 import Effect.Class (class MonadEffect, liftEffect)
+import Effect.Unsafe (unsafePerformEffect)
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
 import Erl.Process (ProcessM, self, unsafeRunProcessM, (!))
@@ -251,10 +252,29 @@ a count = do
       pure unit
     _ -> a (count -1)
 
+b :: Int -> Effect Unit
+b count = do
+  msg :: Either TrapExitMsg AppMsg
+    <- Raw.receive
+  case msg of
+    Left TrapExitMsg -> pure unit
+    Right myApplevelMsg -> do
+      me <- Raw.self
+      Raw.send me $ Right AppMsg
+      pure unit
+  case count of
+    0 -> do
+      _ <- pure $ spy "done" count
+      pure unit
+    _ -> b (count -1)
 
-main :: Int -> Effect Unit
-main count = do
+main_a :: Int -> Effect Unit
+main_a count = do
   void $ runT (a count) def
+
+main_b :: Int -> Effect Unit
+main_b count = do
+  b count
 
 unsafeFromJust :: forall a. String -> Maybe a -> a
 unsafeFromJust _ (Just a) = a
