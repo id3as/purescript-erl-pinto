@@ -8,6 +8,7 @@ import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Effect.Console as Console
 import Erl.Kernel.Erlang as Kernel
+import Erl.Process.Raw as Raw
 import Run (EFFECT, Run, Step(..), interpret, liftEffect, match, on, runAccumPure, runBaseEffect, runCont, send)
 import Run as Run
 import Type.Prelude (Proxy(..))
@@ -97,7 +98,7 @@ dinnerTime = do
   if isThereMore then dinnerTime
   else do
     bill <- checkPlease
-    speak $ "Outrageous!" <> show bill
+    speak $ "Outrageous! " <> show bill
 
 program2 :: forall r. Run (EFFECT + DINNER + r) Unit
 program2 = dinnerTime # runTalk
@@ -107,3 +108,18 @@ program3 = program2 # runDinnerPure { stock: 10, bill: 0 }
 
 main :: Effect (Tuple Bill Unit)
 main = runBaseEffect program3
+
+
+data ProcessF msg a
+  = Receive (msg -> a)
+
+derive instance Functor (ProcessF msg)
+
+type MyProcessM r = (myProcessM :: ProcessF)
+_myProcessM = Proxy :: Proxy "myProcessM"
+
+myReceive :: forall msg r. (ProcessF msg) ~> Run (EFFECT + r)
+myReceive = case _ of
+  Receive reply -> do
+    msg <- liftEffect $ Raw.receive
+    pure (reply msg)
