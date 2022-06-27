@@ -122,7 +122,7 @@ monitor pid mapper = do
 
 
 instance FFIParseT (ProcessM outMsg) outMsg where
-  psFromFFI   = unsafeCoerce
+  psFromFFI   = pure <<< unsafeCoerce
 
 instance RunT (ProcessM outMsg) Unit where
   runT t _ = do
@@ -246,13 +246,15 @@ a count = do
       liftEffect $ me ! AppMsg
       pure unit
   case count of
-    0 -> pure unit
+    0 -> do
+      _ <- pure $ spy "done" count
+      pure unit
     _ -> a (count -1)
 
 
-main :: Effect Unit
-main = do
-  void $ runT (a 10) def
+main :: Int -> Effect Unit
+main count = do
+  void $ runT (a count) def
 
 unsafeFromJust :: forall a. String -> Maybe a -> a
 unsafeFromJust _ (Just a) = a

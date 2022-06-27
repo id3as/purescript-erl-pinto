@@ -37,12 +37,12 @@ demonitorImpl(Ref) ->
   end.
 
 
-foo(Msg) ->
+parseExitMsg(Msg) ->
     case Msg of
         {'EXIT', Pid, Reason} ->
-            ?left(?exitMsg(Pid, exit_reason_to_ps(Reason)));
+            ?just(?exitMsg(Pid, exit_reason_to_ps(Reason)));
         _ ->
-            ?right(Msg)
+            ?nothing
     end.
 
 exit_reason_to_ps(killed) -> ?kill;
@@ -60,6 +60,3 @@ parseMonitorMsg(Msg) ->
         _ ->
             ?nothing
     end.
-
-parseExitMsg(_) ->
-     1.
