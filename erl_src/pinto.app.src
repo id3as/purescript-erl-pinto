@@ -1,0 +1,7 @@
+{application, pinto,
+ [ {description, "Opinionated OTP runtime for purerl"}
+ , {vsn, "0.0.1"}
+ , {registered, []}
+ , {modules, []}
+ , {env, []}
+ ]}.

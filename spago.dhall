@@ -5,7 +5,8 @@ You can edit this file as you like.
 { name = "my-project"
 , backend = "purerl"
 , dependencies =
-  [ "datetime"
+  [ "console"
+  , "datetime"
   , "debug"
   , "effect"
   , "either"
@@ -23,6 +24,7 @@ You can edit this file as you like.
   , "newtype"
   , "partial"
   , "prelude"
+  , "run"
   , "transformers"
   , "tuples"
   , "typelevel-prelude"

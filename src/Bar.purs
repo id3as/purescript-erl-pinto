@@ -252,15 +252,15 @@ a count = do
       pure unit
     _ -> a (count -1)
 
-b :: Int -> Effect Unit
+b :: Int -> ProcessM (Either TrapExitMsg AppMsg) Unit
 b count = do
   msg :: Either TrapExitMsg AppMsg
-    <- Raw.receive
+    <- Process.receive
   case msg of
     Left TrapExitMsg -> pure unit
     Right myApplevelMsg -> do
-      me <- Raw.self
-      Raw.send me $ Right AppMsg
+      me <- Process.self
+      liftEffect $ Process.send me $ Right AppMsg
       pure unit
   case count of
     0 -> do
@@ -274,7 +274,7 @@ main_a count = do
 
 main_b :: Int -> Effect Unit
 main_b count = do
-  b count
+  unsafeRunProcessM $ b count
 
 unsafeFromJust :: forall a. String -> Maybe a -> a
 unsafeFromJust _ (Just a) = a

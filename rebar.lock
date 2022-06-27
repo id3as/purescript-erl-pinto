@@ -1,0 +1,4 @@
+[{<<"purerl_optimiser">>,
+  {git,"https://github.com/id3as/purerl-optimiser.git",
+       {ref,"6ba3e1ce8fe7259e719abc9fcbcb6f92a55d09fe"}},
+  0}].

@@ -7,7 +7,8 @@ ps:
 
 
 test:
-	spago -x test.dhall test
+	spago -x test.dhall build
+	rebar3 compile
 
 clean:
 	rm -rf ebin output src/compiled_ps
