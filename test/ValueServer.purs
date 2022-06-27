@@ -10,10 +10,11 @@ module Test.ValueServer
 
 import Prelude
 
-import Bar (ProcessM)
+
 import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Erl.Atom (atom)
+import Erl.Process (ProcessM)
 import Erl.Process.Raw (class HasPid)
 import Pinto.GenServer (InitResult(..), ServerPid, ServerRef(..), ServerType, InitFn)
 import Pinto.GenServer as GS

@@ -305,7 +305,7 @@ startLink
   :: forall m ms cont stop state msg a.
      RunT m ms =>
      Default ms =>
-     FFIParseT m ms msg =>
+     FFIParseT m msg =>
      (ServerSpec cont stop msg state m) -> Effect (StartLinkResult (ServerPid cont stop msg state))
 startLink { name: maybeName, init: initFn, handleInfo, handleContinue, terminate: terminate', trapExits } = startLinkFFI maybeName (nativeModuleName pintoGenServer) initEffect
   where
@@ -315,7 +315,7 @@ startLink { name: maybeName, init: initFn, handleInfo, handleContinue, terminate
         , terminate: terminate'
         , trapExits
         , mState : unsafeCoerce initialMState
-        , psFromFFI : unsafeCoerce (psFromFFI (Proxy :: _ m) :: ms -> Foreign -> msg)
+        , psFromFFI : unsafeCoerce (psFromFFI :: (Foreign -> m msg))
         , runT : unsafeCoerce (runT :: m a -> ms -> Effect (Tuple a ms))
         }
 
@@ -369,7 +369,7 @@ newtype Context2 cont stop msg state m
   , terminate :: Maybe (TerminateFn cont stop msg state)
   , trapExits :: Maybe (ExitMessage -> msg)
   , mState :: TransState
-  , psFromFFI :: TransState -> Foreign -> TransMsg
+  , psFromFFI :: Foreign -> TransMsg
   , runT :: TransMonad -> TransState -> Effect (Tuple TransRes TransState)
   }
 
@@ -456,7 +456,7 @@ handle_cast =
     pure $ exportReturnResult (mkOuterState context <$> result)
 
 handle_info
-  :: forall m cont stop msg state is.
+  :: forall m cont stop msg state.
      EffectFn2 Foreign (OuterState2 cont stop msg state m) (NativeReturnResult cont stop (OuterState2 cont stop msg state m))
 handle_info =
   mkEffectFn2 \nativeMsg state@{ innerState, context: context@(Context2 ctx@{ handleInfo: maybeHandleInfo, trapExits, mState, psFromFFI, runT }) } ->
@@ -464,29 +464,13 @@ handle_info =
       <$> case maybeHandleInfo of
           Just f -> do
             let
-              psFromFFI' :: (TransState -> Foreign -> msg)
+              psFromFFI' :: Foreign -> m msg
               psFromFFI' = unsafeCoerce psFromFFI
-              runT' :: m (ReturnResult cont stop state) -> is -> Effect (Tuple (ReturnResult cont stop state) is)
+              runT' :: forall a is. m a -> is -> Effect (Tuple a is)
               runT'  = unsafeCoerce runT
-              processMsg =
-                mkFn2 \fn msg -> do
-                  Tuple (ReturnResult mAction state) newMState <- runT' ((runReaderT $ case fn msg innerState of ResultT2 inner -> inner) context) (unsafeCoerce mState)
-                  pure $ ReturnResult mAction (mkOuterState2 (Context2 ctx{mState = unsafeCoerce newMState}) state)
-
-            runFn2 processMsg f $ psFromFFI' mState nativeMsg
-
-          --   --------------------------------------------------------------------
-          --   -- Note we use mkFn2 for performance reasons - it's potentially very
-          --   -- hot code.  Similarly we manually deconstruct the Maybe to save
-          --   -- using maybe' and constructing an extra (\unit -> ...) fn
-          --   --------------------------------------------------------------------
-          --   let
-          --     maybeClientExitMessage = trapExits <*> parseTrappedExitFFI nativeMsg Exit
-          --   case maybeClientExitMessage of
-          --     Nothing ->
-          --       runFn2 processMsg f $ unsafeFromForeign nativeMsg
-          --     Just cem ->
-          --       runFn2 processMsg f cem
+            (Tuple parsedMsg newMState)  <- runT' (psFromFFI' nativeMsg) (unsafeCoerce mState)
+            Tuple (ReturnResult mAction state) newMState' <- runT' ((runReaderT $ case f parsedMsg innerState of ResultT2 inner -> inner) context) newMState
+            pure $ ReturnResult mAction (mkOuterState2 (Context2 ctx{mState = unsafeCoerce newMState'}) state)
           Nothing ->
             pure $ ReturnResult Nothing state
 

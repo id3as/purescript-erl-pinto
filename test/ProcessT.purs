@@ -4,7 +4,7 @@ module Test.ProcessT
 
 import Prelude
 
-import Bar (MonitorMap, MonitorT(..), ProcessM, monitor)
+import Bar (MonitorMap, MonitorT(..), monitor)
 import Control.Monad.Free (Free)
 import Control.Monad.Trans.Class (lift)
 import Data.Either (Either(..))
@@ -13,7 +13,7 @@ import Data.Time.Duration (Milliseconds(..))
 import Debug (spy)
 import Effect.Class (liftEffect)
 import Erl.Kernel.Erlang (sleep)
-import Erl.Process (Process, (!))
+import Erl.Process (ProcessM, Process, (!))
 import Erl.Process.Raw as Raw
 import Erl.Test.EUnit (TestF, suite, test)
 import Pinto (crashIfNotStarted)
