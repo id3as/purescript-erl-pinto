@@ -78,6 +78,7 @@ instance
       Just psMsg -> Left psMsg
       Nothing -> do
         Right $ psFromFFI (Proxy :: _ m) is fgn
+  receive = psFromFFI =<< Raw.receive
 
 instance
   RunT m is =>
@@ -92,6 +93,7 @@ class RunT m ms | m -> ms where
 
 class FFIParseT m s outMsg | m -> s outMsg where
   psFromFFI :: Proxy m -> s -> Foreign -> outMsg
+  receive  :: forall m outMsg. m outMsg
 
 foreign import monitorImpl :: Pid -> Effect MonitorRef
 
@@ -121,6 +123,7 @@ monitor pid mapper = do
 
 instance FFIParseT (ProcessM outMsg) Unit outMsg where
   psFromFFI _ _  = unsafeCoerce
+  receive = Raw.receive
 
 instance RunT (ProcessM outMsg) Unit where
   runT t _ = do
@@ -181,7 +184,7 @@ instance  FFIParseT m is msg2 =>
         Left $ (unsafeFromJust "Unknown monitor ref" $ Map.lookup ref mtState) down
       Nothing -> do
         Right $ psFromFFI (Proxy :: _ m) is fgn
-
+  receive = psFromFFI =<< Raw.receive
 
 
 foreign import parseMonitorMsg :: Foreign -> Maybe MonitorMsg
@@ -195,40 +198,37 @@ data AppMsg = AppMsg
 data AppMonitorMsg = AppMonitorMsg
 
 
--- receive :: forall m outMsg. MonadEffect m => FFIParseT m outMsg => m outMsg
--- receive =
---   psFromFFI =<< liftEffect rawReceive
 
 -- y----
 -- m is MonitorT (TrapExitT ProcessM) AppMsg
 -- msg  Either MonitorMsg (Either TrapExitMsg AppMsg)
 
 
--- z :: MonitorT AppMonitorMsg (ProcessM AppMsg) Unit
--- z = do
---   msg <- receive
---   case msg of
---     Left AppMonitorMsg -> pure unit
---     Right myApplevelMsg -> pure unit
+z :: MonitorT AppMonitorMsg (ProcessM AppMsg) Unit
+z = do
+  msg <- receive
+  case msg of
+    Left AppMonitorMsg -> pure unit
+    Right myApplevelMsg -> pure unit
 
 
 
--- y :: MonitorT AppMonitorMsg (TrapExitT (ProcessM AppMsg)) Unit
--- y = do
---   msg <- receive
---   case msg of
---     Left AppMonitorMsg -> pure unit
---     Right myApplevelMsg -> pure unit
+y :: MonitorT AppMonitorMsg (TrapExitT (ProcessM AppMsg)) Unit
+y = do
+  msg <- receive
+  case msg of
+    Left AppMonitorMsg -> pure unit
+    Right myApplevelMsg -> pure unit
 
 
 
--- x :: TrapExitT (ProcessM AppMsg) Unit
--- x = do
---   msg :: Either TrapExitMsg AppMsg
---     <- receive
---   case msg of
---     Left TrapExitMsg -> pure unit
---     Right myApplevelMsg -> pure unit
+x :: TrapExitT (ProcessM AppMsg) Unit
+x = do
+  msg :: Either TrapExitMsg AppMsg
+    <- receive
+  case msg of
+    Left TrapExitMsg -> pure unit
+    Right myApplevelMsg -> pure unit
 
 
 unsafeFromJust :: forall a. String -> Maybe a -> a
