@@ -24,6 +24,8 @@ You can edit this file as you like.
   , "newtype"
   , "partial"
   , "prelude"
+  , "profunctor-lenses"
+  , "record"
   , "run"
   , "transformers"
   , "tuples"

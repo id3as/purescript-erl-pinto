@@ -4,6 +4,8 @@ where
 import Prelude
 
 import Data.Functor.Variant (VariantF, match, on, prj)
+import Data.Lens (Lens', view)
+import Data.Lens.Record (prop)
 import Data.Maybe (Maybe(..))
 import Data.Symbol (class IsSymbol)
 import Data.Tuple (Tuple(..))
@@ -11,13 +13,18 @@ import Data.Variant (Variant, expand, inj)
 import Debug (spy, traceM)
 import Effect (Effect)
 import Effect.Console as Console
+import Erl.Data.Map (Map)
+import Erl.Data.Map as Map
 import Erl.Process.Raw as Raw
 import Foreign (Foreign)
 import Partial.Unsafe (unsafeCrashWith)
 import Prim.Row as Row
 import Prim.RowList (class RowToList, RowList)
 import Prim.RowList as RL
-import Run (EFFECT, Run, Step(..), interpret, liftEffect, on, runAccumPure, runBaseEffect, runCont, send)
+import Record as Record
+import Record.Builder (Builder, build)
+import Record.Builder as RecordBuilder
+import Run (EFFECT, Run, Step(..), interpret, liftEffect, on, runAccumCont, runAccumPure, runBaseEffect, runCont, send)
 import Run (EFFECT, Run, Step(..), interpret, liftEffect, on, runAccumPure, runBaseEffect, send)
 import Run as Run
 import Type.Prelude (Proxy(..))
@@ -279,61 +286,111 @@ parse fgn = parseIt (Proxy :: _ stack) fgn
 --------------------------------------
 -- | Execution...
 
-class ProcessHandler :: Row (Type -> Type)-> Constraint
-class ProcessHandler stack where
-  handle :: VariantF stack (Effect Unit) -> Effect Unit
+class ProcessHandler :: Row (Type -> Type) -> Row Type -> Constraint
+class ProcessHandler stack accum where
+  handle :: Record accum -> VariantF stack (Record accum -> (Effect Unit)) -> Effect Unit
 
 instance
   ( RowToList stack stackL
-  , ProcessHandlerRL stackL stack) =>
-  ProcessHandler stack where
+  , ProcessHandlerRL stackL stack accum) =>
+  ProcessHandler stack accum where
     handle = handleL (Proxy :: _ stackL)
 
-class ProcessHandlerRL :: RowList (Type -> Type) -> Row (Type -> Type) -> Constraint
-class ProcessHandlerRL stackL stack | stackL -> stack where
-  handleL :: Proxy stackL -> VariantF stack (Effect Unit) -> Effect Unit
+class ProcessHandlerRL :: RowList (Type -> Type) -> Row (Type -> Type) -> Row Type -> Constraint
+class ProcessHandlerRL stackL stack accum | stackL -> stack accum where
+  handleL :: Proxy stackL -> Record accum -> VariantF stack (Record accum -> (Effect Unit)) -> Effect Unit
 
-instance ProcessHandlerRL RL.Nil () where
-  handleL _ _ = unsafeCrashWith "sad"
+instance ProcessHandlerRL RL.Nil () accum where
+  handleL _ _ _ = unsafeCrashWith "sad"
 
 instance
-  ( ProcessHandlerRL stackLTail stackTail
+  ( ProcessHandlerRL stackLTail stackTail accum
   , Row.Cons sym functorType stackTail stack
-  , FunctorHandler functorType
+  , FunctorHandler functorType accum functorAccumType
   , IsSymbol sym
+  , Row.Cons sym functorAccumType t1 accum
   ) =>
-  ProcessHandlerRL (RL.Cons sym functorType stackLTail) stack where
-  handleL _ variant = do
+  ProcessHandlerRL (RL.Cons sym functorType stackLTail) stack accum where
+  handleL _ accum variant = do
     let
-      fn = handleFunctor
-      recurse = handleL (Proxy :: _ stackLTail)
+      fn :: functorType (Record accum -> Effect Unit) -> Effect Unit
+      fn functorInstance = do
+        let
+          typeAccum :: Lens' (Record accum) functorAccumType
+          typeAccum = (prop (Proxy :: _ sym))
+        handleFunctor accum typeAccum functorInstance
+      recurse :: VariantF stackTail (Record accum -> (Effect Unit)) -> Effect Unit
+      recurse = handleL (Proxy :: _ stackLTail) accum
     on (Proxy :: _ sym) fn recurse variant
 
-class FunctorHandler :: (Type -> Type) -> Constraint
-class FunctorHandler functorType where
-  handleFunctor :: functorType (Effect Unit) -> Effect Unit
+class FunctorHandler :: (Type -> Type) -> Row Type -> Type -> Constraint
+class FunctorHandler functorType accum functorAccum | functorType -> accum where
+  handleFunctor :: Record accum -> Lens' (Record accum) functorAccum -> functorType (Record accum -> Effect Unit) -> Effect Unit
 
-instance FunctorHandler (ProcessM msg) where
-  handleFunctor (ProcessMParse cb) = cb
+instance FunctorHandler (ProcessM msg) acc Unit where
+  handleFunctor accum _ (ProcessMParse cb) = cb accum
 
-instance FunctorHandler TrapExitF where
-  handleFunctor (TrapExitParse cb) = cb
+instance FunctorHandler TrapExitF acc Unit where
+  handleFunctor accum _ (TrapExitParse cb) = cb accum
 
-instance FunctorHandler MonitorF where
-  handleFunctor (Monitor pid cb) = do
+instance FunctorHandler MonitorF acc (Map MonitorRef Unit) where
+  handleFunctor accum lens (Monitor pid cb) = do
     let
+      map :: Map MonitorRef Unit
+      map = view lens accum
       doTheMonitor :: Pid -> Effect MonitorRef
       doTheMonitor _ = pure $ (unsafeCoerce 1 :: MonitorRef)
     ref <- doTheMonitor pid
-    cb ref
-  handleFunctor (Demonitor ref cb) = do
+    cb ref accum
+  handleFunctor accum _ (Demonitor ref cb) = do
     let
       doTheDeMonitor :: MonitorRef -> Effect Unit
       doTheDeMonitor _ = pure unit
     doTheDeMonitor ref
-    cb
-  handleFunctor (MonitorParse cb) = do
-    cb
+    cb accum
+  handleFunctor accum _ (MonitorParse cb) = do
+    cb accum
+
+class ProcessDefault :: Row (Type -> Type) -> Row Type -> Constraint
+class ProcessDefault stack defaultRow where
+  def :: Proxy stack -> Record defaultRow
+
+instance
+  ( RowToList stack stackL
+  , ProcessDefaultRL stackL defaultRow
+  ) =>
+  ProcessDefault stack defaultRow where
+  def _ = build (defL (Proxy :: _ stackL)) {}
+
+class ProcessDefaultRL :: RowList (Type -> Type) -> Row Type -> Constraint
+class ProcessDefaultRL stack defaultRow | stack -> defaultRow where
+  defL :: Proxy stack -> Builder {} {| defaultRow}
+
+instance ProcessDefaultRL RL.Nil () where
+  defL _ = identity
+
+instance
+  ( ProcessDefaultRL stackTail defaultRowTail
+  , FunctorDefault functorType functorDefaultType
+  , Row.Cons sym functorDefaultType defaultRowTail defaultRow
+  , Row.Lacks sym defaultRowTail
+  , IsSymbol sym
+  ) =>
+  ProcessDefaultRL (RL.Cons sym functorType stackTail) defaultRow where
+  defL _ = RecordBuilder.insert (Proxy :: _ sym) (functorDef (Proxy :: _ functorType)) <<< defL (Proxy :: _ stackTail)
+
+class FunctorDefault :: (Type -> Type) -> Type -> Constraint
+class FunctorDefault functorType functorDefaultType | functorType -> functorDefaultType where
+  functorDef :: Proxy functorType -> functorDefaultType
+
+instance FunctorDefault (ProcessM msg) Unit where
+  functorDef _ = unit
+
+instance FunctorDefault TrapExitF Unit where
+  functorDef _ = unit
+
+instance FunctorDefault MonitorF (Map MonitorRef Unit) where
+  functorDef _ = Map.empty
 
 --------------------------------------
 -- | Program...
@@ -355,11 +412,21 @@ myGenServer = do
   demonitor ref
   pure unit
 
-handle_info :: forall r. ProcessHandler r => Run r Unit -> Effect Unit
-handle_info myGenServer = myGenServer # runCont handle done
+-- runAccumCont
+--   :: forall m r s a b
+--    . (s -> VariantF r (s -> m b) -> m b)
+--   -> (s -> a -> m b)
+--   -> s
+--   -> Run r a
+--   -> m b
+
+handle_info :: forall r def. ProcessDefault r def => ProcessHandler r def => Run r Unit -> Effect Unit
+handle_info myGenServer = do
+  runAccumCont (handle :: Record def -> VariantF r (Record def -> Effect Unit) -> Effect Unit) done (def (Proxy :: _ r)) myGenServer
   where
-  done _ = do
+  done _ _ = do
     Console.log "Done!"
 
---main :: Effect (Tuple Bill Unit)
-main = handle_info myGenServer
+--main :: ?w
+main =
+  handle_info myGenServer
