@@ -29,6 +29,7 @@ You can edit this file as you like.
   , "tuples"
   , "typelevel-prelude"
   , "unsafe-coerce"
+  , "variant"
   ]
 , packages = ./packages.dhall
 , sources = [ "src/**/*.purs" ]
