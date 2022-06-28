@@ -3,6 +3,7 @@ where
 
 import Prelude
 
+import Data.Functor.Contravariant (class Contravariant, cmap)
 import Data.Functor.Variant (VariantF, match, on, prj)
 import Data.Lens (Lens', view)
 import Data.Lens.Record (prop)
@@ -187,22 +188,6 @@ monitorParse fgn = Run.lift _monitor (MonitorParse $ parser fgn)
      else
        Nothing
 
--- handleMonitor :: MonitorF (Effect Unit) -> Effect Unit
--- handleMonitor (Monitor pid cb) = do
---   let
---     doTheMonitor :: Pid -> Effect MonitorRef
---     doTheMonitor _ = pure $ (unsafeCoerce 1 :: MonitorRef)
---   ref <- doTheMonitor pid
---   cb ref
--- handleMonitor (Demonitor ref cb) = do
---   let
---     doTheDeMonitor :: MonitorRef -> Effect Unit
---     doTheDeMonitor _ = pure unit
---   doTheDeMonitor ref
---   cb
--- handleMonitor (MonitorParse cb) = do
---   cb
-
 --------------------------------------
 -- | TrapExit...
 data TrapExitF a
@@ -287,69 +272,74 @@ parse fgn = parseIt (Proxy :: _ stack) fgn
 -- | Execution...
 
 class ProcessHandler :: Row (Type -> Type) -> Row Type -> Constraint
-class ProcessHandler stack accum where
-  handle :: Record accum -> VariantF stack (Record accum -> (Effect Unit)) -> Effect Unit
+class ProcessHandler stack acc where
+  handle :: Record acc -> VariantF stack (Record acc -> (Effect (Record acc))) -> Effect (Record acc)
 
 instance
   ( RowToList stack stackL
-  , ProcessHandlerRL stackL stack accum) =>
-  ProcessHandler stack accum where
+  , ProcessHandlerRL stackL stack acc) =>
+  ProcessHandler stack acc where
     handle = handleL (Proxy :: _ stackL)
 
 class ProcessHandlerRL :: RowList (Type -> Type) -> Row (Type -> Type) -> Row Type -> Constraint
-class ProcessHandlerRL stackL stack accum | stackL -> stack accum where
-  handleL :: Proxy stackL -> Record accum -> VariantF stack (Record accum -> (Effect Unit)) -> Effect Unit
+class ProcessHandlerRL stackL stack acc | stackL -> stack acc where
+  handleL :: Proxy stackL -> Record acc -> VariantF stack (Record acc -> (Effect (Record acc))) -> Effect (Record acc)
 
-instance ProcessHandlerRL RL.Nil () accum where
+instance ProcessHandlerRL RL.Nil () acc where
   handleL _ _ _ = unsafeCrashWith "sad"
 
 instance
-  ( ProcessHandlerRL stackLTail stackTail accum
+  ( ProcessHandlerRL stackLTail stackTail acc
   , Row.Cons sym functorType stackTail stack
-  , FunctorHandler functorType accum functorAccumType
+  , FunctorHandler functorType functorAccType
   , IsSymbol sym
-  , Row.Cons sym functorAccumType t1 accum
+  , Row.Cons sym functorAccType t1 acc
+  , Functor functorType
   ) =>
-  ProcessHandlerRL (RL.Cons sym functorType stackLTail) stack accum where
-  handleL _ accum variant = do
+  ProcessHandlerRL (RL.Cons sym functorType stackLTail) stack acc where
+  handleL _ acc variant = do
     let
-      fn :: functorType (Record accum -> Effect Unit) -> Effect Unit
+      fn :: functorType (Record acc -> Effect (Record acc)) -> Effect (Record acc)
       fn functorInstance = do
         let
-          typeAccum :: Lens' (Record accum) functorAccumType
-          typeAccum = (prop (Proxy :: _ sym))
-        handleFunctor accum typeAccum functorInstance
-      recurse :: VariantF stackTail (Record accum -> (Effect Unit)) -> Effect Unit
-      recurse = handleL (Proxy :: _ stackLTail) accum
+          typeAcc :: functorAccType
+          typeAcc = Record.get (Proxy :: _ sym) acc
+          updateAcc :: (Record acc -> Effect (Record acc) ) -> (functorAccType -> Effect functorAccType)
+          updateAcc fn = \inner -> do
+            Record.get (Proxy :: _ sym) <$> (fn $ Record.set (Proxy :: _ sym) inner acc)
+
+        functorAcc' :: functorAccType <- handleFunctor typeAcc $ map updateAcc functorInstance
+        pure $ Record.set (Proxy :: _ sym) functorAcc' acc
+
+      recurse :: VariantF stackTail (Record acc -> (Effect (Record acc))) -> Effect (Record acc)
+      recurse = handleL (Proxy :: _ stackLTail) acc
     on (Proxy :: _ sym) fn recurse variant
 
-class FunctorHandler :: (Type -> Type) -> Row Type -> Type -> Constraint
-class FunctorHandler functorType accum functorAccum | functorType -> accum where
-  handleFunctor :: Record accum -> Lens' (Record accum) functorAccum -> functorType (Record accum -> Effect Unit) -> Effect Unit
+class FunctorHandler :: (Type -> Type) -> Type -> Constraint
+class FunctorHandler functorType functorAcc | functorType -> functorAcc where
+  handleFunctor :: functorAcc -> functorType (functorAcc -> Effect functorAcc) -> Effect functorAcc
 
-instance FunctorHandler (ProcessM msg) acc Unit where
-  handleFunctor accum _ (ProcessMParse cb) = cb accum
+instance FunctorHandler (ProcessM msg) Unit where
+  handleFunctor acc (ProcessMParse cb) = cb acc
 
-instance FunctorHandler TrapExitF acc Unit where
-  handleFunctor accum _ (TrapExitParse cb) = cb accum
+instance FunctorHandler TrapExitF Unit where
+  handleFunctor acc (TrapExitParse cb) = cb acc
 
-instance FunctorHandler MonitorF acc (Map MonitorRef Unit) where
-  handleFunctor accum lens (Monitor pid cb) = do
+instance FunctorHandler MonitorF  (Map MonitorRef Unit) where
+  handleFunctor acc (Monitor pid cb) = do
     let
-      map :: Map MonitorRef Unit
-      map = view lens accum
       doTheMonitor :: Pid -> Effect MonitorRef
       doTheMonitor _ = pure $ (unsafeCoerce 1 :: MonitorRef)
     ref <- doTheMonitor pid
-    cb ref accum
-  handleFunctor accum _ (Demonitor ref cb) = do
+    cb ref $ Map.insert ref unit acc
+  handleFunctor acc (Demonitor ref cb) = do
     let
       doTheDeMonitor :: MonitorRef -> Effect Unit
       doTheDeMonitor _ = pure unit
     doTheDeMonitor ref
-    cb accum
-  handleFunctor accum _ (MonitorParse cb) = do
-    cb accum
+    cb acc
+  handleFunctor acc (MonitorParse cb) = do
+    cb acc
 
 class ProcessDefault :: Row (Type -> Type) -> Row Type -> Constraint
 class ProcessDefault stack defaultRow where
@@ -420,12 +410,13 @@ myGenServer = do
 --   -> Run r a
 --   -> m b
 
-handle_info :: forall r def. ProcessDefault r def => ProcessHandler r def => Run r Unit -> Effect Unit
+handle_info :: forall r acc. ProcessDefault r acc => ProcessHandler r acc => Run r Unit -> Effect (Record acc)
 handle_info myGenServer = do
-  runAccumCont (handle :: Record def -> VariantF r (Record def -> Effect Unit) -> Effect Unit) done (def (Proxy :: _ r)) myGenServer
+  runAccumCont (handle :: Record acc -> VariantF r (Record acc -> Effect (Record acc)) -> Effect (Record acc)) done (def (Proxy :: _ r)) myGenServer
   where
-  done _ _ = do
+  done acc _ = do
     Console.log "Done!"
+    pure acc
 
 --main :: ?w
 main =

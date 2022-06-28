@@ -6,6 +6,7 @@ You can edit this file as you like.
 , backend = "purerl"
 , dependencies =
   [ "console"
+  , "contravariant"
   , "datetime"
   , "debug"
   , "effect"
