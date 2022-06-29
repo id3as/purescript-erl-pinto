@@ -5,21 +5,16 @@ import Prelude
 
 import Bar (MonitorRef, MonitorMsg, TrapExitMsg)
 import Bar as Bar
-import Data.Functor.Contravariant (class Contravariant, cmap)
-import Data.Functor.Variant (VariantF, match, on, prj)
-import Data.Variant as Variant
-import Data.Lens (Lens', view)
-import Data.Lens.Record (prop)
+import Data.Functor.Variant (VariantF)
 import Data.Maybe (Maybe(..))
-import Data.Symbol (class IsSymbol)
-import Data.Tuple (Tuple(..))
+import Data.Symbol (class IsSymbol, reflectSymbol)
 import Data.Variant (Variant, expand, inj)
+import Data.Variant as Variant
 import Debug (spy, traceM)
 import Effect (Effect)
 import Effect.Console as Console
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
-import Erl.Process ((!))
 import Erl.Process.Raw (Pid)
 import Erl.Process.Raw as Raw
 import Foreign (Foreign, unsafeToForeign)
@@ -30,7 +25,7 @@ import Prim.RowList as RL
 import Record as Record
 import Record.Builder (Builder, build)
 import Record.Builder as RecordBuilder
-import Run (EFFECT, Run, Step(..), interpret, liftEffect, on, runAccumCont, runAccumPure, runBaseEffect, runCont, send)
+import Run (EFFECT, Run, liftEffect, on, runAccumCont)
 import Run as Run
 import Type.Prelude (Proxy(..))
 import Type.Row (type (+))
@@ -167,7 +162,54 @@ class ProcessHandlerRL stackL stack acc | stackL -> stack acc where
 instance ProcessHandlerRL RL.Nil () acc where
   handleL _ _ _ = unsafeCrashWith "sad"
 
-instance
+else instance
+  ( ProcessHandlerRL stackLTail stackTail acc
+  , Row.Cons sym Effect stackTail stack
+  , IsSymbol sym
+  ) =>
+  ProcessHandlerRL (RL.Cons sym Effect stackLTail) stack acc where
+  handleL _ acc variant = do
+    let
+      fn :: Effect (Record acc -> Effect (Record acc)) -> Effect (Record acc)
+      fn functorInstance = do
+        cb' <- functorInstance
+        cb' acc
+
+      recurse :: VariantF stackTail (Record acc -> (Effect (Record acc))) -> Effect (Record acc)
+      recurse = handleL (Proxy :: _ stackLTail) acc
+    on (Proxy :: _ sym) fn recurse variant
+
+-- else instance
+--   ( ProcessHandlerRL stackLTail stackTail acc
+--   , Row.Cons sym (ProcessM msg) stackTail stack
+--   , IsSymbol sym
+--   ) =>
+--   ProcessHandlerRL (RL.Cons sym (ProcessM msg) stackLTail) stack acc where
+--   handleL _ acc variant = do
+--     let
+--       fn :: (ProcessM msg) (Record acc -> Effect (Record acc)) -> Effect (Record acc)
+--       fn (ProcessMParse cb) = cb acc
+
+--       recurse :: VariantF stackTail (Record acc -> (Effect (Record acc))) -> Effect (Record acc)
+--       recurse = handleL (Proxy :: _ stackLTail) acc
+--     on (Proxy :: _ sym) fn recurse variant
+
+-- else instance
+--   ( ProcessHandlerRL stackLTail stackTail acc
+--   , Row.Cons sym TrapExitF stackTail stack
+--   , IsSymbol sym
+--   ) =>
+--   ProcessHandlerRL (RL.Cons sym TrapExitF stackLTail) stack acc where
+--   handleL _ acc variant = do
+--     let
+--       fn :: TrapExitF (Record acc -> Effect (Record acc)) -> Effect (Record acc)
+--       fn (TrapExitParse cb) = cb acc
+
+--       recurse :: VariantF stackTail (Record acc -> (Effect (Record acc))) -> Effect (Record acc)
+--       recurse = handleL (Proxy :: _ stackLTail) acc
+--     on (Proxy :: _ sym) fn recurse variant
+
+else instance
   ( ProcessHandlerRL stackLTail stackTail acc
   , Row.Cons sym functorType stackTail stack
   , FunctorHandler functorType functorAccType
@@ -187,14 +229,14 @@ instance
           updateAcc fn = \inner -> do
             Record.get (Proxy :: _ sym) <$> (fn $ Record.set (Proxy :: _ sym) inner acc)
 
-        functorAcc' :: functorAccType <- handleFunctor typeAcc $ map updateAcc functorInstance
+        functorAcc' <- handleFunctor typeAcc $ map updateAcc functorInstance
         pure $ Record.set (Proxy :: _ sym) functorAcc' acc
 
       recurse :: VariantF stackTail (Record acc -> (Effect (Record acc))) -> Effect (Record acc)
       recurse = handleL (Proxy :: _ stackLTail) acc
     on (Proxy :: _ sym) fn recurse variant
 
-class FunctorHandler :: (Type -> Type) -> Type -> Constraint
+class FunctorHandler :: (Type -> Type)  -> Type -> Constraint
 class FunctorHandler functorType functorAcc | functorType -> functorAcc where
   handleFunctor :: functorAcc -> functorType (functorAcc -> Effect functorAcc) -> Effect functorAcc
 
@@ -209,18 +251,19 @@ instance FunctorHandler (ProcessM msg) Unit where
 instance FunctorHandler TrapExitF Unit where
   handleFunctor acc (TrapExitParse cb) = cb acc
 
-instance FunctorHandler MonitorF  (Map MonitorRef Unit) where
-  handleFunctor acc (Monitor pid cb) = do
+instance
+  FunctorHandler MonitorF (Map MonitorRef Unit) where
+  handleFunctor map (Monitor pid cb) = do
     ref <- Bar.monitorImpl pid
-    cb ref $ Map.insert ref unit acc
-  handleFunctor acc (Demonitor ref cb) = do
+    cb ref $ Map.insert ref unit map
+  handleFunctor map (Demonitor ref cb) = do
     let
       doTheDeMonitor :: MonitorRef -> Effect Unit
       doTheDeMonitor _ = pure unit
     doTheDeMonitor ref
-    cb acc
-  handleFunctor acc (MonitorParse cb) = do
-    cb acc
+    cb map
+  handleFunctor map (MonitorParse cb) = do
+    cb map
 
 class ProcessDefault :: Row (Type -> Type) -> Row Type -> Constraint
 class ProcessDefault stack defaultRow where
@@ -296,12 +339,17 @@ handle_info myHandleInfo = do
 
 type AStack = (EFFECT + TRAPEXIT + PROCESSM AppMsg + ())
 
-a :: Int -> Effect _
-a count = do
-  runAccumCont handle done (def (Proxy :: _ AStack)) (doA count)
+run :: Int -> Effect _
+run count = do
+  start <- Bar.milliseconds
+  child <- Raw.spawn do
+    _ <- runAccumCont handle (done start) (def (Proxy :: _ AStack)) (doA count)
+    pure unit
+  Raw.send child AppMsg
   where
-  done acc _ = do
-    Console.log "Done!"
+  done start acc _ = do
+    end <- Bar.milliseconds
+    traceM {_msg: "Done!", time: end - start}
     pure acc
 
   doA :: Int -> Run AStack Unit
@@ -310,13 +358,13 @@ a count = do
     msg <- parse rawMsg
     me <- liftEffect Raw.self
     liftEffect $ Raw.send me AppMsg
-    -- Variant.match { trapExit: \_ -> pure unit
-    --               , effect: \_ -> pure unit
-    --               , z_processM: \_ -> do
-    --                    me <- liftEffect Raw.self
-    --                    liftEffect $ Raw.send me AppMsg
-    --                    pure unit
-    --               } msg
+    Variant.match { trapExit: \_ -> pure unit
+                  , effect: \_ -> pure unit
+                  , z_processM: \_ -> do
+                       me <- liftEffect Raw.self
+                       liftEffect $ Raw.send me AppMsg
+                       pure unit
+                  } msg
     case count of
       0 ->
         pure unit

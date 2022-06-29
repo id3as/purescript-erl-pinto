@@ -4,6 +4,7 @@
         , parseExitMsg/1
         , monitorImpl/1
         , demonitorImpl/1
+        , milliseconds/0
         ]).
 
 
@@ -60,3 +61,8 @@ parseMonitorMsg(Msg) ->
         _ ->
             ?nothing
     end.
+
+milliseconds() ->
+  fun() ->
+          erlang:system_time(millisecond)
+  end.

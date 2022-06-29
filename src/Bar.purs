@@ -236,8 +236,8 @@ x = do
     Right myApplevelMsg -> pure unit
 
 
-a :: Int -> TrapExitT (ProcessM AppMsg) Unit
-a count = do
+mtl_test :: Int -> Int -> TrapExitT (ProcessM AppMsg) Unit
+mtl_test start count = do
   msg :: Either TrapExitMsg AppMsg
     <- receive
   case msg of
@@ -248,14 +248,14 @@ a count = do
       pure unit
   case count of
     0 -> do
-      _ <- pure $ spy "done" count
+      end <- liftEffect milliseconds
+      _ <- pure $ spy "done" $ end - start
       pure unit
-    _ -> a (count -1)
+    _ -> mtl_test start (count -1)
 
-b :: Int -> ProcessM (Either TrapExitMsg AppMsg) Unit
-b count = do
-  msg :: Either TrapExitMsg AppMsg
-    <- Process.receive
+ps_raw_test :: Int -> Int -> ProcessM (Either TrapExitMsg AppMsg) Unit
+ps_raw_test start count = do
+  msg :: Either TrapExitMsg AppMsg <- Process.receive
   case msg of
     Left TrapExitMsg -> pure unit
     Right myApplevelMsg -> do
@@ -264,18 +264,53 @@ b count = do
       pure unit
   case count of
     0 -> do
-      _ <- pure $ spy "done" count
+      end <- liftEffect milliseconds
+      _ <- pure $ spy "done" $ end - start
       pure unit
-    _ -> b (count -1)
+    _ -> ps_raw_test start (count -1)
 
-main_a :: Int -> Effect Unit
-main_a count = do
-  void $ runT (a count) def
+raw_test :: Int -> Int -> Effect Unit
+raw_test start count = do
+  msg :: Either TrapExitMsg AppMsg <- Raw.receive
+  case msg of
+    Left TrapExitMsg -> pure unit
+    Right myApplevelMsg -> do
+      me <- Raw.self
+      Raw.send me $ Right AppMsg
+      pure unit
+  case count of
+    0 -> do
+      end <- milliseconds
+      _ <- pure $ spy "done" $ end - start
+      pure unit
+    _ -> raw_test start (count -1)
 
-main_b :: Int -> Effect Unit
-main_b count = do
-  unsafeRunProcessM $ b count
+main_mtl :: Int -> Effect Unit
+main_mtl count = do
+  start <- milliseconds
+  child <- Raw.spawn do
+    void $ runT (mtl_test start count) def
+  Raw.send child AppMsg
+  pure unit
+
+main_ps_raw :: Int -> Effect Unit
+main_ps_raw count = do
+  start <- milliseconds
+  child <- Raw.spawn do
+    unsafeRunProcessM $ (ps_raw_test start count)
+  Raw.send child (Right AppMsg)
+  pure unit
+
+main_raw :: Int -> Effect Unit
+main_raw count = do
+  start <- milliseconds
+  child <- Raw.spawn do
+    raw_test start count
+  Raw.send child (Right AppMsg)
+  pure unit
 
 unsafeFromJust :: forall a. String -> Maybe a -> a
 unsafeFromJust _ (Just a) = a
 unsafeFromJust message Nothing = unsafeCrashWith message
+
+foreign import milliseconds :: Effect Int
