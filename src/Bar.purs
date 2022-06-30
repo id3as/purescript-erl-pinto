@@ -291,7 +291,13 @@ main_mtl count = do
   child <- Raw.spawn do
     void $ runT (mtl_test start count) def
   Raw.send child AppMsg
+  --send child 50
   pure unit
+  where
+  send _ 0 = pure unit
+  send pid count = do
+    Raw.send pid AppMsg
+    send pid $ count - 1
 
 main_ps_raw :: Int -> Effect Unit
 main_ps_raw count = do
@@ -314,3 +320,5 @@ unsafeFromJust _ (Just a) = a
 unsafeFromJust message Nothing = unsafeCrashWith message
 
 foreign import milliseconds :: Effect Int
+foreign import size :: forall a. a -> Effect (Tuple Int Int)
+foreign import fprofStart :: Effect Unit

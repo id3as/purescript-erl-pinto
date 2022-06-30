@@ -5,6 +5,8 @@
         , monitorImpl/1
         , demonitorImpl/1
         , milliseconds/0
+        , size/1
+        , fprofStart/0
         ]).
 
 
@@ -66,3 +68,14 @@ milliseconds() ->
   fun() ->
           erlang:system_time(millisecond)
   end.
+
+size(X) ->
+  fun() ->
+      {tuple, erts_debug:size(X), erts_debug:flat_size(X) }
+  end.
+
+fprofStart() ->
+  fun() ->
+      ok = fprof:trace(verbose)
+  end.
+
