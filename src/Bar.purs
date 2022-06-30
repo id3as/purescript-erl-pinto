@@ -4,8 +4,10 @@ where
 import Prelude
 
 import Control.Monad.Identity.Trans (IdentityT(..), runIdentityT)
-import Control.Monad.State (StateT, modify, modify_, runStateT)
-import Control.Monad.State.Trans (get, put)
+import Control.Monad.Rec.Class (class MonadRec)
+import Control.Monad.State.Trans (get, put, modify_)
+import Control.Monad.State (StateT, runStateT)
+--import Uncurried.StateT(StateT, runStateT)
 import Control.Monad.Trans.Class (class MonadTrans, lift)
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
@@ -70,7 +72,7 @@ derive newtype instance Monad m => Bind (TrapExitT m)
 derive newtype instance Monad m => Monad (TrapExitT m)
 
 derive newtype instance MonadEffect m => MonadEffect (TrapExitT m)
-derive newtype instance  MonadTrans TrapExitT
+derive newtype instance MonadTrans TrapExitT
 
 instance
   ( FFIParseT m msg2
@@ -165,7 +167,7 @@ derive newtype instance MonadTrans (MonitorT monitorMsg)
 
 
 instance
-  RunT m is =>
+  (RunT m is) =>
   RunT (MonitorT monitorMsg m) (Tuple (MonitorMap monitorMsg) is) where
   runT (MonitorT mt) (Tuple mtState is) = do
     (Tuple (Tuple res newMtState) newIs) <- runT (runStateT mt mtState) is
@@ -226,7 +228,6 @@ y = do
     Right myApplevelMsg -> pure unit
 
 
-
 x :: TrapExitT (ProcessM AppMsg) Unit
 x = do
   msg :: Either TrapExitMsg AppMsg
@@ -238,8 +239,7 @@ x = do
 
 mtl_test :: Int -> Int -> TrapExitT (ProcessM AppMsg) Unit
 mtl_test start count = do
-  msg :: Either TrapExitMsg AppMsg
-    <- receive
+  msg :: Either TrapExitMsg AppMsg <- receive
   case msg of
     Left TrapExitMsg -> pure unit
     Right myApplevelMsg -> do

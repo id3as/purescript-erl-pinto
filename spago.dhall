@@ -32,10 +32,12 @@ You can edit this file as you like.
   , "profunctor-lenses"
   , "record"
   , "run"
+  , "tailrec"
   , "transformers"
   , "tuples"
   , "type-equality"
   , "typelevel-prelude"
+  , "uncurried-transformers"
   , "unsafe-coerce"
   , "variant"
   ]
