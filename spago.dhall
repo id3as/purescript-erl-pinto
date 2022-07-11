@@ -22,6 +22,7 @@ You can edit this file as you like.
   , "prelude"
   , "transformers"
   , "tuples"
+  , "typelevel-prelude"
   , "unsafe-coerce"
   ]
 , packages = ./packages.dhall

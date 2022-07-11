@@ -6,7 +6,7 @@ module Pinto.ProcessT.MonitorT
   , MonitorRef
   , MonitorType
   , monitor
-  --, MonitorMap -- deleteME
+  , MonitorMap -- deleteME
   ) where
 
 import Prelude
@@ -23,7 +23,7 @@ import Erl.Data.Map as Map
 import Erl.Process.Raw as Raw
 import Foreign (Foreign)
 import Partial.Unsafe (unsafeCrashWith)
-import Pinto.ProcessT (class FFIParseT, class InitialState, class RunT, psFromFFI, runT)
+import Pinto.ProcessT.Internal.Types (class FFIParseT, class InitialState, class RunT, psFromFFI, runT)
 
 newtype MonitorT monitorMsg m a = MonitorT (StateT (MonitorMap monitorMsg) m a)
 
