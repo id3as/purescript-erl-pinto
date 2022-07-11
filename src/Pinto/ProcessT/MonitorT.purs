@@ -23,7 +23,8 @@ import Erl.Data.Map as Map
 import Erl.Process.Raw as Raw
 import Foreign (Foreign)
 import Partial.Unsafe (unsafeCrashWith)
-import Pinto.ProcessT.Internal.Types (class FFIParseT, class InitialState, class RunT, psFromFFI, runT)
+import Pinto.ProcessT.Internal.Types (class MonadProcessTrans, initialise, parseForeign, run)
+import Type.Prelude (Proxy(..))
 
 newtype MonitorT monitorMsg m a = MonitorT (StateT (MonitorMap monitorMsg) m a)
 
@@ -56,46 +57,32 @@ data MonitorMsg
 -- | Reference to a monitor, used to stop the monitor once it is started
 foreign import data MonitorRef :: Type
 
-newtype MonitorMap msg = MonitorMap (Map MonitorRef (MonitorMsg -> msg))
-
-instance (RunT m is) =>
-  RunT (MonitorT monitorMsg m) (Tuple (MonitorMap monitorMsg) is) where
-  runT  = x
-   where
-    --x :: ?t
-    x (MonitorT mt) (Tuple mtState is) = do
-      (Tuple (Tuple res newMtState) newIs) <- runT (runStateT mt mtState) is
-      pure $ Tuple res $ Tuple newMtState newIs
-
+type MonitorMap msg = Map MonitorRef (MonitorMsg -> msg)
 
 foreign import monitorImpl :: Raw.Pid -> Effect MonitorRef
 foreign import parseMonitorMsg :: Foreign -> Maybe MonitorMsg
 
-instance InitialState (MonitorMap monitorMsg) where
-  initialState = pure $ MonitorMap Map.empty
-
 instance
-  ( FFIParseT m msg
-  , MonadEffect m
-  ) =>
-  FFIParseT (MonitorT monitorMsg m) (Either monitorMsg msg) where
-  psFromFFI = x
-   where
-     -- x :: ?t
-     x fgn = do
+  (MonadProcessTrans m innerState appMsg, Monad m) =>
+  MonadProcessTrans (MonitorT monitorMsg m) (Tuple (MonitorMap monitorMsg) innerState) (Either monitorMsg appMsg) where
+  parseForeign fgn = do
       case parseMonitorMsg fgn of
         Just down@(Down ref _ _ _) -> MonitorT $ do
-          MonitorMap mtState <- get
+          mtState <- get
           case Map.lookup ref mtState of
             Nothing ->
               unsafeCrashWith "Down from unknown monitor"
             Just mapper -> do
-              put $ MonitorMap $ Map.delete ref mtState
+              put $ Map.delete ref mtState
               pure $ Left $ mapper down
         Nothing -> do
-          lift $ Right <$> psFromFFI fgn
-
-
+          lift $ Right <$> parseForeign fgn
+  run (MonitorT mt) (Tuple mtState is) = do
+      (Tuple (Tuple res newMtState) newIs) <- run (runStateT mt mtState) is
+      pure $ Tuple res $ Tuple newMtState newIs
+  initialise _ = do
+    innerState <- initialise (Proxy :: Proxy m)
+    pure $ Tuple Map.empty innerState
 
 monitor ::
   forall monitorMsg m.
@@ -104,6 +91,5 @@ monitor ::
 monitor pid mapper = do
     MonitorT do
       ref <- liftEffect $ monitorImpl pid
-      modify_ \(MonitorMap mm) -> MonitorMap $ Map.insert ref mapper mm
+      modify_ \mm -> Map.insert ref mapper mm
       pure ref
-

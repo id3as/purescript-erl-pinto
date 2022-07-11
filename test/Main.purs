@@ -1,6 +1,5 @@
 module Test.Main where
 
-import Pinto.Supervisor.SimpleOneForOne
 import Prelude
 
 import Control.Monad.Free (Free)
@@ -63,7 +62,7 @@ data TestMsg
 testStartWithNamedChild :: Free TestF Unit
 testStartWithNamedChild =
   test "Can start a supervisor with a single named child" do
-    supPid <- crashIfNotStarted <$> Sup.startLink Nothing supInit
+    _supPid <- crashIfNotStarted <$> Sup.startLink Nothing supInit
     childState <- getState $ ByName childName
     assertEqual
       { actual: childState
@@ -129,7 +128,7 @@ dynamicSupervisor =
       , shutdownStrategy: ShutdownTimeout $ Milliseconds 5000.0
       }
 
-  childStart unit = GS.startLink $ (GS.defaultSpec childInit)
+  childStart _ = GS.startLink $ (GS.defaultSpec childInit)
 
   childInit = do
     pure $ InitOk $ TestState 0
