@@ -10,6 +10,7 @@ You can edit this file as you like.
   , "either"
   , "erl-atom"
   , "erl-lists"
+  , "erl-maps"
   , "erl-modules"
   , "erl-process"
   , "erl-tuples"

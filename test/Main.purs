@@ -1,6 +1,8 @@
 module Test.Main where
 
+import Pinto.Supervisor.SimpleOneForOne
 import Prelude
+
 import Control.Monad.Free (Free)
 import Data.Maybe (Maybe(..))
 import Data.Time.Duration (Milliseconds(..), Seconds(..))
@@ -14,12 +16,12 @@ import Pinto.GenServer (InitResult(..), ServerPid, ServerRef)
 import Pinto.GenServer as GS
 import Pinto.Supervisor (ChildShutdownTimeoutStrategy(..), ChildType(..), RestartStrategy(..), Strategy(..), SupervisorSpec, ChildSpec, spec)
 import Pinto.Supervisor as Sup
-import Pinto.Supervisor.SimpleOneForOne
 import Pinto.Supervisor.SimpleOneForOne as DynamicSup
 import Pinto.Types (RegistryName(..), RegistryReference(..), crashIfNotStarted)
 import Test.Assert (assertEqual)
 import Test.DoorLock as DoorLock
 import Test.GenServer as TGS
+import Test.MonitorT (testMonitorT)
 
 foreign import filterSasl :: Effect Unit
 
@@ -39,6 +41,7 @@ supervisorSuite =
   suite "Pinto supervisor tests" do
     testStartWithNamedChild
     dynamicSupervisor
+    testMonitorT
 
 data TestState
   = TestState Int
