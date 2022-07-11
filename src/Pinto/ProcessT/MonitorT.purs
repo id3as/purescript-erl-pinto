@@ -1,13 +1,17 @@
 module Pinto.ProcessT.MonitorT
-  ( MonitorT
-  , MonitorInfo
+  ( MonitorInfo
+  , MonitorMap
   , MonitorMsg(..)
   , MonitorObject
   , MonitorRef
+  , MonitorT
   , MonitorType
   , monitor
-  , MonitorMap -- deleteME
-  ) where
+  , monitor'
+  , spawnLinkMonitor
+  , spawnMonitor
+  )
+  where
 
 import Prelude
 
@@ -20,9 +24,11 @@ import Effect (Effect)
 import Effect.Class (class MonadEffect, liftEffect)
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
+import Erl.Process (Process, toPid)
 import Erl.Process.Raw as Raw
 import Foreign (Foreign)
 import Partial.Unsafe (unsafeCrashWith)
+import Pinto.ProcessT (spawn, spawnLink)
 import Pinto.ProcessT.Internal.Types (class MonadProcessTrans, initialise, parseForeign, run)
 import Type.Prelude (Proxy(..))
 
@@ -93,3 +99,39 @@ monitor pid mapper = do
       ref <- liftEffect $ monitorImpl pid
       modify_ \mm -> Map.insert ref mapper mm
       pure ref
+
+monitor' ::
+  forall monitorMsg m msg.
+  MonadEffect m =>
+  Process msg -> (MonitorMsg -> monitorMsg) -> MonitorT monitorMsg m MonitorRef
+monitor' pid mapper = do
+    MonitorT do
+      ref <- liftEffect $ monitorImpl (toPid pid)
+      modify_ \mm -> Map.insert ref mapper mm
+      pure ref
+
+spawnMonitor
+  :: forall m mState msg m2 monitorMsg
+   . MonadProcessTrans m mState msg
+  => MonadEffect m
+  => MonadEffect m2
+  => m Unit -> (MonitorMsg -> monitorMsg) -> MonitorT monitorMsg m2 (Process msg)
+spawnMonitor = doSpawnMonitor spawn
+
+spawnLinkMonitor
+  :: forall m mState msg m2 monitorMsg
+   . MonadProcessTrans m mState msg
+  => MonadEffect m
+  => MonadEffect m2
+  => m Unit -> (MonitorMsg -> monitorMsg) -> MonitorT monitorMsg m2 (Process msg)
+spawnLinkMonitor = doSpawnMonitor spawnLink
+
+
+doSpawnMonitor
+  :: forall m msg m2 monitorMsg
+   . MonadEffect m2
+  => (m -> Effect (Process msg)) -> m -> (MonitorMsg -> monitorMsg) -> MonitorT monitorMsg m2 (Process msg)
+doSpawnMonitor spawner m mapper = do
+  pid <- liftEffect $ spawner m
+  void $ monitor' pid mapper
+  pure pid
