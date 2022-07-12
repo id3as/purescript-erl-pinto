@@ -11,12 +11,15 @@ module Pinto.GenServer
   , CallResult(..)
   , CastFn
   , InfoFn
+  , InfoFn2
   , TerminateFn
   , ContinueFn
   , ReturnResult(..)
   , From
   , ResultT
+  , ResultT2
   , Context
+  , Context2
   , Action(..)
   , defaultSpec
   , startLink
@@ -50,9 +53,13 @@ module Pinto.GenServer
   ) where
 
 import Prelude
+
+import Control.Monad.Cont (class MonadTrans)
+import Control.Monad.Cont.Trans (lift)
 import Control.Monad.Reader (ReaderT, runReaderT)
 import Data.Function.Uncurried (mkFn2, runFn2)
 import Data.Maybe (Maybe(..), fromJust)
+import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Effect.Class (class MonadEffect)
 import Effect.Class (liftEffect) as Lift
@@ -67,8 +74,10 @@ import Erl.Untagged.Union (class ReceivesMessage)
 import Foreign (Foreign, unsafeFromForeign)
 import Partial.Unsafe (unsafePartial)
 import Pinto.ModuleNames (pintoGenServer)
+import Pinto.ProcessT.Internal.Types (class MonadProcessTrans, initialise, parseForeign, run)
 import Pinto.Types (ExitMessage(..), RegistryInstance, RegistryName, RegistryReference, ShutdownReason, StartLinkResult, parseShutdownReasonFFI, parseTrappedExitFFI, registryInstance)
 import Pinto.Types (ShutdownReason(..), ExitMessage(..)) as ReExports
+import Type.Prelude (Proxy(..))
 import Unsafe.Coerce (unsafeCoerce)
 
 -- | The reader monad in which all GenServer operations take place
@@ -84,6 +93,26 @@ import Unsafe.Coerce (unsafeCoerce)
 -- | - `result` is the result of any operation within a ResultT context
 newtype ResultT cont stop msg state result
   = ResultT (ReaderT (Context cont stop msg state) Effect result)
+
+newtype ResultT2 cont stop msg state m result
+  = ResultT2 (ReaderT (Context2 cont stop msg state m) m result)
+derive newtype instance Functor m => Functor (ResultT2 cont stop msg state m)
+derive newtype instance Apply m => Apply (ResultT2 cont stop msg state m)
+derive newtype instance Applicative m => Applicative (ResultT2 cont stop msg state m)
+derive newtype instance Bind m => Bind (ResultT2 cont stop msg state m)
+derive newtype instance Monad m => Monad (ResultT2 cont stop msg state m)
+derive newtype instance MonadEffect m => MonadEffect (ResultT2 cont stop msg state m)
+
+
+instance MonadTrans (ResultT2 cont stop msg state) where
+  lift = ResultT2 <<< lift
+
+
+instance ReceivesMessage (ResultT2 cont stop msg state m) msg
+
+
+
+
 
 derive newtype instance functorResultT :: Functor (ResultT cont stop msg state)
 derive newtype instance applyResultT :: Apply (ResultT cont stop msg state)
@@ -156,8 +185,8 @@ newtype From reply
   = From FromForeign
 
 -- | The callback invoked on GenServer startup: see gen_server:init
-type InitFn cont stop msg state
-  = ResultT cont stop msg state (InitResult cont state)
+type InitFn cont stop msg state m
+  = ResultT2 cont stop msg state m (InitResult cont state)
 
 -- | The callback invoked within a GenServer.call: see gen_server:call
 type CallFn reply cont stop msg state
@@ -174,6 +203,10 @@ type ContinueFn cont stop msg state
 -- | The type of the handleInfo callback see gen_server:handle_info
 type InfoFn cont stop msg state
   = msg -> state -> ResultT cont stop msg state (ReturnResult cont stop state)
+
+type InfoFn2 cont stop msg state m
+  = msg -> state -> ResultT2 cont stop msg state m (ReturnResult cont stop state)
+
 
 -- | The type of the terminate callback see gen_server:terminate
 type TerminateFn cont stop msg state
@@ -236,10 +269,10 @@ foreign import whereIs :: forall cont stop msg state. RegistryName (ServerType c
 -- | Everything except the 'init' callback is optional
 -- | Note: GenServers started without a name will not be callable without some means
 -- | of retrieving the pid
-type ServerSpec cont stop msg state
+type ServerSpec cont stop msg state m
   = { name :: Maybe (RegistryName (ServerType cont stop msg state))
-    , init :: InitFn cont stop msg state
-    , handleInfo :: Maybe (InfoFn cont stop msg state)
+    , init :: InitFn cont stop msg state m
+    , handleInfo :: Maybe (InfoFn2 cont stop msg state m)
     , handleContinue :: Maybe (ContinueFn cont stop msg state)
     , terminate :: Maybe (TerminateFn cont stop msg state)
     , trapExits :: Maybe (ExitMessage -> msg)
@@ -248,7 +281,7 @@ type ServerSpec cont stop msg state
 -- | Given an InitFn callback, create a default GenServer specification with all of the optionals
 -- | set to default values
 -- | This is the preferred method of creating the config passed into GenServer.startLink
-defaultSpec :: forall cont stop msg state. InitFn cont stop msg state -> ServerSpec cont stop msg state
+defaultSpec :: forall cont stop msg state m. InitFn cont stop msg state m -> ServerSpec cont stop msg state m
 defaultSpec initFn =
   { name: Nothing
   , init: initFn
@@ -268,24 +301,31 @@ defaultSpec initFn =
 -- |   init :: InitFn Unit Unit Unit {}
 -- |   init = pure $ InitOk {}
 -- | ```
-startLink :: forall cont stop msg state. (ServerSpec cont stop msg state) -> Effect (StartLinkResult (ServerPid cont stop msg state))
+startLink
+  :: forall m mState cont stop state msg.
+     MonadProcessTrans m mState msg =>
+     (ServerSpec cont stop msg state m) -> Effect (StartLinkResult (ServerPid cont stop msg state))
 startLink { name: maybeName, init: initFn, handleInfo, handleContinue, terminate: terminate', trapExits } = startLinkFFI maybeName (nativeModuleName pintoGenServer) initEffect
   where
-  context =
-    Context
-      { handleInfo
-      , handleContinue
-      , terminate: terminate'
-      , trapExits
-      }
+  context mState = { handleInfo
+                   , handleContinue
+                   , terminate: terminate'
+                   , trapExits
+                   , mState : unsafeCoerce mState
+                   , psFromFFI : unsafeCoerce (parseForeign :: (Foreign -> m msg))
+                   , runT : unsafeCoerce (run :: forall a. m a -> mState -> Effect (Tuple a mState))
+                   }
 
-  initEffect :: Effect (InitResult cont (OuterState cont stop msg state))
+  initEffect :: Effect (InitResult cont (OuterState2 cont stop msg state m))
   initEffect = do
+    initialMState <- initialise (Proxy :: Proxy m)
+    let
+      theContext = context initialMState
     _ <- case trapExits of
       Nothing -> pure unit
       Just _ -> void $ setProcessFlagTrapExit true
-    innerResult <- (runReaderT $ case initFn of ResultT inner -> inner) context
-    pure $ mapInitResult (mkOuterState context) innerResult
+    Tuple innerResult newMState  <- run (runReaderT ( case initFn of ResultT2 inner -> inner) $ Context2 theContext) initialMState
+    pure $ mapInitResult (mkOuterState2 (Context2 theContext{mState = unsafeCoerce newMState})) innerResult
 
 --------------------------------------------------------------------------------
 -- Internal types
@@ -295,8 +335,17 @@ type OuterState cont stop msg state
     , context :: Context cont stop msg state
     }
 
+type OuterState2 cont stop msg state m
+  = { innerState :: state
+    , context :: Context2 cont stop msg state m
+    }
+
 mkOuterState :: forall cont stop msg state. Context cont stop msg state -> state -> OuterState cont stop msg state
 mkOuterState = { context: _, innerState: _ }
+
+mkOuterState2 :: forall cont stop msg state m. Context2 cont stop msg state m -> state -> OuterState2 cont stop msg state m
+mkOuterState2 = { context: _, innerState: _ }
+
 
 newtype Context cont stop msg state
   = Context
@@ -305,6 +354,25 @@ newtype Context cont stop msg state
   , terminate :: Maybe (TerminateFn cont stop msg state)
   , trapExits :: Maybe (ExitMessage -> msg)
   }
+
+data TransState
+data TransMsg
+data TransMonad
+data TransRes
+
+newtype Context2 cont stop msg state m
+  = Context2
+  { handleInfo :: Maybe (InfoFn2 cont stop msg state m)
+  , handleContinue :: Maybe (ContinueFn cont stop msg state)
+  , terminate :: Maybe (TerminateFn cont stop msg state)
+  , trapExits :: Maybe (ExitMessage -> msg)
+  , mState :: TransState
+  , psFromFFI :: Foreign -> TransMsg
+  , runT :: TransMonad -> TransState -> Effect (Tuple TransRes TransState)
+  }
+
+
+
 
 foreign import callFFI ::
   forall reply cont stop msg state.
@@ -349,10 +417,10 @@ stop ::
 stop r = stopFFI $ registryInstance r
 
 foreign import startLinkFFI ::
-  forall cont stop msg state.
+  forall cont stop msg state m.
   Maybe (RegistryName (ServerType cont stop msg state)) ->
   NativeModuleName ->
-  Effect (InitResult cont (OuterState cont stop msg state)) ->
+  Effect (InitResult cont (OuterState2 cont stop msg state m)) ->
   Effect (StartLinkResult (ServerPid cont stop msg state))
 
 instance resultT_HasSelf :: HasSelf (ResultT cont stop msg state) msg where
@@ -385,28 +453,22 @@ handle_cast =
     result <- (runReaderT $ case f innerState of ResultT inner -> inner) context
     pure $ exportReturnResult (mkOuterState context <$> result)
 
-handle_info :: forall cont stop msg state. EffectFn2 Foreign (OuterState cont stop msg state) (NativeReturnResult cont stop (OuterState cont stop msg state))
+handle_info
+  :: forall m cont stop msg state.
+     EffectFn2 Foreign (OuterState2 cont stop msg state m) (NativeReturnResult cont stop (OuterState2 cont stop msg state m))
 handle_info =
-  mkEffectFn2 \nativeMsg state@{ innerState, context: context@(Context { handleInfo: maybeHandleInfo, trapExits }) } ->
+  mkEffectFn2 \nativeMsg state@{ innerState, context: context@(Context2 ctx@{ handleInfo: maybeHandleInfo, trapExits, mState, psFromFFI, runT }) } ->
     exportReturnResult
       <$> case maybeHandleInfo of
           Just f -> do
-            --------------------------------------------------------------------
-            -- Note we use mkFn2 for performance reasons - it's potentially very
-            -- hot code.  Similarly we manually deconstruct the Maybe to save
-            -- using maybe' and constructing an extra (\unit -> ...) fn
-            --------------------------------------------------------------------
             let
-              maybeClientExitMessage = trapExits <*> parseTrappedExitFFI nativeMsg Exit
-              processMsg =
-                mkFn2 \f msg -> do
-                  ReturnResult mAction state <- (runReaderT $ case f msg innerState of ResultT inner -> inner) context
-                  pure $ ReturnResult mAction (mkOuterState context state)
-            case maybeClientExitMessage of
-              Nothing ->
-                runFn2 processMsg f $ unsafeFromForeign nativeMsg
-              Just cem ->
-                runFn2 processMsg f cem
+              psFromFFI' :: Foreign -> m msg
+              psFromFFI' = unsafeCoerce psFromFFI
+              runT' :: forall a is. m a -> is -> Effect (Tuple a is)
+              runT'  = unsafeCoerce runT
+            (Tuple parsedMsg newMState)  <- runT' (psFromFFI' nativeMsg) (unsafeCoerce mState)
+            Tuple (ReturnResult mAction state) newMState' <- runT' ((runReaderT $ case f parsedMsg innerState of ResultT2 inner -> inner) context) newMState
+            pure $ ReturnResult mAction (mkOuterState2 (Context2 ctx{mState = unsafeCoerce newMState'}) state)
           Nothing ->
             pure $ ReturnResult Nothing state
 

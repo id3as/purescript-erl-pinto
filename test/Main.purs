@@ -9,9 +9,10 @@ import Effect (Effect)
 import Effect.Unsafe (unsafePerformEffect)
 import Erl.Atom (atom)
 import Erl.Data.List (nil, (:))
+import Erl.Process (ProcessM)
 import Erl.Test.EUnit (TestF, runTests, suite, test)
 import Pinto (StartLinkResult)
-import Pinto.GenServer (InitResult(..), ServerPid, ServerRef)
+import Pinto.GenServer (InitResult(..), ServerPid, ServerRef, InitFn)
 import Pinto.GenServer as GS
 import Pinto.Supervisor (ChildShutdownTimeoutStrategy(..), ChildType(..), RestartStrategy(..), Strategy(..), SupervisorSpec, ChildSpec, spec)
 import Pinto.Supervisor as Sup
@@ -84,7 +85,7 @@ testStartWithNamedChild =
           }
       , childSpecs
       }
-
+  childInit :: InitFn _ _  _ _ (ProcessM Void)
   childInit = do
     pure $ InitOk $ TestState 0
 
@@ -130,6 +131,7 @@ dynamicSupervisor =
 
   childStart _ = GS.startLink $ (GS.defaultSpec childInit)
 
+  childInit :: InitFn _ _  _ _ (ProcessM Void)
   childInit = do
     pure $ InitOk $ TestState 0
 

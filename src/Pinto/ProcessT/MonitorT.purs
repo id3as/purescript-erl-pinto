@@ -90,6 +90,9 @@ instance
     innerState <- initialise (Proxy :: Proxy m)
     pure $ Tuple Map.empty innerState
 
+--------------------------------------------------------------------------------
+-- Public API
+--------------------------------------------------------------------------------
 monitor ::
   forall monitorMsg m.
   MonadEffect m =>
@@ -127,6 +130,11 @@ spawnLinkMonitor
 spawnLinkMonitor = doSpawnMonitor spawnLink
 
 
+-- TODO - consider modelling the erlang capabilities around  alias, reply_demonitor, user defined tags etc
+
+--------------------------------------------------------------------------------
+-- Internal helpers
+--------------------------------------------------------------------------------
 doSpawnMonitor
   :: forall m msg m2 monitorMsg
    . MonadEffect m2
