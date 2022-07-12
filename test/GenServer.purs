@@ -43,7 +43,7 @@ genServerSuite =
     testCast
     testValueServer
     --testTrapExits
-    testHandleInfoMonitor
+    testMonadStatePassedAround
 
 data TestState
   = TestState Int
@@ -131,9 +131,9 @@ testHandleInfo =
     unsafeCrashWith "Unexpected message"
 
 
-testHandleInfoMonitor :: Free TestF Unit
-testHandleInfoMonitor =
-  test "HandleInfo handler receives monitor messages" do
+testMonadStatePassedAround :: Free TestF Unit
+testMonadStatePassedAround =
+  test "Ensure MonadProcessTrans state is maintained across calls" do
     serverPid <- crashIfNotStarted <$> (GS.startLink $ (GS.defaultSpec init) { handleInfo = Just handleInfo })
     (unsafeCoerce serverPid :: Process TestMsg) ! TestMsg
     sleep 10
@@ -144,11 +144,13 @@ testHandleInfoMonitor =
       }
     pure unit
   where
-  init :: InitFn _ _  _ _ (MonitorT MonitorMsg (ProcessM TestMsg))
+  init :: InitFn TestCont TestStop _ TestState (MonitorT MonitorMsg (ProcessM TestMsg))
   init = do
     _ <- lift $ spawnMonitor exitsImmediately $ const MonitorMsg
     pure $ InitOk $ TestState 0
 
+  --handleInfo :: InfoFn2 TestCont TestStop TestMsg TestState (MonitorT MonitorMsg (ProcessM TestMsg))
+  --handleInfo :: ?t
   handleInfo (Right TestMsg) (TestState x) = do
     _ <- lift $ spawnMonitor exitsImmediately $ const MonitorMsg
     pure $ GS.return $ TestState $ x + 1
