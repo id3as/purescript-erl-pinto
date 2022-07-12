@@ -5,6 +5,7 @@ module Test.GenServer
 import Prelude
 
 import Control.Monad.Free (Free)
+import Control.Monad.Trans.Class (lift)
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Data.Time.Duration (Milliseconds(..))
@@ -19,6 +20,7 @@ import Foreign (unsafeToForeign)
 import Partial.Unsafe (unsafeCrashWith)
 import Pinto.GenServer (Action(..), ExitMessage, From, InitResult(..), ServerRef, ServerSpec, ServerType, InitFn)
 import Pinto.GenServer as GS
+import Pinto.ProcessT.MonitorT (MonitorT, spawnMonitor)
 import Pinto.Types (NotStartedReason(..), RegistryName(..), RegistryReference(..), StartLinkResult, crashIfNotStarted)
 import Test.Assert (assert', assertEqual)
 import Test.ValueServer as ValueServer
@@ -41,6 +43,7 @@ genServerSuite =
     testCast
     testValueServer
     --testTrapExits
+    testHandleInfoMonitor
 
 data TestState
   = TestState Int
@@ -60,6 +63,8 @@ data TestMsg
 
 data TestStop
   = StopReason
+
+data MonitorMsg = MonitorMsg
 
 testStartLinkAnonymous :: Free TestF Unit
 testStartLinkAnonymous =
@@ -124,6 +129,38 @@ testHandleInfo =
 
   handleInfo _ _s = do
     unsafeCrashWith "Unexpected message"
+
+
+testHandleInfoMonitor :: Free TestF Unit
+testHandleInfoMonitor =
+  test "HandleInfo handler receives monitor messages" do
+    serverPid <- crashIfNotStarted <$> (GS.startLink $ (GS.defaultSpec init) { handleInfo = Just handleInfo })
+    (unsafeCoerce serverPid :: Process TestMsg) ! TestMsg
+    sleep 10
+    state <- getState (ByPid serverPid)
+    assertEqual
+      { actual: state
+      , expected: TestState 21
+      }
+    pure unit
+  where
+  init :: InitFn _ _  _ _ (MonitorT MonitorMsg (ProcessM TestMsg))
+  init = do
+    _ <- lift $ spawnMonitor exitsImmediately $ const MonitorMsg
+    pure $ InitOk $ TestState 0
+
+  handleInfo (Right TestMsg) (TestState x) = do
+    _ <- lift $ spawnMonitor exitsImmediately $ const MonitorMsg
+    pure $ GS.return $ TestState $ x + 1
+
+  handleInfo (Left MonitorMsg) (TestState x) = do
+    pure $ GS.return $ TestState $ x + 10
+
+  handleInfo _ _s = do
+    unsafeCrashWith "Unexpected message"
+
+  exitsImmediately :: ProcessM Void Unit
+  exitsImmediately = pure unit
 
 testCall :: Free TestF Unit
 testCall =

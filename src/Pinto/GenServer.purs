@@ -10,7 +10,6 @@ module Pinto.GenServer
   , CallFn
   , CallResult(..)
   , CastFn
-  , InfoFn
   , InfoFn2
   , TerminateFn
   , ContinueFn
@@ -54,6 +53,7 @@ module Pinto.GenServer
 
 import Prelude
 
+import Control.Monad.Cont (class MonadTrans)
 import Data.Maybe (Maybe(..), fromJust)
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
@@ -76,14 +76,14 @@ import Pinto.Types (ShutdownReason(..), ExitMessage(..)) as ReExports
 import Type.Prelude (Proxy(..))
 import Unsafe.Coerce (unsafeCoerce)
 
--- | The reader monad in which all GenServer operations take place
+-- | The monad in which all GenServer operations take place
 -- |
 -- | - `cont` is the type that will be passed into a handle_continue callback,
--- |   if there is no handleContinue present, this can just be 'Unit'
+-- |   if there is no handleContinue present, this can just be 'Void'
 -- | - `stop` is the data type that can be returned with the StopOther action
--- |   if StopOther is not being used, then this can simply 'Unit'
+-- |   if StopOther is not being used, then this can simply 'Void'
 -- | - `msg` represents the type of message that this gen server will receive in its
--- |   handleInfo callback, if no messages are expected, this can simply be 'Unit'
+-- |   handleInfo callback, if no messages are expected, this can simply be 'Void'
 -- | - `state` represents the internal state of this GenServer, created in 'init
 -- |   and then passed into each subsequent callback
 -- | - `result` is the result of any operation within a ResultT context
@@ -91,23 +91,26 @@ newtype ResultT :: forall k1 k2 k3 k4. k1 -> k2 -> k3 -> k4 -> Type -> Type
 newtype ResultT cont stop msg state result
   = ResultT (Effect result)
 
-derive newtype instance functorResultT :: Functor (ResultT cont stop msg state)
-derive newtype instance applyResultT :: Apply (ResultT cont stop msg state)
-derive newtype instance applicativeResultT :: Applicative (ResultT cont stop msg state)
-derive newtype instance bindResultT :: Bind (ResultT cont stop msg state)
-derive newtype instance monadResultT :: Monad (ResultT cont stop msg state)
-derive newtype instance monadEffectResultT :: MonadEffect (ResultT cont stop msg state)
-instance messageTypeResult :: ReceivesMessage (ResultT cont stop msg state) msg
+derive newtype instance Functor (ResultT cont stop msg state)
+derive newtype instance Apply (ResultT cont stop msg state)
+derive newtype instance Applicative (ResultT cont stop msg state)
+derive newtype instance Bind (ResultT cont stop msg state)
+derive newtype instance Monad (ResultT cont stop msg state)
+derive newtype instance MonadEffect (ResultT cont stop msg state)
+instance ReceivesMessage (ResultT cont stop msg state) msg
 
 newtype ResultT2 :: forall k1 k2 k3 k4 k5. k1 -> k2 -> k3 -> k4 -> (k5 -> Type) -> k5 -> Type
-newtype ResultT2 cont stop msg state m result
-  = ResultT2 (m result)
+newtype ResultT2 cont stop msg state m result = ResultT2 (m result)
 derive newtype instance Functor m => Functor (ResultT2 cont stop msg state m)
 derive newtype instance Apply m => Apply (ResultT2 cont stop msg state m)
 derive newtype instance Applicative m => Applicative (ResultT2 cont stop msg state m)
 derive newtype instance Bind m => Bind (ResultT2 cont stop msg state m)
 derive newtype instance Monad m => Monad (ResultT2 cont stop msg state m)
 derive newtype instance MonadEffect m => MonadEffect (ResultT2 cont stop msg state m)
+
+instance MonadTrans (ResultT2 cont stop msg state) where
+  lift = ResultT2
+
 instance ReceivesMessage (ResultT2 cont stop msg state m) msg
 
 -- | An action to be returned to OTP
@@ -178,8 +181,8 @@ type InitFn cont stop msg state m
   = ResultT2 cont stop msg state m (InitResult cont state)
 
 -- | The callback invoked within a GenServer.call: see gen_server:call
-type CallFn :: forall k. Type -> Type -> Type -> k -> Type -> Type
-type CallFn reply cont stop msg state
+type CallFn :: forall k. Type -> Type -> Type -> k -> Type -> (Type -> Type) -> Type
+type CallFn reply cont stop msg state m
   = From reply -> state -> ResultT cont stop msg state (CallResult reply cont stop state)
 
 -- | The type of the handleCast callback see gen_server:cast
@@ -195,7 +198,6 @@ type ContinueFn cont stop msg state
 -- | The type of the handleInfo callback see gen_server:handle_info
 type InfoFn cont stop msg state
   = msg -> state -> ResultT cont stop msg state (ReturnResult cont stop state)
-
 type InfoFn2 cont stop msg state m
   = msg -> state -> ResultT2 cont stop msg state m (ReturnResult cont stop state)
 
@@ -291,7 +293,7 @@ defaultSpec initFn =
 -- | ```purescript
 -- | GenServer.startLink $ GenServer.defaultSpec init
 -- |   where
--- |   init :: InitFn Unit Unit Unit {}
+-- |   init :: InitFn Unit Unit Unit {} Effect
 -- |   init = pure $ InitOk {}
 -- | ```
 startLink
@@ -370,13 +372,13 @@ newtype Context2 cont stop msg state m
 foreign import callFFI ::
   forall reply cont stop msg state.
   ServerInstance cont stop msg state ->
-  CallFn reply cont stop msg state ->
+  CallFn reply cont stop msg state Effect ->
   Effect reply
 
 call ::
   forall reply cont stop msg state.
   ServerRef cont stop msg state ->
-  CallFn reply cont stop msg state ->
+  CallFn reply cont stop msg state Effect ->
   Effect reply
 call r callFn = callFFI (registryInstance r) callFn
 
@@ -434,7 +436,9 @@ init =
       impl = unsafePartial $ fromJust $ head args
     exportInitResult <$> impl
 
-handle_call :: forall reply cont stop msg state. EffectFn3 (CallFn reply cont stop msg state) (From reply) (OuterState cont stop msg state) (NativeCallResult reply cont stop (OuterState cont stop msg state))
+handle_call
+  :: forall reply cont stop msg state m.
+     EffectFn3 (CallFn reply cont stop msg state m) (From reply) (OuterState cont stop msg state) (NativeCallResult reply cont stop (OuterState cont stop msg state))
 handle_call =
   mkEffectFn3 \f from _state@{ innerState, context } -> do
     result <- case f from innerState of ResultT inner -> inner
