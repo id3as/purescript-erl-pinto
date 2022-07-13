@@ -20,10 +20,10 @@ import Type.Prelude (Proxy(..))
 import Unsafe.Coerce (unsafeCoerce)
 
 receive
-  :: forall m mState appMsg
-   . MonadProcessTrans m mState appMsg
+  :: forall m mState appMsg outMsg
+   . MonadProcessTrans m mState appMsg outMsg
   => MonadEffect m
-  => m appMsg
+  => m outMsg
 receive = parseForeign =<< liftEffect Raw.receive
 
 
@@ -36,38 +36,38 @@ receive = parseForeign =<< liftEffect Raw.receive
 --   eval
 
 evalProcess
-  :: forall m mState appMsg a
-   . MonadProcessTrans m mState appMsg
+  :: forall m mState appMsg outMsg a
+   . MonadProcessTrans m mState appMsg outMsg
   => MonadEffect m
   => m a -> Effect a
 evalProcess mpt =
   fst <$> runProcess mpt
 
 execProcess
-  :: forall m mState appMsg
-   . MonadProcessTrans m mState appMsg
+  :: forall m mState appMsg outMsg
+   . MonadProcessTrans m mState appMsg outMsg
   => MonadEffect m
   => m appMsg -> Effect mState
 execProcess mpt =
   snd <$> runProcess mpt
 
 runProcess
-  :: forall m mState appMsg a
-   . MonadProcessTrans m mState appMsg
+  :: forall m mState appMsg outMsg a
+   . MonadProcessTrans m mState appMsg outMsg
   => m a -> Effect (Tuple a mState)
 runProcess mpt =
   run mpt =<< initialise (Proxy :: Proxy m)
 
 spawn
-  :: forall m mState appMsg
-   . MonadProcessTrans m mState appMsg
+  :: forall m mState appMsg outMsg
+   . MonadProcessTrans m mState appMsg outMsg
   => MonadEffect m
   => m Unit -> Effect (Process appMsg)
 spawn = unsafeCoerce <<< Raw.spawn <<< evalProcess
 
 spawnLink
-  :: forall m mState appMsg
-   . MonadProcessTrans m mState appMsg
+  :: forall m mState appMsg outMsg
+   . MonadProcessTrans m mState appMsg outMsg
   => MonadEffect m
   => m Unit -> Effect (Process appMsg)
 spawnLink = unsafeCoerce <<< Raw.spawnLink <<< evalProcess

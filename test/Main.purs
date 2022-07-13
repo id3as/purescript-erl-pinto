@@ -85,7 +85,7 @@ testStartWithNamedChild =
           }
       , childSpecs
       }
-  childInit :: InitFn _ _  _ _ (ProcessM Void)
+  childInit :: InitFn _ _  _ _ _ (ProcessM Void)
   childInit = do
     pure $ InitOk $ TestState 0
 
@@ -131,7 +131,7 @@ dynamicSupervisor =
 
   childStart _ = GS.startLink $ (GS.defaultSpec childInit)
 
-  childInit :: InitFn _ _  _ _ (ProcessM Void)
+  childInit :: InitFn _ _  _ _ _ (ProcessM Void)
   childInit = do
     pure $ InitOk $ TestState 0
 

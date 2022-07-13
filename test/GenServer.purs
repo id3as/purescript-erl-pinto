@@ -12,14 +12,15 @@ import Data.Time.Duration (Milliseconds(..))
 import Effect (Effect)
 import Effect.Class (liftEffect)
 import Erl.Atom (atom)
-import Erl.Process (Process, ProcessM, (!))
+import Erl.Process (Process, ProcessM, getProcess, (!))
 import Erl.Process.Raw (Pid)
 import Erl.Process.Raw as Raw
 import Erl.Test.EUnit (TestF, suite, test)
 import Foreign (unsafeToForeign)
 import Partial.Unsafe (unsafeCrashWith)
-import Pinto.GenServer (Action(..), ExitMessage, From, InitResult(..), ServerRef, ServerSpec, ServerType, InitFn)
+import Pinto.GenServer (Action(..), ExitMessage, From, InitFn, InitResult(..), ReturnResult, ServerRef, ServerSpec, ServerType)
 import Pinto.GenServer as GS
+import Pinto.ProcessT.Internal.Types (class MonadProcessTrans)
 import Pinto.ProcessT.MonitorT (MonitorT, spawnMonitor)
 import Pinto.Types (NotStartedReason(..), RegistryName(..), RegistryReference(..), StartLinkResult, crashIfNotStarted)
 import Test.Assert (assert', assertEqual)
@@ -83,7 +84,7 @@ testStartLinkAnonymous =
     assertEqual { actual: state4, expected: TestState 2 }
     pure unit
   where
-  init :: InitFn _ _  _ _ (ProcessM Void)
+  init :: InitFn _ _  _ _ _ (ProcessM Void)
   init = do
     pure $ InitOk (TestState 0)
 
@@ -120,7 +121,7 @@ testHandleInfo =
       }
     pure unit
   where
-  init :: InitFn _ _  _ _ (ProcessM TestMsg)
+  init :: InitFn _ _  _ _ _ (ProcessM TestMsg)
   init = do
     pure $ InitOk $ TestState 0
 
@@ -131,11 +132,38 @@ testHandleInfo =
     unsafeCrashWith "Unexpected message"
 
 
+
+
+data FooMsg = FooMsg
+
+fooInit :: MonitorT MonitorMsg (ProcessM FooMsg) (InitResult TestCont TestState)
+fooInit = do
+  _ <- spawnMonitor exitsImmediately $ const MonitorMsg
+  pure $ InitOk $ TestState 0
+
+fooHI :: TestState -> _ -> MonitorT MonitorMsg (ProcessM FooMsg) (ReturnResult TestCont TestStop TestState)
+fooHI state msg = do
+  case msg of
+    Right FooMsg ->  pure $ GS.return state
+    Left _ ->  pure $ GS.return state
+
+startFoo
+  :: forall m mState msg outMsg cont stop state
+   . MonadProcessTrans m mState msg outMsg
+  => { initFn ::  m (InitResult cont state)
+     , handleInfo :: state -> outMsg -> m (ReturnResult cont stop state)
+     } -> Unit
+startFoo _ = unit
+
+foo = startFoo { initFn : fooInit
+               , handleInfo : fooHI
+               }
+
 testMonadStatePassedAround :: Free TestF Unit
 testMonadStatePassedAround =
   test "Ensure MonadProcessTrans state is maintained across calls" do
     serverPid <- crashIfNotStarted <$> (GS.startLink $ (GS.defaultSpec init) { handleInfo = Just handleInfo })
-    (unsafeCoerce serverPid :: Process TestMsg) ! TestMsg
+    getProcess serverPid ! TestMsg
     sleep 10
     state <- getState (ByPid serverPid)
     assertEqual
@@ -144,7 +172,7 @@ testMonadStatePassedAround =
       }
     pure unit
   where
-  init :: InitFn TestCont TestStop _ TestState (MonitorT MonitorMsg (ProcessM TestMsg))
+  init :: InitFn TestCont TestStop TestMsg (Either MonitorMsg TestMsg) TestState (MonitorT MonitorMsg (ProcessM TestMsg))
   init = do
     _ <- lift $ spawnMonitor exitsImmediately $ const MonitorMsg
     pure $ InitOk $ TestState 0
@@ -161,8 +189,8 @@ testMonadStatePassedAround =
   handleInfo _ _s = do
     unsafeCrashWith "Unexpected message"
 
-  exitsImmediately :: ProcessM Void Unit
-  exitsImmediately = pure unit
+exitsImmediately :: ProcessM Void Unit
+exitsImmediately = pure unit
 
 testCall :: Free TestF Unit
 testCall =
@@ -175,7 +203,7 @@ testCall =
       }
     pure unit
   where
-  init :: InitFn _ _  _ _ (ProcessM Void)
+  init :: InitFn _ _ _  _ _ (ProcessM Void)
   init = do
     pure $ InitOk $ TestState 7
 
@@ -191,7 +219,7 @@ testCast =
       }
     pure unit
   where
-  init :: InitFn _ _  _ _ (ProcessM Void)
+  init :: InitFn _ _  _ _ _ (ProcessM Void)
   init = do
     pure $ InitOk $ TestState 0
 
@@ -254,7 +282,7 @@ testTrapExits =
 testStartGetSet :: RegistryName TestServerType -> Effect Unit
 testStartGetSet registryName = do
   let
-    gsSpec :: ServerSpec TestCont TestStop TestMsg TestState (ProcessM TestMsg)
+    gsSpec :: ServerSpec TestCont TestStop TestMsg _ TestState (ProcessM TestMsg)
     gsSpec =
       (GS.defaultSpec init)
         { name = Just registryName
@@ -306,7 +334,7 @@ testStartGetSet registryName = do
 testStopNormal :: RegistryName TestServerType -> Effect Unit
 testStopNormal registryName = do
   let
-    gsSpec :: ServerSpec TestCont TestStop TestMsg TestState (ProcessM TestMsg)
+    gsSpec :: ServerSpec TestCont TestStop TestMsg _ TestState (ProcessM TestMsg)
     gsSpec =
       (GS.defaultSpec init)
         { name = Just registryName

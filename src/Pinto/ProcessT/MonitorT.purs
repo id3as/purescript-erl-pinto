@@ -69,8 +69,8 @@ foreign import monitorImpl :: Raw.Pid -> Effect MonitorRef
 foreign import parseMonitorMsg :: Foreign -> Maybe MonitorMsg
 
 instance
-  (MonadProcessTrans m innerState appMsg, Monad m) =>
-  MonadProcessTrans (MonitorT monitorMsg m) (Tuple (MonitorMap monitorMsg) innerState) (Either monitorMsg appMsg) where
+  (MonadProcessTrans m innerState appMsg innerOutMsg, Monad m) =>
+  MonadProcessTrans (MonitorT monitorMsg m) (Tuple (MonitorMap monitorMsg) innerState) appMsg (Either monitorMsg innerOutMsg) where
   parseForeign fgn = do
       case parseMonitorMsg fgn of
         Just down@(Down ref _ _ _) -> MonitorT $ do
@@ -114,16 +114,16 @@ monitor' pid mapper = do
       pure ref
 
 spawnMonitor
-  :: forall m mState msg m2 monitorMsg
-   . MonadProcessTrans m mState msg
+  :: forall m mState msg outMsg m2 monitorMsg
+   . MonadProcessTrans m mState msg outMsg
   => MonadEffect m
   => MonadEffect m2
   => m Unit -> (MonitorMsg -> monitorMsg) -> MonitorT monitorMsg m2 (Process msg)
 spawnMonitor = doSpawnMonitor spawn
 
 spawnLinkMonitor
-  :: forall m mState msg m2 monitorMsg
-   . MonadProcessTrans m mState msg
+  :: forall m mState msg outMsg m2 monitorMsg
+   . MonadProcessTrans m mState msg outMsg
   => MonadEffect m
   => MonadEffect m2
   => m Unit -> (MonitorMsg -> monitorMsg) -> MonitorT monitorMsg m2 (Process msg)

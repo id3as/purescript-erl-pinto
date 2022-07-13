@@ -15,12 +15,12 @@ import Foreign (Foreign)
 import Type.Prelude (Proxy)
 import Unsafe.Coerce (unsafeCoerce)
 
-class MonadProcessTrans m mState appMsg | m -> mState appMsg where
-  parseForeign :: Foreign -> m appMsg
+class MonadProcessTrans m mState appMsg outMsg | m -> mState appMsg outMsg where
+  parseForeign :: Foreign -> m outMsg -- appMsg
   run :: forall a. m a -> mState -> Effect (Tuple a mState)
   initialise :: Proxy m -> Effect mState
 
-instance MonadProcessTrans (ProcessM appMsg) Unit appMsg where
+instance MonadProcessTrans (ProcessM appMsg) Unit appMsg appMsg where
   parseForeign = pure <<< unsafeCoerce
   run pm _ = do
     res <- unsafeRunProcessM pm
