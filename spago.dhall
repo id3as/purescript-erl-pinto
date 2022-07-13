@@ -5,7 +5,9 @@ You can edit this file as you like.
 { name = "my-project"
 , backend = "purerl"
 , dependencies =
-  [ "datetime"
+  [ "convertable-options"
+  , "datetime"
+  , "debug"
   , "effect"
   , "either"
   , "erl-atom"

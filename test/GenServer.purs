@@ -131,34 +131,6 @@ testHandleInfo =
   handleInfo _ _s = do
     unsafeCrashWith "Unexpected message"
 
-
-
-
-data FooMsg = FooMsg
-
-fooInit :: MonitorT MonitorMsg (ProcessM FooMsg) (InitResult TestCont TestState)
-fooInit = do
-  _ <- spawnMonitor exitsImmediately $ const MonitorMsg
-  pure $ InitOk $ TestState 0
-
-fooHI :: TestState -> _ -> MonitorT MonitorMsg (ProcessM FooMsg) (ReturnResult TestCont TestStop TestState)
-fooHI state msg = do
-  case msg of
-    Right FooMsg ->  pure $ GS.return state
-    Left _ ->  pure $ GS.return state
-
-startFoo
-  :: forall m mState msg outMsg cont stop state
-   . MonadProcessTrans m mState msg outMsg
-  => { initFn ::  m (InitResult cont state)
-     , handleInfo :: state -> outMsg -> m (ReturnResult cont stop state)
-     } -> Unit
-startFoo _ = unit
-
-foo = startFoo { initFn : fooInit
-               , handleInfo : fooHI
-               }
-
 testMonadStatePassedAround :: Free TestF Unit
 testMonadStatePassedAround =
   test "Ensure MonadProcessTrans state is maintained across calls" do
