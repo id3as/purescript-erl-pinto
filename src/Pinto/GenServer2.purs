@@ -1,27 +1,35 @@
 -- | Module representing the gen_server in OTP
 -- | See also 'gen_server' in the OTP docs (https://erlang.org/doc/man/gen_server.html)
+
+
 module Pinto.GenServer2
   ( ContinueFn
   , InfoFn
   , InitFn
+  , InitResult(..)
+  , ServerType
   , TerminateFn
   , TestState
-  , startLink
+  , startLink3
   )
   where
 
 import Prelude
 
 import ConvertableOptions (class ConvertOption, class ConvertOptionsWithDefaults, convertOptionsWithDefaults)
-import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
+import Data.Tuple (Tuple(..))
 import Debug (spy)
+import Effect (Effect)
+import Erl.ModuleName (NativeModuleName, nativeModuleName)
 import Erl.Process (ProcessM)
-import Pinto.GenServer (InitResult(..), ReturnResult, terminate)
+import Foreign (Foreign)
+import Pinto.GenServer (ReturnResult, ServerPid)
 import Pinto.GenServer as GS
-import Pinto.ProcessT.Internal.Types (class MonadProcessTrans)
+import Pinto.ModuleNames (pintoGenServer)
+import Pinto.ProcessT.Internal.Types (class MonadProcessTrans, initialise, parseForeign, run)
 import Pinto.ProcessT.MonitorT (MonitorT, spawnMonitor)
-import Pinto.Types (ShutdownReason)
+import Pinto.Types (RegistryName, ShutdownReason, StartLinkResult)
 import Type.Prelude (Proxy(..))
 import Unsafe.Coerce (unsafeCoerce)
 
@@ -42,6 +50,30 @@ type TerminateFn state m                = ShutdownReason -> state -> m  Unit
 
 --type GSMonad = MonitorT TestMonitorMsg (ProcessM TestMsg)
 type GSMonad = ProcessM TestMsg
+
+
+
+
+
+-- | The various return values from an init callback
+-- | These roughly map onto the tuples in the OTP documentation
+data InitResult cont state
+  = InitOk state
+  | InitOkTimeout state Int
+  | InitOkContinue state cont
+  | InitOkHibernate state
+  | InitStop Foreign
+  | InitIgnore
+
+instance Functor (InitResult cont) where
+  map f (InitOk state) = InitOk $ f state
+  map f (InitOkTimeout state timeout) = InitOkTimeout (f state) timeout
+  map f (InitOkContinue state cont) = InitOkContinue (f state) cont
+  map f (InitOkHibernate state) = InitOkHibernate $ f state
+  map _ (InitStop term) = InitStop term
+  map _ InitIgnore = InitIgnore
+
+
 
 fi :: InitFn TestCont TestState GSMonad
 fi = fooInit
@@ -98,8 +130,15 @@ z =
 
     handleContinue _ state = pure $ GS.return state
 
+--newtype ServerType :: Type -> Type -> Type -> Type -> Type
+newtype ServerType cont stop state m
+  = ServerType Void
+
+
+
 type OptionalConfig cont stop parsedMsg state m =
-  ( handleInfo     :: Maybe (InfoFn cont stop parsedMsg state m)
+  ( name           :: Maybe (RegistryName (ServerType cont stop state m))
+  , handleInfo     :: Maybe (InfoFn cont stop parsedMsg state m)
   , handleContinue :: Maybe (ContinueFn cont stop state m)
   , terminate      :: Maybe (TerminateFn state m)
   )
@@ -111,9 +150,46 @@ type AllConfig cont stop parsedMsg state m   =
   | OptionalConfig cont stop parsedMsg state m
   )
 
+type GSConfig cont stop parsedMsg state m =
+  { | AllConfig cont stop parsedMsg state m }
+
+
+data TransState
+data TransMsg
+data TransMonad
+data TransRes
+
+newtype Context cont stop parsedMsg state m
+  = Context
+    { handleInfo     :: Maybe (InfoFn cont stop parsedMsg state m)
+    , handleContinue :: Maybe (ContinueFn cont stop state m)
+    , terminate      :: Maybe (TerminateFn state m)
+    , mState         :: TransState
+    , mParse         :: Foreign -> TransMsg
+    , mRun           :: TransMonad -> TransState -> Effect (Tuple TransRes TransState)
+    }
+
+
+
+type OuterState cont stop parsedMsg state m
+  = { innerState :: state
+    , context :: Context cont stop parsedMsg state m
+    }
+
+foreign import startLinkFFI ::
+  forall cont stop appMsg parsedMsg state m.
+  Maybe (RegistryName (ServerType cont stop state m)) ->
+  NativeModuleName ->
+  Effect (InitResult cont (OuterState cont stop parsedMsg state m)) ->
+  Effect (StartLinkResult (ServerPid cont stop appMsg state))
+
+
+
+
 defaultOptions :: forall cont stop parsedMsg state m. { | OptionalConfig cont stop parsedMsg state m }
 defaultOptions
-  = { handleInfo : Nothing
+  = { name : Nothing
+    , handleInfo : Nothing
     , handleContinue : Nothing
     , terminate: Nothing
     }
@@ -223,3 +299,38 @@ startLink2
    . MonadProcessTrans m mState appMsg parsedMsg
   => Proxy m -> { | AllConfig cont stop parsedMsg state m } -> String
 startLink2 _ = startLink
+
+
+-- | Given a specification, starts a GenServer
+-- |
+-- | Standard usage:
+-- |
+-- | ```purescript
+-- | GenServer.startLink $ GenServer.defaultSpec init
+-- |   where
+-- |   init :: InitFn Unit Unit Unit {}
+-- |   init = pure $ InitOk {}
+-- | ```
+
+startLink3
+  :: forall cont stop appMsg parsedMsg state m mState
+   . MonadProcessTrans m mState appMsg parsedMsg
+  => GSConfig cont stop parsedMsg state m
+  -> Effect (StartLinkResult (ServerPid cont stop appMsg state))
+startLink3 { name: maybeName, init: initFn, handleInfo, handleContinue, terminate: terminate' }
+  = startLinkFFI maybeName (nativeModuleName pintoGenServer) initEffect
+  where
+  initEffect :: Effect (InitResult cont (OuterState cont stop parsedMsg state m))
+  initEffect = do
+    initialMState <- initialise (Proxy :: Proxy m)
+    Tuple innerResult newMState  <- run initFn initialMState
+    pure $ { context: initialContext newMState, innerState: _ } <$> innerResult
+
+  initialContext :: mState -> Context cont stop parsedMsg state m
+  initialContext mState = Context { handleInfo : handleInfo
+                                  , handleContinue : handleContinue
+                                  , terminate: terminate'
+                                  , mState : unsafeCoerce mState
+                                  , mParse : unsafeCoerce (parseForeign :: (Foreign -> m parsedMsg))
+                                  , mRun : unsafeCoerce (run :: forall a. m a -> mState -> Effect (Tuple a mState))
+                                  }
