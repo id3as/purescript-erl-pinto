@@ -109,8 +109,8 @@ instance Show (ServerPid cont stop state m) where
 
 -- | The typed reference of a GenServer, containing all the information required to get hold of
 -- | an instance
-type ServerRef :: forall k1 k2 k3 k4. k1 -> k2 -> Type -> k3 -> k4 -> Type
-type ServerRef cont stop appMsg state m
+--type ServerRef :: forall k1 k2 k3 k4. k1 -> k2 -> Type -> k3 -> k4 -> Type
+type ServerRef cont stop state m
   = RegistryReference (ServerPid cont stop state m) (ServerType cont stop state m)
 
 -- | The typed instance of a GenServer, containing all the information required to call into
@@ -366,7 +366,7 @@ startLink3 { name: maybeName, init: initFn, handleInfo, handleContinue, terminat
 
 
 foreign import callFFI
-  :: forall reply cont stop appMsg state m
+  :: forall reply cont stop state m
    . ServerInstance cont stop state m
   -> CallFn reply cont stop state m
   -> Effect reply
@@ -374,14 +374,14 @@ foreign import callFFI
 call
   :: forall reply cont stop appMsg parsedMsg state m mState
    . MonadProcessTrans m mState appMsg parsedMsg
-  => Monad m
-  => ServerRef cont stop appMsg state m
+  => Monad m -- TODO - why is the monad constraint needed?
+  => ServerRef cont stop state m
   -> CallFn reply cont stop state m
   -> Effect reply
 call r callFn = callFFI (registryInstance r) callFn
 
 foreign import castFFI
-  :: forall cont stop appMsg state m
+  :: forall cont stop state m
    . ServerInstance cont stop state m
   -> CastFn cont stop state m
   -> Effect Unit
@@ -390,7 +390,7 @@ cast
   :: forall cont stop appMsg parsedMsg state m mState
    . MonadProcessTrans m mState appMsg parsedMsg
   => Monad m
-  => ServerRef cont stop appMsg state m
+  => ServerRef cont stop state m
   -> CastFn cont stop state m
   -> Effect Unit
 cast r castFn = castFFI (registryInstance r) castFn

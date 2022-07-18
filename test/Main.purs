@@ -20,7 +20,6 @@ import Pinto.Supervisor.SimpleOneForOne as DynamicSup
 import Pinto.Types (RegistryName(..), RegistryReference(..), crashIfNotStarted)
 import Test.Assert (assertEqual)
 import Test.DoorLock as DoorLock
---import Test.GenServer as TGS
 import Test.GenServer2 as TGS2
 import Test.MonitorT (testMonitorT)
 
@@ -140,7 +139,7 @@ dynamicSupervisor =
 ---------------------------------------------------------------------------------
 -- Internal
 ---------------------------------------------------------------------------------
-getState :: forall cont stop msg state. ServerRef cont stop msg state (ProcessM msg) -> Effect state
+getState :: forall cont stop msg state. ServerRef cont stop state (ProcessM msg) -> Effect state
 getState handle =
   GS.call handle \_from state ->
     let
@@ -148,7 +147,7 @@ getState handle =
     in
       pure $ GS.reply reply state
 
-setState :: forall cont stop msg state. ServerRef cont stop msg state (ProcessM msg) -> state -> Effect state
+setState :: forall cont stop msg state. ServerRef cont stop state (ProcessM msg) -> state -> Effect state
 setState handle newState =
   GS.call handle \_from state ->
     let
@@ -156,5 +155,5 @@ setState handle newState =
     in
       pure $ GS.reply reply newState
 
-setStateCast :: forall cont stop msg state . ServerRef cont stop msg state (ProcessM (msg)) -> state -> Effect Unit
+setStateCast :: forall cont stop msg state . ServerRef cont stop state (ProcessM (msg)) -> state -> Effect Unit
 setStateCast handle newState = GS.cast handle \_state -> pure $ GS.return newState

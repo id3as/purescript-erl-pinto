@@ -366,7 +366,7 @@ getState
   :: forall cont stop appMsg parsedMsg state m mState
    . MonadProcessTrans m mState appMsg parsedMsg
   => Monad m
-  => GS2.ServerRef cont stop appMsg state m -> Effect state
+  => GS2.ServerRef cont stop state m -> Effect state
 getState handle =
   GS2.call handle callFn
   where
@@ -379,7 +379,7 @@ setState
   :: forall cont stop appMsg parsedMsg state m mState
    . MonadProcessTrans m mState appMsg parsedMsg
   => Monad m
-  => GS2.ServerRef cont stop appMsg state m -> state -> Effect state
+  => GS2.ServerRef cont stop state m -> state -> Effect state
 setState handle newState =
   GS2.call handle callFn
   where
@@ -391,7 +391,7 @@ setStateCast
   :: forall cont stop appMsg parsedMsg state m mState
    . MonadProcessTrans m mState appMsg parsedMsg
   => Monad m
-  => GS2.ServerRef cont stop appMsg state m -> state -> Effect Unit
+  => GS2.ServerRef cont stop state m -> state -> Effect Unit
 setStateCast handle newState = GS2.cast handle castFn
   where
     castFn :: GS2.CastFn cont stop state m
