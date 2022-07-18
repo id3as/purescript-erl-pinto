@@ -108,7 +108,7 @@ testHandleInfo :: Free TestF Unit
 testHandleInfo =
   test "HandleInfo handler receives message" do
     serverPid <- crashIfNotStarted <$> (GS2.startLink3 $ (GS2.defaultSpec init) { handleInfo = Just handleInfo })
-    (unsafeCoerce serverPid :: Process TestMsg) ! TestMsg
+    getProcess serverPid ! TestMsg
     state <- getState (ByPid serverPid)
     assertEqual
       { actual: state
@@ -266,7 +266,7 @@ testStartGetSet registryName = do
   getState instanceRef >>= expectState 1 -- Previsouly set state returned
   setStateCast instanceRef (TestState 2) -- Set new state async
   getState instanceRef >>= expectState 2 -- Previsouly set state returned
-  (unsafeCoerce serverPid :: Process TestMsg) ! TestMsg -- Trigger HandleInfo to add 100
+  getProcess serverPid ! TestMsg -- Trigger HandleInfo to add 100
   getState instanceRef >>= expectState 102 -- Previsouly set state returned
   callContinueReply instanceRef >>= expectState 102 -- Trigger a continue - returning old state
   getState instanceRef >>= expectState 202 -- The continue fires updating state befor the next get

@@ -36,7 +36,7 @@ type ValueServerType
   = ServerType Cont Stop State (ProcessM Msg)
 
 newtype ValueServerPid
-  = ValueServerPid (ServerPid Cont Stop Msg State (ProcessM Msg))
+  = ValueServerPid (ServerPid Cont Stop State (ProcessM Msg))
 
 -- Only surface the raw pid, don't implement HasProcess - we don't want folks sending us messages using our Info
 -- type

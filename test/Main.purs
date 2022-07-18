@@ -120,7 +120,7 @@ dynamicSupervisor =
       }
     pure unit
   where
-  supInit :: Effect (DynamicSup.ChildSpec Unit (ServerPid Void Void Void TestState (ProcessM Void)))
+  supInit :: Effect (DynamicSup.ChildSpec Unit (ServerPid Void Void TestState (ProcessM Void)))
   supInit =
     pure
       { intensity: 1

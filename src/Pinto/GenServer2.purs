@@ -60,12 +60,14 @@ import Erl.Atom (atom)
 import Erl.Data.List (List, head)
 import Erl.Data.Tuple (tuple2, tuple3, tuple4)
 import Erl.ModuleName (NativeModuleName, nativeModuleName)
-import Erl.Process (class HasProcess, Process, ProcessM)
+import Erl.Process (class HasProcess, ProcessM)
+import Erl.Process.Raw as Raw
 import Erl.Process.Raw (class HasPid)
 import Foreign (Foreign)
 import Partial.Unsafe (unsafePartial)
 import Pinto.ModuleNames (pintoGenServer)
 import Pinto.ProcessT.Internal.Types (class MonadProcessTrans, initialise, parseForeign, run)
+import Pinto.ProcessT.MonitorT (MonitorT)
 import Pinto.Types (RegistryInstance, RegistryName, RegistryReference, ShutdownReason, StartLinkResult, registryInstance)
 import Type.Prelude (Proxy(..))
 import Unsafe.Coerce (unsafeCoerce)
@@ -88,34 +90,38 @@ newtype From reply
   = From FromForeign
 
 
+newtype ServerPid :: forall k1 k2 k3 k4. k1 -> k2 -> k3 -> k4 -> Type
+newtype ServerPid cont stop state m
+  = ServerPid Raw.Pid
 
-newtype ServerPid :: forall k1 k2 k3 k4. k1 -> k2 -> Type -> k3 -> k4 -> Type
-newtype ServerPid cont stop appMsg state m
-  = ServerPid (Process appMsg)
+derive newtype instance Eq (ServerPid cont stop  state m)
 
-derive newtype instance Eq (ServerPid cont stop appMsg state m)
-derive newtype instance HasPid (ServerPid cont stop appMsg state m)
-derive newtype instance HasProcess appMsg (ServerPid const stop appMsg state m)
+instance (MonadProcessTrans m innerState appMsg parsedMsg) =>
+  HasProcess appMsg (ServerPid const stop state m) where
+    getProcess (ServerPid rawPid) = unsafeCoerce rawPid
 
-instance Show (ServerPid cont stop appMsg state m) where
-  show (ServerPid pid) = "(ServerPid " <> show pid <> ")"
+instance (MonadProcessTrans m innerState appMsg parsedMsg, Monad m) =>
+  HasPid (ServerPid const stop state m) where
+    getPid = unsafeCoerce
 
+instance Show (ServerPid cont stop state m) where
+  show (ServerPid pid) = "(ServerPid "  <> show pid <> ")"
 
 -- | The typed reference of a GenServer, containing all the information required to get hold of
 -- | an instance
 type ServerRef :: forall k1 k2 k3 k4. k1 -> k2 -> Type -> k3 -> k4 -> Type
 type ServerRef cont stop appMsg state m
-  = RegistryReference (ServerPid cont stop appMsg state m) (ServerType cont stop state m)
+  = RegistryReference (ServerPid cont stop state m) (ServerType cont stop state m)
 
 -- | The typed instance of a GenServer, containing all the information required to call into
-type ServerInstance :: forall k1 k2 k3 k4. k1 -> k2 -> Type -> k3 -> k4 -> Type
 -- | a GenServer
-type ServerInstance cont stop appMsg state m
-  = RegistryInstance (ServerPid cont stop appMsg state m) (ServerType cont stop state m)
+type ServerInstance :: forall k1 k2 k3 k4. k1 -> k2 -> k3 -> k4 -> Type
+type ServerInstance cont stop state m
+  = RegistryInstance (ServerPid cont stop state m) (ServerType cont stop state m)
 
 -- | Given a RegistryName with a valid (ServerType), get hold of a typed Process `msg` to which messages
 -- | can be sent (arriving in the handleInfo callback)
-foreign import whereIs :: forall cont stop appMsg state m. RegistryName (ServerType cont stop state m) -> Effect (Maybe (ServerPid cont stop appMsg state m))
+foreign import whereIs :: forall cont stop state m. RegistryName (ServerType cont stop state m) -> Effect (Maybe (ServerPid cont stop state m))
 
 
 -- | An action to be returned to OTP
@@ -186,8 +192,8 @@ type TerminateFn state m                = ShutdownReason -> state -> m  Unit
 
 
 
---type GSMonad = MonitorT TestMonitorMsg (ProcessM TestMsg)
-type GSMonad = ProcessM TestMsg
+type GSMonad = MonitorT TestMonitorMsg (ProcessM TestMsg)
+--type GSMonad = ProcessM TestMsg
 
 
 
@@ -257,7 +263,7 @@ fooHI msg state = do
 
 
 
-z :: String
+--z :: Effect (StartLinkResult (ServerPid ?a ?b ?c ?d ?m))
 z =
   startLink' { init
              , handleContinue
@@ -315,11 +321,11 @@ newtype OTPState cont stop parsedMsg state m
              }
 
 foreign import startLinkFFI ::
-  forall cont stop appMsg parsedMsg state m.
+  forall cont stop parsedMsg state m.
   Maybe (RegistryName (ServerType cont stop state m)) ->
   NativeModuleName ->
   Effect (InitResult cont (OTPState cont stop parsedMsg state m)) ->
-  Effect (StartLinkResult (ServerPid cont stop appMsg state m))
+  Effect (StartLinkResult (ServerPid cont stop state m))
 
 
 -- | Given a specification, starts a GenServer
@@ -336,7 +342,7 @@ startLink3
   :: forall cont stop appMsg parsedMsg state m mState
    . MonadProcessTrans m mState appMsg parsedMsg
   => GSConfig cont stop parsedMsg state m
-  -> Effect (StartLinkResult (ServerPid cont stop appMsg state m))
+  -> Effect (StartLinkResult (ServerPid cont stop state m))
 startLink3 { name: maybeName, init: initFn, handleInfo, handleContinue, terminate: terminate' }
   = startLinkFFI maybeName (nativeModuleName pintoGenServer) initEffect
   where
@@ -361,26 +367,29 @@ startLink3 { name: maybeName, init: initFn, handleInfo, handleContinue, terminat
 
 foreign import callFFI
   :: forall reply cont stop appMsg state m
-   . ServerInstance cont stop appMsg state m
+   . ServerInstance cont stop state m
   -> CallFn reply cont stop state m
   -> Effect reply
 
 call
-  :: forall reply cont stop appMsg state m
-   . ServerRef cont stop appMsg state m
+  :: forall reply cont stop appMsg parsedMsg state m mState
+   . MonadProcessTrans m mState appMsg parsedMsg
+  => Monad m
+  => ServerRef cont stop appMsg state m
   -> CallFn reply cont stop state m
   -> Effect reply
 call r callFn = callFFI (registryInstance r) callFn
 
 foreign import castFFI
   :: forall cont stop appMsg state m
-   . ServerInstance cont stop appMsg state m
+   . ServerInstance cont stop state m
   -> CastFn cont stop state m
   -> Effect Unit
 
 cast
   :: forall cont stop appMsg parsedMsg state m mState
    . MonadProcessTrans m mState appMsg parsedMsg
+  => Monad m
   => ServerRef cont stop appMsg state m
   -> CastFn cont stop state m
   -> Effect Unit
@@ -502,13 +511,13 @@ startLink'
   :: forall providedConfig cont stop appMsg parsedMsg state m mState
    . MonadProcessTrans m mState appMsg parsedMsg
   => ConvertOptionsWithDefaults OptionToMaybe { | OptionalConfig cont stop parsedMsg state m} { | providedConfig } { | AllConfig cont stop parsedMsg state m}
-  => { | providedConfig } -> String
+  => { | providedConfig } -> Effect (StartLinkResult (ServerPid cont stop state m))
 startLink' providedConfig =
   let
     config = convertOptionsWithDefaults OptionToMaybe defaultOptions providedConfig
     _ = spy "config" config
   in
-    startLink config
+    startLink3 config
   
 startLink
   :: forall cont stop appMsg parsedMsg state m mState
