@@ -12,15 +12,16 @@ import Erl.Data.List (nil, (:))
 import Erl.Process (ProcessM)
 import Erl.Test.EUnit (TestF, runTests, suite, test)
 import Pinto (StartLinkResult)
-import Pinto.GenServer (InitResult(..), ServerPid, ServerRef, InitFn)
-import Pinto.GenServer as GS
+import Pinto.GenServer2 (InitResult(..), ServerPid, ServerRef, InitFn)
+import Pinto.GenServer2 as GS
 import Pinto.Supervisor (ChildShutdownTimeoutStrategy(..), ChildType(..), RestartStrategy(..), Strategy(..), SupervisorSpec, ChildSpec, spec)
 import Pinto.Supervisor as Sup
 import Pinto.Supervisor.SimpleOneForOne as DynamicSup
 import Pinto.Types (RegistryName(..), RegistryReference(..), crashIfNotStarted)
 import Test.Assert (assertEqual)
 import Test.DoorLock as DoorLock
-import Test.GenServer as TGS
+--import Test.GenServer as TGS
+import Test.GenServer2 as TGS2
 import Test.MonitorT (testMonitorT)
 
 foreign import filterSasl :: Effect Unit
@@ -32,9 +33,10 @@ main =
   in
     void
       $ runTests do
-          TGS.genServerSuite
-          DoorLock.testSuite
-          supervisorSuite
+          --TGS.genServerSuite
+          TGS2.genServer2Suite
+          --DoorLock.testSuite
+          --supervisorSuite
 
 supervisorSuite :: Free TestF Unit
 supervisorSuite =
@@ -85,14 +87,14 @@ testStartWithNamedChild =
           }
       , childSpecs
       }
-  childInit :: InitFn _ _  _ _ _ (ProcessM Void)
+  childInit :: InitFn _ _  (ProcessM Void)
   childInit = do
     pure $ InitOk $ TestState 0
 
   childName = Local $ atom "testNamedChild"
 
   --myChild :: ChildSpec String TestState TestMsg
-  myChild = mkChildSpec "myChildId" (GS.startLink $ (GS.defaultSpec childInit) { name = Just childName })
+  myChild = mkChildSpec "myChildId" (GS.startLink3 $ (GS.defaultSpec childInit) { name = Just childName })
 
 mkChildSpec :: forall childType. String -> Effect (StartLinkResult childType) -> ChildSpec childType
 mkChildSpec id start =
@@ -118,7 +120,7 @@ dynamicSupervisor =
       }
     pure unit
   where
-  supInit :: Effect (DynamicSup.ChildSpec Unit (ServerPid Void Void Void TestState))
+  supInit :: Effect (DynamicSup.ChildSpec Unit (ServerPid Void Void Void TestState (ProcessM Void)))
   supInit =
     pure
       { intensity: 1
@@ -129,16 +131,16 @@ dynamicSupervisor =
       , shutdownStrategy: ShutdownTimeout $ Milliseconds 5000.0
       }
 
-  childStart _ = GS.startLink $ (GS.defaultSpec childInit)
+  childStart _ = GS.startLink3 $ (GS.defaultSpec childInit)
 
-  childInit :: InitFn _ _  _ _ _ (ProcessM Void)
+  childInit :: InitFn _ _ (ProcessM Void)
   childInit = do
     pure $ InitOk $ TestState 0
 
 ---------------------------------------------------------------------------------
 -- Internal
 ---------------------------------------------------------------------------------
-getState :: forall cont stop msg state. ServerRef cont stop msg state -> Effect state
+getState :: forall cont stop msg state. ServerRef cont stop msg state (ProcessM msg) -> Effect state
 getState handle =
   GS.call handle \_from state ->
     let
@@ -146,7 +148,7 @@ getState handle =
     in
       pure $ GS.reply reply state
 
-setState :: forall cont stop msg state. ServerRef cont stop msg state -> state -> Effect state
+setState :: forall cont stop msg state. ServerRef cont stop msg state (ProcessM msg) -> state -> Effect state
 setState handle newState =
   GS.call handle \_from state ->
     let
@@ -154,5 +156,5 @@ setState handle newState =
     in
       pure $ GS.reply reply newState
 
-setStateCast :: forall cont stop msg state. ServerRef cont stop msg state -> state -> Effect Unit
+setStateCast :: forall cont stop msg state . ServerRef cont stop msg state (ProcessM (msg)) -> state -> Effect Unit
 setStateCast handle newState = GS.cast handle \_state -> pure $ GS.return newState

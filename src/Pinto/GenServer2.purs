@@ -1,21 +1,23 @@
 -- | Module representing the gen_server in OTP
 -- | See also 'gen_server' in the OTP docs (https://erlang.org/doc/man/gen_server.html)
 
-
 module Pinto.GenServer2
   ( Action(..)
+  , AllConfig
   , CallFn
   , CallResult(..)
   , CastFn
-  , Context
   , ContinueFn
   , From
+  , GSConfig
   , InfoFn
   , InitFn
   , InitResult(..)
   , NativeCallResult
   , NativeInitResult
   , NativeReturnResult
+  , OTPState
+  , OptionalConfig
   , ReturnResult(..)
   , ServerInstance
   , ServerPid
@@ -28,6 +30,9 @@ module Pinto.GenServer2
   , defaultSpec
   , exportInitResult
   , exportReturnResult
+  , handle_call
+  , handle_cast
+  , handle_continue
   , handle_info
   , init
   , noReply
@@ -38,6 +43,7 @@ module Pinto.GenServer2
   , return
   , returnWithAction
   , startLink3
+  , whereIs
   )
   where
 
@@ -52,7 +58,7 @@ import Effect.Class (class MonadEffect, liftEffect)
 import Effect.Uncurried (EffectFn1, EffectFn2, EffectFn3, mkEffectFn1, mkEffectFn2, mkEffectFn3)
 import Erl.Atom (atom)
 import Erl.Data.List (List, head)
-import Erl.Data.Tuple (tuple2, tuple3)
+import Erl.Data.Tuple (tuple2, tuple3, tuple4)
 import Erl.ModuleName (NativeModuleName, nativeModuleName)
 import Erl.Process (class HasProcess, Process, ProcessM)
 import Erl.Process.Raw (class HasPid)
@@ -83,6 +89,7 @@ newtype From reply
 
 
 
+newtype ServerPid :: forall k1 k2 k3 k4. k1 -> k2 -> Type -> k3 -> k4 -> Type
 newtype ServerPid cont stop appMsg state m
   = ServerPid (Process appMsg)
 
@@ -96,17 +103,19 @@ instance Show (ServerPid cont stop appMsg state m) where
 
 -- | The typed reference of a GenServer, containing all the information required to get hold of
 -- | an instance
+type ServerRef :: forall k1 k2 k3 k4. k1 -> k2 -> Type -> k3 -> k4 -> Type
 type ServerRef cont stop appMsg state m
   = RegistryReference (ServerPid cont stop appMsg state m) (ServerType cont stop state m)
 
 -- | The typed instance of a GenServer, containing all the information required to call into
+type ServerInstance :: forall k1 k2 k3 k4. k1 -> k2 -> Type -> k3 -> k4 -> Type
 -- | a GenServer
 type ServerInstance cont stop appMsg state m
-  = RegistryInstance (ServerPid cont stop appMsg state m) (ServerType cont stop appMsg state)
+  = RegistryInstance (ServerPid cont stop appMsg state m) (ServerType cont stop state m)
 
 -- | Given a RegistryName with a valid (ServerType), get hold of a typed Process `msg` to which messages
 -- | can be sent (arriving in the handleInfo callback)
-foreign import whereIs :: forall cont stop appMsg state m. RegistryName (ServerType cont stop appMsg state) -> Effect (Maybe (ServerPid cont stop appMsg state m))
+foreign import whereIs :: forall cont stop appMsg state m. RegistryName (ServerType cont stop state m) -> Effect (Maybe (ServerPid cont stop appMsg state m))
 
 
 -- | An action to be returned to OTP
@@ -169,10 +178,10 @@ returnWithAction action state = ReturnResult (Just action) state
 
 type InitFn :: forall k. Type -> Type -> (Type -> k) -> k
 type InitFn cont state m                =                            m (InitResult cont state)
-type InfoFn cont stop parsedMsg state m = parsedMsg ->      state -> m (ReturnResult cont stop state)
-type ContinueFn cont stop state m       = cont ->           state -> m (ReturnResult cont stop state)
+type InfoFn cont stop parsedMsg state m = parsedMsg      -> state -> m (ReturnResult cont stop state)
+type ContinueFn cont stop state m       = cont           -> state -> m (ReturnResult cont stop state)
 type CastFn cont stop state m           =                   state -> m (ReturnResult cont stop state)
-type CallFn reply cont stop state m     = From reply ->     state -> m (CallResult reply cont stop state)
+type CallFn reply cont stop state m     = From reply     -> state -> m (CallResult reply cont stop state)
 type TerminateFn state m                = ShutdownReason -> state -> m  Unit
 
 
@@ -216,6 +225,7 @@ fooInit = do
 
 
 --fooHI :: _ -> _ -> GSMonad _ --(ReturnResult TestCont TestStop TestState)
+fooHI :: forall t822 cont824 stop825 state826. Applicative t822 => TestMsg -> state826 -> t822 (ReturnResult cont824 stop825 state826)
 fooHI msg state = do
   case msg of
     --Left TestMonitorMsg ->  pure $ return state
@@ -247,6 +257,7 @@ fooHI msg state = do
 
 
 
+z :: String
 z =
   startLink' { init
              , handleContinue
@@ -260,6 +271,7 @@ z =
     handleContinue _ state = pure $ return state
 
 --newtype ServerType :: Type -> Type -> Type -> Type -> Type
+newtype ServerType :: forall k1 k2 k3 k4. k1 -> k2 -> k3 -> k4 -> Type
 newtype ServerType cont stop state m
   = ServerType Void
 
@@ -285,31 +297,28 @@ type GSConfig cont stop parsedMsg state m =
 
 data TransState
 data TransMsg
-data TransMonad
+--data TransMonad
 data TransRes
 
-newtype Context cont stop parsedMsg state m
-  = Context
-    { handleInfo     :: Maybe (InfoFn cont stop parsedMsg state m)
+type Context cont stop parsedMsg state m
+  = { handleInfo     :: Maybe (InfoFn cont stop parsedMsg state m)
     , handleContinue :: Maybe (ContinueFn cont stop state m)
     , terminate      :: Maybe (TerminateFn state m)
-    , mState         :: TransState
-    , mParse         :: Foreign -> TransMsg
-    , mRun           :: TransMonad -> TransState -> Effect (Tuple TransRes TransState)
+    , mParse         :: forall a. Foreign -> a
+    , mRun           :: forall a m. m a -> TransState -> Effect (Tuple a TransState)
     }
 
-
-
-type OuterState cont stop parsedMsg state m
-  = { innerState :: state
-    , context :: Context cont stop parsedMsg state m
-    }
+newtype OTPState cont stop parsedMsg state m
+  = OTPState { innerState :: state
+             , mState :: TransState
+             , context :: Context cont stop parsedMsg state m
+             }
 
 foreign import startLinkFFI ::
   forall cont stop appMsg parsedMsg state m.
   Maybe (RegistryName (ServerType cont stop state m)) ->
   NativeModuleName ->
-  Effect (InitResult cont (OuterState cont stop parsedMsg state m)) ->
+  Effect (InitResult cont (OTPState cont stop parsedMsg state m)) ->
   Effect (StartLinkResult (ServerPid cont stop appMsg state m))
 
 
@@ -331,20 +340,23 @@ startLink3
 startLink3 { name: maybeName, init: initFn, handleInfo, handleContinue, terminate: terminate' }
   = startLinkFFI maybeName (nativeModuleName pintoGenServer) initEffect
   where
-  initEffect :: Effect (InitResult cont (OuterState cont stop parsedMsg state m))
+  initEffect :: Effect (InitResult cont (OTPState cont stop parsedMsg state m))
   initEffect = do
     initialMState <- initialise (Proxy :: Proxy m)
     Tuple innerResult newMState  <- run initFn initialMState
-    pure $ { context: initialContext newMState, innerState: _ } <$> innerResult
 
-  initialContext :: mState -> Context cont stop parsedMsg state m
-  initialContext mState = Context { handleInfo : handleInfo
-                                  , handleContinue : handleContinue
-                                  , terminate: terminate'
-                                  , mState : unsafeCoerce mState
-                                  , mParse : unsafeCoerce (parseForeign :: (Foreign -> m parsedMsg))
-                                  , mRun : unsafeCoerce (run :: forall a. m a -> mState -> Effect (Tuple a mState))
-                                  }
+    pure $ OTPState <$> { context
+                        , mState : unsafeCoerce newMState -- TODO - add in the bug again (initialMState) and have a failing test
+                        , innerState: _
+                        } <$> innerResult
+
+  context :: Context cont stop parsedMsg state m
+  context = { handleInfo : handleInfo
+            , handleContinue : handleContinue
+            , terminate: terminate'
+            , mParse : unsafeCoerce (parseForeign :: (Foreign -> m parsedMsg))
+            , mRun : unsafeCoerce (run :: forall a. m a -> mState -> Effect (Tuple a mState))
+            }
 
 
 foreign import callFFI
@@ -367,18 +379,12 @@ foreign import castFFI
   -> Effect Unit
 
 cast
-  :: forall reply cont stop appMsg parsedMsg state m mState
+  :: forall cont stop appMsg parsedMsg state m mState
    . MonadProcessTrans m mState appMsg parsedMsg
   => ServerRef cont stop appMsg state m
   -> CastFn cont stop state m
   -> Effect Unit
-cast r castFn = do
-  let
-    x :: ?t
-    x = registryInstance r
-
-  castFFI (unsafeCoerce 1) castFn
-
+cast r castFn = castFFI (registryInstance r) castFn
 
 foreign import replyToFFI :: forall reply. From reply -> reply -> Effect Unit
 replyTo
@@ -536,41 +542,67 @@ init =
       impl = unsafePartial $ fromJust $ head args
     exportInitResult <$> impl
 
--- handle_call
---   :: forall reply cont stop msg state m.
---      EffectFn3 (CallFn reply cont stop msg state m) (From reply) (OuterState cont stop msg state) (NativeCallResult reply cont stop (OuterState cont stop msg state))
--- handle_call =
---   mkEffectFn3 \f from _state@{ innerState, context } -> do
---     result <- case f from innerState of ResultT inner -> inner
---     pure $ exportCallResult (mkOuterState context <$> result)
+handle_call
+  :: forall reply cont stop parsedMsg state m.
+     EffectFn3 (CallFn reply cont stop state m) (From reply) (OTPState cont stop parsedMsg state m) (NativeCallResult reply cont stop (OTPState cont stop parsedMsg state m))
+handle_call =
+  mkEffectFn3 \f from otpState@(OTPState { innerState, mState, context: { mRun } }) -> do
+    Tuple result newMState <- mRun (f from innerState) mState
+    pure $ exportCallResult (updateOtpState otpState newMState <$> result)
 
+handle_cast
+  :: forall cont stop parsedMsg state m.
+     EffectFn2 (CastFn cont stop state m) (OTPState cont stop parsedMsg state m) (NativeReturnResult cont stop (OTPState cont stop parsedMsg state m))
+handle_cast =
+  mkEffectFn2 \f  otpState@(OTPState { innerState, mState, context: { mRun } }) -> do
+    Tuple result newMState <- mRun (f innerState) mState
+    pure $ exportReturnResult (updateOtpState otpState newMState <$> result)
 
+handle_continue
+  :: forall m cont stop parsedMsg state.
+     EffectFn2 cont (OTPState cont stop parsedMsg state m) (NativeReturnResult cont stop (OTPState cont stop parsedMsg state m))
+handle_continue =
+  mkEffectFn2 \contMsg otpState@(OTPState { innerState, mState, context: { handleContinue: maybeHandleContinue, mRun } }) ->
+    exportReturnResult <$>
+      case maybeHandleContinue of
+        Just f -> do
+          Tuple result newMState <- mRun (f contMsg innerState) mState
+          pure $ updateOtpState otpState newMState <$> result
+        Nothing ->
+          pure $ ReturnResult Nothing otpState
 
 handle_info
-  :: forall m cont stop parsedMsg state mState.
-     EffectFn2 Foreign (OuterState cont stop parsedMsg state m) (NativeReturnResult cont stop (OuterState cont stop parsedMsg state m))
+  :: forall m cont stop parsedMsg state.
+     EffectFn2 Foreign (OTPState cont stop parsedMsg state m) (NativeReturnResult cont stop (OTPState cont stop parsedMsg state m))
 handle_info =
-  mkEffectFn2 \nativeMsg state@{ innerState, context: Context ctx@{ handleInfo: maybeHandleInfo, mState, mParse, mRun } } ->
-    exportReturnResult
-      <$> case maybeHandleInfo of
-          Just f -> do
-            let
-              -- We had to forget the types of the typeclass members when we stored them - remember them again
-              mParse' :: Foreign -> m parsedMsg
-              mParse' = unsafeCoerce mParse
-              mRun' :: forall a mState. m a -> mState -> Effect (Tuple a mState)
-              mRun'  = unsafeCoerce mRun
-              mState' :: mState
-              mState' = unsafeCoerce mState
-            Tuple parsedMsg newMState <- mRun' (mParse' nativeMsg) mState'
-            Tuple (ReturnResult mAction state) newMState' <- mRun' (f parsedMsg innerState) newMState
-            pure $ ReturnResult mAction (mkOuterState2 (Context ctx{mState = unsafeCoerce newMState'}) state)
-          Nothing ->
-            -- If you don't set up a handler then we choose to ignore all messages rather than crash...
-            pure $ ReturnResult Nothing state
+  mkEffectFn2 \nativeMsg otpState@(OTPState { innerState, mState, context: { handleInfo: maybeHandleInfo, mParse, mRun } }) ->
+    exportReturnResult <$>
+      case maybeHandleInfo of
+        Just f -> do
+          Tuple parsedMsg newMState <- mRun (mParse nativeMsg) mState
+          Tuple result newMState' <- mRun (f parsedMsg innerState) newMState
+          pure $ updateOtpState otpState newMState' <$> result
+        Nothing ->
+          pure $ ReturnResult Nothing otpState
+
+-- terminate
+--   :: forall cont stop parsedMsg state m.
+--      EffectFn2 Foreign (OTPState cont stop parsedMsg state m) Atom
+-- terminate =
+--   mkEffectFn2 \reason  otpState@(OTPState { innerState, mState, context: { mRun, maybeTerminate } }) -> do
+--     case maybeTerminate of
+--       Just f -> (runReaderT $ case f (parseShutdownReasonFFI reason) innerState of ResultT inner -> inner) context
+--       Nothing -> pure unit
+--     pure $ atom "ok"
 
 
-mkOuterState2 = { context: _, innerState: _ }
+
+updateOtpState :: forall cont stop parsedMsg state m. OTPState cont stop parsedMsg state m -> TransState -> state -> OTPState cont stop parsedMsg state m
+updateOtpState (OTPState otpState) mState innerState  = OTPState otpState{ mState = mState, innerState = innerState}
+
+
+
+
 --------------------------------------------------------------------------------
 -- Helpers to construct the appropriate erlang tuples from the GenServer ADTs
 --------------------------------------------------------------------------------
@@ -591,3 +623,19 @@ exportReturnResult = case _ of
   ReturnResult (Just (Continue cont)) newState -> unsafeCoerce $ tuple3 (atom "noreply") newState $ tuple2 (atom "continue") cont
   ReturnResult (Just StopNormal) newState -> unsafeCoerce $ tuple3 (atom "stop") (atom "normal") newState
   ReturnResult (Just (StopOther reason)) newState -> unsafeCoerce $ tuple3 (atom "stop") reason newState
+
+
+exportCallResult :: forall reply cont stop outerState. CallResult reply cont stop outerState -> NativeCallResult reply cont stop outerState
+exportCallResult = case _ of
+  CallResult (Just r) Nothing newState -> unsafeCoerce $ tuple3 (atom "reply") r newState
+  CallResult (Just r) (Just (Timeout timeout)) newState -> unsafeCoerce $ tuple4 (atom "reply") r newState timeout
+  CallResult (Just r) (Just Hibernate) newState -> unsafeCoerce $ tuple4 (atom "reply") r newState (atom "hibernate")
+  CallResult (Just r) (Just (Continue cont)) newState -> unsafeCoerce $ tuple4 (atom "reply") r newState $ tuple2 (atom "continue") cont
+  CallResult (Just r) (Just StopNormal) newState -> unsafeCoerce $ tuple4 (atom "stop") (atom "normal") r newState
+  CallResult (Just r) (Just (StopOther reason)) newState -> unsafeCoerce $ tuple4 (atom "stop") reason r newState
+  CallResult Nothing Nothing newState -> unsafeCoerce $ tuple2 (atom "noreply") newState
+  CallResult Nothing (Just (Timeout timeout)) newState -> unsafeCoerce $ tuple3 (atom "noreply") newState timeout
+  CallResult Nothing (Just Hibernate) newState -> unsafeCoerce $ tuple3 (atom "noreply") newState (atom "hibernate")
+  CallResult Nothing (Just (Continue cont)) newState -> unsafeCoerce $ tuple3 (atom "noreply") newState $ tuple2 (atom "continue") cont
+  CallResult Nothing (Just StopNormal) newState -> unsafeCoerce $ tuple3 (atom "stop") (atom "normal") newState
+  CallResult Nothing (Just (StopOther reason)) newState -> unsafeCoerce $ tuple3 (atom "stop") reason newState

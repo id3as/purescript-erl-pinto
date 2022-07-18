@@ -16,8 +16,8 @@ import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Process (ProcessM)
 import Erl.Process.Raw (class HasPid)
-import Pinto.GenServer (InitResult(..), ServerPid, ServerRef(..), ServerType, InitFn)
-import Pinto.GenServer as GS
+import Pinto.GenServer2 (InitResult(..), ServerPid, ServerRef(..), ServerType, InitFn)
+import Pinto.GenServer2 as GS
 import Pinto.Types (RegistryName(..), RegistryReference(..), crashIfNotStarted)
 
 type Cont
@@ -33,10 +33,10 @@ type State
   = { value :: Int }
 
 type ValueServerType
-  = ServerType Cont Stop Msg State
+  = ServerType Cont Stop State (ProcessM Msg)
 
 newtype ValueServerPid
-  = ValueServerPid (ServerPid Cont Stop Msg State)
+  = ValueServerPid (ServerPid Cont Stop Msg State (ProcessM Msg))
 
 -- Only surface the raw pid, don't implement HasProcess - we don't want folks sending us messages using our Info
 -- type
@@ -49,9 +49,9 @@ startLink :: Effect ValueServerPid
 startLink = do
   ValueServerPid
     <$> crashIfNotStarted
-    <$> (GS.startLink $ (GS.defaultSpec init) { name = Just serverName })
+    <$> (GS.startLink3 $ (GS.defaultSpec init) { name = Just serverName })
   where
-  init :: InitFn Cont Stop Msg _ State (ProcessM Msg)
+  init :: InitFn Stop State (ProcessM Msg)
   init =
     let
       state = { value: 0 }
@@ -74,4 +74,4 @@ setValueAsync n = GS.cast (ByName serverName) impl
   impl state@{ value } = pure $ GS.return state { value = n }
 
 stop :: Effect Unit
-stop = GS.stop (ByName serverName)
+stop = pure unit --GS.stop (ByName serverName) -- TODO
