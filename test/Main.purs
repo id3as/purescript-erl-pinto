@@ -13,13 +13,14 @@ import Erl.Process (ProcessM)
 import Erl.Test.EUnit (TestF, runTests, suite, test)
 import Pinto (StartLinkResult)
 import Pinto.GenServer2 (InitResult(..), ServerPid, ServerRef, InitFn)
-import Pinto.GenServer2 as GS
+import Pinto.GenServer2 as GS2
 import Pinto.Supervisor (ChildShutdownTimeoutStrategy(..), ChildType(..), RestartStrategy(..), Strategy(..), SupervisorSpec, ChildSpec, spec)
 import Pinto.Supervisor as Sup
 import Pinto.Supervisor.SimpleOneForOne as DynamicSup
 import Pinto.Types (RegistryName(..), RegistryReference(..), crashIfNotStarted)
 import Test.Assert (assertEqual)
 import Test.DoorLock as DoorLock
+import Test.GenServer as TGS
 import Test.GenServer2 as TGS2
 import Test.MonitorT (testMonitorT)
 
@@ -32,7 +33,7 @@ main =
   in
     void
       $ runTests do
-          --TGS.genServerSuite
+          TGS.genServerSuite
           TGS2.genServer2Suite
           --DoorLock.testSuite
           --supervisorSuite
@@ -93,7 +94,7 @@ testStartWithNamedChild =
   childName = Local $ atom "testNamedChild"
 
   --myChild :: ChildSpec String TestState TestMsg
-  myChild = mkChildSpec "myChildId" (GS.startLink3 $ (GS.defaultSpec childInit) { name = Just childName })
+  myChild = mkChildSpec "myChildId" (GS2.startLink3 $ (GS2.defaultSpec childInit) { name = Just childName })
 
 mkChildSpec :: forall childType. String -> Effect (StartLinkResult childType) -> ChildSpec childType
 mkChildSpec id start =
@@ -130,7 +131,7 @@ dynamicSupervisor =
       , shutdownStrategy: ShutdownTimeout $ Milliseconds 5000.0
       }
 
-  childStart _ = GS.startLink3 $ (GS.defaultSpec childInit)
+  childStart _ = GS2.startLink3 $ (GS2.defaultSpec childInit)
 
   childInit :: InitFn _ _ (ProcessM Void)
   childInit = do
@@ -141,19 +142,19 @@ dynamicSupervisor =
 ---------------------------------------------------------------------------------
 getState :: forall cont stop msg state. ServerRef cont stop state (ProcessM msg) -> Effect state
 getState handle =
-  GS.call handle \_from state ->
+  GS2.call handle \_from state ->
     let
       reply = state
     in
-      pure $ GS.reply reply state
+      pure $ GS2.reply reply state
 
 setState :: forall cont stop msg state. ServerRef cont stop state (ProcessM msg) -> state -> Effect state
 setState handle newState =
-  GS.call handle \_from state ->
+  GS2.call handle \_from state ->
     let
       reply = state
     in
-      pure $ GS.reply reply newState
+      pure $ GS2.reply reply newState
 
 setStateCast :: forall cont stop msg state . ServerRef cont stop state (ProcessM (msg)) -> state -> Effect Unit
-setStateCast handle newState = GS.cast handle \_state -> pure $ GS.return newState
+setStateCast handle newState = GS2.cast handle \_state -> pure $ GS2.return newState

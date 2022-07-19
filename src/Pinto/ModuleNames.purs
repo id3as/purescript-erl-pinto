@@ -6,7 +6,10 @@ pintoApp :: ModuleName
 pintoApp = ModuleName "Pinto.App"
 
 pintoGenServer :: ModuleName
-pintoGenServer = ModuleName "Pinto.GenServer2" -- TODO
+pintoGenServer = ModuleName "Pinto.GenServer"
+
+pintoGenServer2 :: ModuleName
+pintoGenServer2 = ModuleName "Pinto.GenServer2"
 
 pintoGenStatem :: ModuleName
 pintoGenStatem = ModuleName "Pinto.GenStatem"

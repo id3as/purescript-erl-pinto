@@ -74,4 +74,4 @@ setValueAsync n = GS.cast (ByName serverName) impl
   impl state@{ value } = pure $ GS.return state { value = n }
 
 stop :: Effect Unit
-stop = pure unit --GS.stop (ByName serverName) -- TODO
+stop = GS.stop (ByName serverName)

@@ -1,23 +1,24 @@
-module Test.GenServer2
-  ( genServer2Suite
+module Test.GenServer
+  ( genServerSuite
   ) where
 
 import Prelude
-
 import Control.Monad.Free (Free)
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
+import Data.Time.Duration (Milliseconds(..))
 import Effect (Effect)
+import Effect.Class (liftEffect)
 import Erl.Atom (atom)
-import Erl.Process (Process, ProcessM, getProcess, (!))
+import Erl.Process (Process, (!))
+import Erl.Process.Raw (Pid)
+import Erl.Process.Raw as Raw
 import Erl.Test.EUnit (TestF, suite, test)
 import Foreign (unsafeToForeign)
 import Partial.Unsafe (unsafeCrashWith)
-import Pinto.GenServer2 (Action(..), InitResult(..))
-import Pinto.GenServer2 as GS2
-import Pinto.ProcessT.Internal.Types (class MonadProcessTrans)
-import Pinto.ProcessT.MonitorT (MonitorT, spawnMonitor)
-import Pinto.Types (ExitMessage, NotStartedReason(..), RegistryName(..), RegistryReference(..), StartLinkResult, crashIfNotStarted)
+import Pinto.GenServer (Action(..), ExitMessage, From, InitResult(..), ServerRef, ServerSpec, ServerType)
+import Pinto.GenServer as GS
+import Pinto.Types (NotStartedReason(..), RegistryName(..), RegistryReference(..), StartLinkResult, crashIfNotStarted)
 import Test.Assert (assert', assertEqual)
 import Test.ValueServer as ValueServer
 import Unsafe.Coerce (unsafeCoerce)
@@ -25,22 +26,20 @@ import Unsafe.Coerce (unsafeCoerce)
 foreign import sleep :: Int -> Effect Unit
 
 type TestServerType
-  = GS2.ServerType TestCont TestStop TestState (ProcessM TestMsg)
+  = ServerType TestCont TestStop TestMsg TestState
 
-genServer2Suite :: Free TestF Unit
-genServer2Suite =
+genServerSuite :: Free TestF Unit
+genServerSuite =
   suite "Pinto genServer tests" do
     testStartLinkAnonymous
     testStartLinkLocal
     testStartLinkGlobal
     testStopNormalLocal
-    testStopNormalGlobal
     testHandleInfo
     testCall
     testCast
     testValueServer
-    -- --testTrapExits
-    -- testMonadStatePassedAround
+    testTrapExits
 
 data TestState
   = TestState Int
@@ -52,7 +51,7 @@ instance showTestState :: Show TestState where
 
 data TestCont
   = TestCont
-  | TestContFrom (GS2.From TestState)
+  | TestContFrom (From TestState)
 
 data TestMsg
   = TestMsg
@@ -61,12 +60,10 @@ data TestMsg
 data TestStop
   = StopReason
 
-data MonitorMsg = MonitorMsg
-
 testStartLinkAnonymous :: Free TestF Unit
 testStartLinkAnonymous =
   test "Can start an anonymous GenServer" do
-    serverPid <- crashIfNotStarted <$> (GS2.startLink3 $ GS2.defaultSpec init)
+    serverPid <- crashIfNotStarted <$> (GS.startLink $ (GS.defaultSpec init))
     let
       instanceRef = ByPid serverPid
     state1 <- getState instanceRef
@@ -80,14 +77,13 @@ testStartLinkAnonymous =
     assertEqual { actual: state4, expected: TestState 2 }
     pure unit
   where
-  init :: GS2.InitFn _ _ (ProcessM Void)
-  init = pure $ GS2.InitOk (TestState 0)
+  init = do
+    pure $ InitOk (TestState 0)
 
 testStartLinkLocal :: Free TestF Unit
 testStartLinkLocal =
   test "Can start a locally named GenServer" do
     testStartGetSet $ Local $ atom "testStartLinkLocal"
-
 
 testStartLinkGlobal :: Free TestF Unit
 testStartLinkGlobal =
@@ -107,8 +103,8 @@ testStopNormalGlobal =
 testHandleInfo :: Free TestF Unit
 testHandleInfo =
   test "HandleInfo handler receives message" do
-    serverPid <- crashIfNotStarted <$> (GS2.startLink3 $ (GS2.defaultSpec init) { handleInfo = Just handleInfo })
-    getProcess serverPid ! TestMsg
+    serverPid <- crashIfNotStarted <$> (GS.startLink $ (GS.defaultSpec init) { handleInfo = Just handleInfo })
+    (unsafeCoerce serverPid :: Process TestMsg) ! TestMsg
     state <- getState (ByPid serverPid)
     assertEqual
       { actual: state
@@ -116,53 +112,16 @@ testHandleInfo =
       }
     pure unit
   where
-  init :: GS2.InitFn _ _ (ProcessM TestMsg)
   init = do
-    pure $ GS2.InitOk $ TestState 0
-
-  handleInfo TestMsg (TestState x) = do
-    pure $ GS2.return $ TestState $ x + 1
-
-  handleInfo _ _s = do
-    unsafeCrashWith "Unexpected message"
-
-testMonadStatePassedAround :: Free TestF Unit
-testMonadStatePassedAround =
-  test "Ensure MonadProcessTrans state is maintained across calls" do
-    serverPid <- crashIfNotStarted <$> (GS2.startLink3 $ (GS2.defaultSpec init) { handleInfo = Just handleInfo })
-    getProcess serverPid ! TestMsg
-    sleep 10
-    state <- getState (ByPid serverPid)
-    assertEqual
-      { actual: state
-      , expected: TestState 21
-      }
-    pure unit
-  where
-  init :: GS2.InitFn TestCont TestState (MonitorT MonitorMsg (ProcessM TestMsg))
-  init = do
-    _ <- spawnMonitor exitsImmediately $ const MonitorMsg
     pure $ InitOk $ TestState 0
 
-  -- handleInfo :: GS2.InfoFn TestCont TestStop _ TestState (MonitorT MonitorMsg (ProcessM TestMsg))
-  -- handleInfo :: ?t
-  handleInfo (Right TestMsg) (TestState x) = do
-    _ <- spawnMonitor exitsImmediately $ const MonitorMsg
-    pure $ GS2.return $ TestState $ x + 1
-
-  handleInfo (Left MonitorMsg) (TestState x) = do
-    pure $ GS2.return $ TestState $ x + 10
-
-  handleInfo _ _s = do
-    unsafeCrashWith "Unexpected message"
-
-exitsImmediately :: ProcessM Void Unit
-exitsImmediately = pure unit
+  handleInfo msg (TestState x) = do
+    pure $ GS.return $ TestState $ x + 1
 
 testCall :: Free TestF Unit
 testCall =
   test "Can create gen_server:call handlers" do
-    serverPid <- crashIfNotStarted <$> (GS2.startLink3 $ GS2.defaultSpec init)
+    serverPid <- crashIfNotStarted <$> (GS.startLink $ GS.defaultSpec init)
     state <- getState (ByPid serverPid)
     assertEqual
       { actual: state
@@ -170,14 +129,13 @@ testCall =
       }
     pure unit
   where
-  init :: GS2.InitFn _ _ (ProcessM Void)
   init = do
     pure $ InitOk $ TestState 7
 
 testCast :: Free TestF Unit
 testCast =
   test "HandleCast changes state" do
-    serverPid <- crashIfNotStarted <$> (GS2.startLink3 $ (GS2.defaultSpec init))
+    serverPid <- crashIfNotStarted <$> (GS.startLink $ (GS.defaultSpec init))
     setStateCast (ByPid serverPid) $ TestState 42
     state <- getState (ByPid serverPid)
     assertEqual
@@ -186,7 +144,6 @@ testCast =
       }
     pure unit
   where
-  init :: GS2.InitFn _ _ (ProcessM Void)
   init = do
     pure $ InitOk $ TestState 0
 
@@ -205,7 +162,6 @@ testValueServer =
     assertEqual { actual: v3, expected: 50 }
     pure unit
 
-{-
 type TrapExitState
   = { testPid :: Pid
     , receivedExit :: Boolean
@@ -216,7 +172,7 @@ testTrapExits :: Free TestF Unit
 testTrapExits =
   suite "Trapped exits" do
     test "Children's exits get translated when requested" do
-      serverPid <- crashIfNotStarted <$> (GS2.startLink $ (GS2.defaultSpec init) { handleInfo = Just handleInfo, trapExits = Just TrappedExit })
+      serverPid <- crashIfNotStarted <$> (GS.startLink $ (GS.defaultSpec init) { handleInfo = Just handleInfo, trapExits = Just TrappedExit })
       state <- getState (ByPid serverPid)
       assertEqual
         { actual: state.receivedExit
@@ -225,7 +181,7 @@ testTrapExits =
       pure unit
     test "Parent exits arrive in the terminate callback" do
       testPid <- Raw.self
-      void $ Raw.spawnLink $ void $ crashIfNotStarted <$> (GS2.startLink $ (GS2.defaultSpec $ init2 testPid) { terminate = Just terminate, trapExits = Just TrappedExit })
+      void $ Raw.spawnLink $ void $ crashIfNotStarted <$> (GS.startLink $ (GS.defaultSpec $ init2 testPid) { terminate = Just terminate, trapExits = Just TrappedExit })
       receivedTerminate <- Raw.receiveWithTimeout (Milliseconds 500.0) false
       assert' "Terminate wasn't called on the genserver" receivedTerminate
   where
@@ -237,7 +193,7 @@ testTrapExits =
     pure $ InitOk $ { testPid: pid, receivedExit: false, receivedTerminate: false }
 
   handleInfo (TrappedExit exit) s = do
-    pure $ GS2.return $ s { receivedExit = true }
+    pure $ GS.return $ s { receivedExit = true }
 
   handleInfo _ _s = do
     unsafeCrashWith "Unexpected message"
@@ -245,29 +201,30 @@ testTrapExits =
   terminate _reason s = do
     liftEffect $ Raw.send s.testPid true
 
--}
+---------------------------------------------------------------------------------
+-- Internal
+---------------------------------------------------------------------------------
 testStartGetSet :: RegistryName TestServerType -> Effect Unit
 testStartGetSet registryName = do
   let
-    --gsSpec :: GS2.ServerSpec TestCont TestStop TestMsg _ TestState (ProcessM TestMsg)
-    gsSpec :: GS2.GSConfig TestCont TestStop _ TestState (ProcessM TestMsg)
+    gsSpec :: ServerSpec TestCont TestStop TestMsg TestState
     gsSpec =
-      (GS2.defaultSpec init)
+      (GS.defaultSpec init)
         { name = Just registryName
         , handleInfo = Just handleInfo
         , handleContinue = Just handleContinue
         }
 
     instanceRef = ByName registryName
-  serverPid <- crashIfNotStarted <$> (GS2.startLink3 gsSpec)
-  maybeServerPid <- GS2.whereIs registryName
+  serverPid <- crashIfNotStarted <$> (GS.startLink gsSpec)
+  maybeServerPid <- GS.whereIs registryName
   assert' "The pid that is looked up should be that returned by start" $ maybeServerPid == Just serverPid
   getState instanceRef >>= expectState 0 -- Starts with initial state 0
   setState instanceRef (TestState 1) >>= expectState 0 -- Set new as 1, old is 0
   getState instanceRef >>= expectState 1 -- Previsouly set state returned
   setStateCast instanceRef (TestState 2) -- Set new state async
   getState instanceRef >>= expectState 2 -- Previsouly set state returned
-  getProcess serverPid ! TestMsg -- Trigger HandleInfo to add 100
+  (unsafeCoerce serverPid :: Process TestMsg) ! TestMsg -- Trigger HandleInfo to add 100
   getState instanceRef >>= expectState 102 -- Previsouly set state returned
   callContinueReply instanceRef >>= expectState 102 -- Trigger a continue - returning old state
   getState instanceRef >>= expectState 202 -- The continue fires updating state befor the next get
@@ -282,49 +239,48 @@ testStartGetSet registryName = do
     pure $ InitOk (TestState 0)
 
   handleInfo TestMsg (TestState x) = do
-    pure $ GS2.return $ TestState $ x + 100
+    pure $ GS.return $ TestState $ x + 100
 
   handleInfo _ _s = do
     unsafeCrashWith "Unexpected message"
 
   handleContinue cont (TestState x) =
     case cont of
-      TestCont -> pure $ GS2.return $ TestState $ x + 100
+      TestCont -> pure $ GS.return $ TestState $ x + 100
       TestContFrom from -> do
-        GS2.replyTo from (TestState x)
-        pure $ GS2.return $ TestState $ x + 100
+        GS.replyTo from (TestState x)
+        pure $ GS.return $ TestState $ x + 100
 
-  callContinueReply handle = GS2.call handle \_from state -> pure $ GS2.replyWithAction state (Continue TestCont) state
+  callContinueReply handle = GS.call handle \_from state -> pure $ GS.replyWithAction state (Continue TestCont) state
 
-  callContinueNoReply handle = GS2.call handle \from state -> pure $ GS2.noReplyWithAction (Continue $ TestContFrom from) state
+  callContinueNoReply handle = GS.call handle \from state -> pure $ GS.noReplyWithAction (Continue $ TestContFrom from) state
 
-  castContinue handle = GS2.cast handle \state -> pure $ GS2.returnWithAction (Continue TestCont) state
+  castContinue handle = GS.cast handle \state -> pure $ GS.returnWithAction (Continue TestCont) state
 
-  stop = GS2.stop
-
+  stop = GS.stop
 
 testStopNormal :: RegistryName TestServerType -> Effect Unit
 testStopNormal registryName = do
   let
-    gsSpec :: GS2.GSConfig TestCont TestStop _ TestState (ProcessM TestMsg)
+    gsSpec :: ServerSpec TestCont TestStop TestMsg TestState
     gsSpec =
-      (GS2.defaultSpec init)
+      (GS.defaultSpec init)
         { name = Just registryName
         , handleInfo = Just handleInfo
         , handleContinue = Just handleContinue
         }
 
     instanceRef = ByName registryName
-  void $ crashIfNotStarted <$> (GS2.startLink3 gsSpec)
+  void $ crashIfNotStarted <$> (GS.startLink gsSpec)
   getState instanceRef >>= expectState 0 -- Starts with initial state 0
   -- Try to start the server again - should fail with already running
-  (GS2.startLink3 gsSpec) <#> isAlreadyRunning >>= expect true
+  (GS.startLink gsSpec) <#> isAlreadyRunning >>= expect true
   triggerStopCast instanceRef
   sleep 1 -- allow the async cast to execute -- TODO maybe use a monitor with timeout
-  void $ crashIfNotStarted <$> (GS2.startLink3 gsSpec)
-  (GS2.startLink3 gsSpec) <#> isAlreadyRunning >>= expect true
+  void $ crashIfNotStarted <$> (GS.startLink gsSpec)
+  (GS.startLink gsSpec) <#> isAlreadyRunning >>= expect true
   triggerStopCallReply instanceRef >>= expectState 42 -- New instance starts with initial state 0
-  void $ crashIfNotStarted <$> (GS2.startLink3 gsSpec)
+  void $ crashIfNotStarted <$> (GS.startLink gsSpec)
   getState instanceRef >>= expectState 0 -- New instance starts with initial state 0
   -- TODO trigger stop from a handle_info
   triggerStopCast instanceRef
@@ -334,27 +290,22 @@ testStopNormal registryName = do
     pure $ InitOk (TestState 0)
 
   handleInfo TestMsg (TestState x) = do
-    pure $ GS2.return $ TestState $ x + 100
+    pure $ GS.return $ TestState $ x + 100
 
   handleInfo _ _s = do
     unsafeCrashWith "Unexpected message"
 
-  handleContinue :: GS2.ContinueFn _ _ _ _
+  handleContinue :: GS.ContinueFn _ _ _ _
   handleContinue cont (TestState x) =
     case cont of
-      TestCont -> pure $ GS2.return $ TestState $ x + 100
+      TestCont -> pure $ GS.return $ TestState $ x + 100
       TestContFrom from -> do
-        GS2.replyTo from (TestState x)
-        pure $ GS2.return $ TestState $ x + 100
+        GS.replyTo from (TestState x)
+        pure $ GS.return $ TestState $ x + 100
 
-  triggerStopCast handle = GS2.cast handle \state -> pure $ GS2.returnWithAction StopNormal state
+  triggerStopCast handle = GS.cast handle \state -> pure $ GS.returnWithAction StopNormal state
 
-  triggerStopCallReply handle = GS2.call handle \_from state -> pure $ GS2.replyWithAction (TestState 42) StopNormal state
-
-
----------------------------------------------------------------------------------
--- Internal
----------------------------------------------------------------------------------
+  triggerStopCallReply handle = GS.call handle \_from state -> pure $ GS.replyWithAction (TestState 42) StopNormal state
 
 isAlreadyRunning :: forall serverType. StartLinkResult serverType -> Boolean
 isAlreadyRunning = case _ of
@@ -367,37 +318,21 @@ expectState expected actual = assertEqual { actual, expected: TestState expected
 expect :: forall a. Eq a => Show a => a -> a -> Effect Unit
 expect expected actual = assertEqual { actual, expected: expected }
 
-getState
-  :: forall cont stop appMsg parsedMsg state m mState
-   . MonadProcessTrans m mState appMsg parsedMsg
-  => Monad m
-  => GS2.ServerRef cont stop state m -> Effect state
+getState :: forall cont stop msg state. ServerRef cont stop msg state -> Effect state
 getState handle =
-  GS2.call handle callFn
-  where
-  callFn :: GS2.CallFn state cont stop state m
-  callFn _from state =
-    pure $ GS2.reply state state
+  GS.call handle \_from state ->
+    let
+      reply = state
+    in
+      pure $ GS.reply reply state
 
-
-setState
-  :: forall cont stop appMsg parsedMsg state m mState
-   . MonadProcessTrans m mState appMsg parsedMsg
-  => Monad m
-  => GS2.ServerRef cont stop state m -> state -> Effect state
+setState :: forall cont stop msg state. ServerRef cont stop msg state -> state -> Effect state
 setState handle newState =
-  GS2.call handle callFn
-  where
-  callFn :: GS2.CallFn state cont stop state m
-  callFn _from oldState =
-    pure $ GS2.reply oldState newState
+  GS.call handle \_from state ->
+    let
+      reply = state
+    in
+      pure $ GS.reply reply newState
 
-setStateCast
-  :: forall cont stop appMsg parsedMsg state m mState
-   . MonadProcessTrans m mState appMsg parsedMsg
-  => Monad m
-  => GS2.ServerRef cont stop state m -> state -> Effect Unit
-setStateCast handle newState = GS2.cast handle castFn
-  where
-    castFn :: GS2.CastFn cont stop state m
-    castFn state = pure $ GS2.return newState
+setStateCast :: forall cont stop msg state. ServerRef cont stop msg state -> state -> Effect Unit
+setStateCast handle newState = GS.cast handle \_state -> pure $ GS.return newState

@@ -43,6 +43,7 @@ module Pinto.GenServer2
   , return
   , returnWithAction
   , startLink3
+  , stop
   , whereIs
   )
   where
@@ -65,7 +66,7 @@ import Erl.Process.Raw as Raw
 import Erl.Process.Raw (class HasPid)
 import Foreign (Foreign)
 import Partial.Unsafe (unsafePartial)
-import Pinto.ModuleNames (pintoGenServer)
+import Pinto.ModuleNames (pintoGenServer2)
 import Pinto.ProcessT.Internal.Types (class MonadProcessTrans, initialise, parseForeign, run)
 import Pinto.ProcessT.MonitorT (MonitorT)
 import Pinto.Types (RegistryInstance, RegistryName, RegistryReference, ShutdownReason, StartLinkResult, registryInstance)
@@ -344,7 +345,7 @@ startLink3
   => GSConfig cont stop parsedMsg state m
   -> Effect (StartLinkResult (ServerPid cont stop state m))
 startLink3 { name: maybeName, init: initFn, handleInfo, handleContinue, terminate: terminate' }
-  = startLinkFFI maybeName (nativeModuleName pintoGenServer) initEffect
+  = startLinkFFI maybeName (nativeModuleName pintoGenServer2) initEffect
   where
   initEffect :: Effect (InitResult cont (OTPState cont stop parsedMsg state m))
   initEffect = do
@@ -394,6 +395,19 @@ cast
   -> CastFn cont stop state m
   -> Effect Unit
 cast r castFn = castFFI (registryInstance r) castFn
+
+foreign import stopFFI
+  :: forall cont stop state m
+   . ServerInstance cont stop state m
+  -> Effect Unit
+
+stop
+  :: forall cont stop appMsg parsedMsg state m mState
+   . MonadProcessTrans m mState appMsg parsedMsg
+  => Monad m
+  => ServerRef cont stop state m
+  -> Effect Unit
+stop r = stopFFI $ registryInstance r
 
 foreign import replyToFFI :: forall reply. From reply -> reply -> Effect Unit
 replyTo
