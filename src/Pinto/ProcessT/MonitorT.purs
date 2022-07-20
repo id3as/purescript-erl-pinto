@@ -6,8 +6,8 @@ module Pinto.ProcessT.MonitorT
   , MonitorRef
   , MonitorT
   , MonitorType
+  , demonitor
   , monitor
-  , monitor'
   , spawnLinkMonitor
   , spawnMonitor
   )
@@ -24,7 +24,8 @@ import Effect (Effect)
 import Effect.Class (class MonadEffect, liftEffect)
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
-import Erl.Process (Process, toPid)
+import Erl.Process (Process)
+import Erl.Process.Raw (class HasPid, getPid)
 import Erl.Process.Raw as Raw
 import Foreign (Foreign)
 import Partial.Unsafe (unsafeCrashWith)
@@ -66,7 +67,14 @@ foreign import data MonitorRef :: Type
 type MonitorMap msg = Map MonitorRef (MonitorMsg -> msg)
 
 foreign import monitorImpl :: Raw.Pid -> Effect MonitorRef
+foreign import demonitorImpl ::  MonitorRef -> Effect Unit
 foreign import parseMonitorMsg :: Foreign -> Maybe MonitorMsg
+
+-- instance
+--   (HasTypedPid m msg) =>
+--   HasTypedPid (MonitorT monitorMsg m) msg where
+--     getTypedPid _ = getTypedPid (Proxy :: Proxy m)
+
 
 instance
   (MonadProcessTrans m innerState appMsg innerOutMsg, Monad m) =>
@@ -94,24 +102,24 @@ instance
 -- Public API
 --------------------------------------------------------------------------------
 monitor ::
+  forall monitorMsg m pid.
+  MonadEffect m =>
+  HasPid pid =>
+  pid -> (MonitorMsg -> monitorMsg) -> MonitorT monitorMsg m MonitorRef
+monitor pid mapper = do
+  MonitorT do
+    ref <- liftEffect $ monitorImpl $ getPid pid
+    modify_ \mm -> Map.insert ref mapper mm
+    pure ref
+
+demonitor ::
   forall monitorMsg m.
   MonadEffect m =>
-  Raw.Pid -> (MonitorMsg -> monitorMsg) -> MonitorT monitorMsg m MonitorRef
-monitor pid mapper = do
-    MonitorT do
-      ref <- liftEffect $ monitorImpl pid
-      modify_ \mm -> Map.insert ref mapper mm
-      pure ref
-
-monitor' ::
-  forall monitorMsg m msg.
-  MonadEffect m =>
-  Process msg -> (MonitorMsg -> monitorMsg) -> MonitorT monitorMsg m MonitorRef
-monitor' pid mapper = do
-    MonitorT do
-      ref <- liftEffect $ monitorImpl (toPid pid)
-      modify_ \mm -> Map.insert ref mapper mm
-      pure ref
+  MonitorRef -> MonitorT monitorMsg m Unit
+demonitor ref = do
+  MonitorT do
+    liftEffect $ demonitorImpl ref
+    modify_ \mm -> Map.delete ref mm
 
 spawnMonitor
   :: forall m mState msg outMsg m2 monitorMsg
@@ -141,5 +149,5 @@ doSpawnMonitor
   => (m -> Effect (Process msg)) -> m -> (MonitorMsg -> monitorMsg) -> MonitorT monitorMsg m2 (Process msg)
 doSpawnMonitor spawner m mapper = do
   pid <- liftEffect $ spawner m
-  void $ monitor' pid mapper
+  void $ monitor pid mapper
   pure pid

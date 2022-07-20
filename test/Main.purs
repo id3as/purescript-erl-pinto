@@ -35,6 +35,8 @@ main =
       $ runTests do
           TGS.genServerSuite
           TGS2.genServer2Suite
+          testMonitorT
+
           --DoorLock.testSuite
           --supervisorSuite
 
@@ -43,7 +45,6 @@ supervisorSuite =
   suite "Pinto supervisor tests" do
     testStartWithNamedChild
     dynamicSupervisor
-    testMonitorT
 
 data TestState
   = TestState Int

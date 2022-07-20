@@ -35,6 +35,7 @@ genServerSuite =
     testStartLinkLocal
     testStartLinkGlobal
     testStopNormalLocal
+    testStopNormalGlobal
     testHandleInfo
     testCall
     testCast
@@ -115,7 +116,7 @@ testHandleInfo =
   init = do
     pure $ InitOk $ TestState 0
 
-  handleInfo msg (TestState x) = do
+  handleInfo _ (TestState x) = do
     pure $ GS.return $ TestState $ x + 1
 
 testCall :: Free TestF Unit

@@ -22,14 +22,12 @@
 
 monitorImpl(Pid) ->
   fun() ->
-    Ref = erlang:monitor(process, Pid),
-    io:format(user, "Called monitor ~p ~p~n", [Ref, Pid]),
-    Ref
+    erlang:monitor(process, Pid)
   end.
 
 demonitorImpl(Ref) ->
   fun() ->
-    erlang:demonitor(Ref)
+    erlang:demonitor(Ref, [flush])
   end.
 
 
