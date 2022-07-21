@@ -97,7 +97,7 @@ testStartWithNamedChild =
   childName = Local $ atom "testNamedChild"
 
   --myChild :: ChildSpec String TestState TestMsg
-  myChild = mkChildSpec "myChildId" (GS2.startLink3 $ (GS2.defaultSpec childInit) { name = Just childName })
+  myChild = mkChildSpec "myChildId" (GS2.startLink $ (GS2.defaultSpec childInit) { name = Just childName })
 
 mkChildSpec :: forall childType. String -> Effect (StartLinkResult childType) -> ChildSpec childType
 mkChildSpec id start =
@@ -134,7 +134,7 @@ dynamicSupervisor =
       , shutdownStrategy: ShutdownTimeout $ Milliseconds 5000.0
       }
 
-  childStart _ = GS2.startLink3 $ (GS2.defaultSpec childInit)
+  childStart _ = GS2.startLink $ (GS2.defaultSpec childInit)
 
   childInit :: InitFn _ _ (ProcessM Void)
   childInit = do

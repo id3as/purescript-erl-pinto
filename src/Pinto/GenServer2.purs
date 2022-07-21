@@ -17,6 +17,7 @@ module Pinto.GenServer2
   , NativeInitResult
   , NativeReturnResult
   , OTPState
+  , OptionToMaybe
   , OptionalConfig
   , ReturnResult(..)
   , ServerInstance
@@ -42,8 +43,10 @@ module Pinto.GenServer2
   , replyWithAction
   , return
   , returnWithAction
-  , startLink3
+  , startLink
+  , startLink'
   , stop
+  , terminate
   , whereIs
   )
   where
@@ -57,19 +60,19 @@ import Debug (spy)
 import Effect (Effect)
 import Effect.Class (class MonadEffect, liftEffect)
 import Effect.Uncurried (EffectFn1, EffectFn2, EffectFn3, mkEffectFn1, mkEffectFn2, mkEffectFn3)
-import Erl.Atom (atom)
+import Erl.Atom (Atom, atom)
 import Erl.Data.List (List, head)
 import Erl.Data.Tuple (tuple2, tuple3, tuple4)
 import Erl.ModuleName (NativeModuleName, nativeModuleName)
 import Erl.Process (class HasProcess, ProcessM)
-import Erl.Process.Raw as Raw
 import Erl.Process.Raw (class HasPid)
+import Erl.Process.Raw as Raw
 import Foreign (Foreign)
 import Partial.Unsafe (unsafePartial)
 import Pinto.ModuleNames (pintoGenServer2)
 import Pinto.ProcessT.Internal.Types (class MonadProcessTrans, initialise, parseForeign, run)
 import Pinto.ProcessT.MonitorT (MonitorT)
-import Pinto.Types (RegistryInstance, RegistryName, RegistryReference, ShutdownReason, StartLinkResult, registryInstance)
+import Pinto.Types (RegistryInstance, RegistryName, RegistryReference, ShutdownReason, StartLinkResult, parseShutdownReasonFFI, registryInstance)
 import Type.Prelude (Proxy(..))
 import Unsafe.Coerce (unsafeCoerce)
 
@@ -110,7 +113,7 @@ instance Show (ServerPid cont stop state m) where
 
 -- | The typed reference of a GenServer, containing all the information required to get hold of
 -- | an instance
---type ServerRef :: forall k1 k2 k3 k4. k1 -> k2 -> Type -> k3 -> k4 -> Type
+type ServerRef :: forall k1 k2 k3 k4. k1 -> k2 -> k3 -> k4 -> Type
 type ServerRef cont stop state m
   = RegistryReference (ServerPid cont stop state m) (ServerType cont stop state m)
 
@@ -218,65 +221,6 @@ instance Functor (InitResult cont) where
   map _ (InitStop term) = InitStop term
   map _ InitIgnore = InitIgnore
 
-
-
-fi :: InitFn TestCont TestState GSMonad
-fi = fooInit
-
-fooInit :: GSMonad (InitResult TestCont TestState)
-fooInit = do
-  --_ <- spawnMonitor exitsImmediately $ const TestMonitorMsg
-  pure $ InitOk $ TestState 0
-
-
-
-
---fooHI :: _ -> _ -> GSMonad _ --(ReturnResult TestCont TestStop TestState)
-fooHI :: forall t822 cont824 stop825 state826. Applicative t822 => TestMsg -> state826 -> t822 (ReturnResult cont824 stop825 state826)
-fooHI msg state = do
-  case msg of
-    --Left TestMonitorMsg ->  pure $ return state
-    TestMsg ->  pure $ return state
-
-
---x :: Record (AllConfig TestCont TestStop (Either TestMonitorMsg TestMsg) TestState (MonitorT TestMonitorMsg (ProcessM TestMsg)))
--- x =
---   startLink
---      { init
---      , handleInfo: Just fooHI
---      }
---   where
---     init :: InitFn TestCont TestState GSMonad
---     init = do
---       --_ <- spawnMonitor exitsImmediately $ const TestMonitorMsg
---       pure $ InitOk $ TestState 0
-
-
--- y =
---   startLink2 (Proxy :: Proxy GSMonad)
---      { init
---      , handleInfo: Just fooHI
---      }
---   where
---     init = do
---       --_ <- spawnMonitor exitsImmediately $ const TestMonitorMsg
---       pure $ InitOk $ TestState 0
-
-
-
---z :: Effect (StartLinkResult (ServerPid ?a ?b ?c ?d ?m))
-z =
-  startLink' { init
-             , handleContinue
-             }
-  where
-    init :: InitFn _ _ GSMonad
-    init = do
-      --_ <- spawnMonitor exitsImmediately $ const TestMonitorMsg
-      pure $ InitOk $ TestState 0
-
-    handleContinue _ state = pure $ return state
-
 --newtype ServerType :: Type -> Type -> Type -> Type -> Type
 newtype ServerType :: forall k1 k2 k3 k4. k1 -> k2 -> k3 -> k4 -> Type
 newtype ServerType cont stop state m
@@ -291,8 +235,6 @@ type OptionalConfig cont stop parsedMsg state m =
   , terminate      :: Maybe (TerminateFn state m)
   )
 
---type X cont stop msg parsedMsg state m = Record (MyOptional cont stop msg parsedMsg state m)
-
 type AllConfig cont stop parsedMsg state m   =
   ( init ::  InitFn cont state m
   | OptionalConfig cont stop parsedMsg state m
@@ -304,7 +246,6 @@ type GSConfig cont stop parsedMsg state m =
 
 data TransState
 data TransMsg
---data TransMonad
 data TransRes
 
 type Context cont stop parsedMsg state m
@@ -329,22 +270,12 @@ foreign import startLinkFFI ::
   Effect (StartLinkResult (ServerPid cont stop state m))
 
 
--- | Given a specification, starts a GenServer
--- |
--- | Standard usage:
--- |
--- | ```purescript
--- | GenServer.startLink $ GenServer.defaultSpec init
--- |   where
--- |   init :: InitFn Unit Unit Unit {}
--- |   init = pure $ InitOk {}
--- | ```
-startLink3
+startLink
   :: forall cont stop appMsg parsedMsg state m mState
    . MonadProcessTrans m mState appMsg parsedMsg
   => GSConfig cont stop parsedMsg state m
   -> Effect (StartLinkResult (ServerPid cont stop state m))
-startLink3 { name: maybeName, init: initFn, handleInfo, handleContinue, terminate: terminate' }
+startLink { name: maybeName, init: initFn, handleInfo, handleContinue, terminate: terminate' }
   = startLinkFFI maybeName (nativeModuleName pintoGenServer2) initEffect
   where
   initEffect :: Effect (InitResult cont (OTPState cont stop parsedMsg state m))
@@ -364,6 +295,18 @@ startLink3 { name: maybeName, init: initFn, handleInfo, handleContinue, terminat
             , mParse : unsafeCoerce (parseForeign :: (Foreign -> m parsedMsg))
             , mRun : unsafeCoerce (run :: forall a. m a -> mState -> Effect (Tuple a mState))
             }
+
+startLink'
+  :: forall providedConfig cont stop appMsg parsedMsg state m mState
+   . MonadProcessTrans m mState appMsg parsedMsg
+  => ConvertOptionsWithDefaults OptionToMaybe { | OptionalConfig cont stop parsedMsg state m} { | providedConfig } { | AllConfig cont stop parsedMsg state m}
+  => { | providedConfig } -> Effect (StartLinkResult (ServerPid cont stop state m))
+startLink' providedConfig =
+  let
+    config = convertOptionsWithDefaults OptionToMaybe defaultOptions providedConfig
+    _ = spy "config" config
+  in
+    startLink config
 
 
 foreign import callFFI
@@ -439,10 +382,6 @@ defaultOptions
     , terminate: Nothing
     }
 
-exitsImmediately :: ProcessM Void Unit
-exitsImmediately = pure unit
-
-
 data OptionToMaybe
   = OptionToMaybe
 
@@ -464,86 +403,6 @@ else instance ConvertOption OptionToMaybe "terminate" a (Maybe a) where
   convertOption _ _ val = Just val
 else instance ConvertOption OptionToMaybe sym a a where
   convertOption _ _ val = val
-
--- a = startLink' { init
---                  --                                         , handleContinue : handleContinue
---   --             , terminate : terminate
---                , handleInfo : handleInfo
---                }
---   where
--- --    init :: InitFn TestCont TestState GSMonad
---     init = do
---       pure $ InitOk $ TestState 0
-
-
---     --handleInfo ::  TestMsg -> TestState -> ProcessM TestMsg (ReturnResult TestCont TestStop TestState)
---     --handleInfo ::  InfoFn TestCont TestStop TestMsg TestState GSMonad
---     handleInfo msg state = do
---       case msg of
---         --Left TestMonitorMsg ->  pure $ return state
---         TestMsg ->  pure $ return state
-
-
---     -- handleContinue :: ContinueFn TestCont TestStop TestState GSMonad
---     handleContinue _ state = pure $ return state
-
--- --    terminate :: TerminateFn TestState GSMonad
---     terminate _ _ = do
---       pure unit
-
-
-
--- b = startLink { init
---               , handleInfo : Nothing
---               , handleContinue : Nothing
---               , terminate: Nothing --Just terminate
---               }
-
---   where
---     init :: InitFn TestCont TestState GSMonad
---     init = do
---       pure $ InitOk $ TestState 0
-
-
---     --handleInfo ::  TestMsg -> TestState -> ProcessM TestMsg (ReturnResult TestCont TestStop TestState)
---     --handleInfo ::  InfoFn TestCont TestStop TestMsg TestState GSMonad
---     handleInfo msg state = do
---       case msg of
---         --Left TestMonitorMsg ->  pure $ return state
---         TestMsg ->  pure $ return state
-
-
---     -- handleContinue :: ContinueFn TestCont TestStop TestState GSMonad
---     handleContinue _ state = pure $ return state
-
---     terminate :: TerminateFn TestState GSMonad
---     terminate _ _ = do
---       pure unit
-
-
-startLink'
-  :: forall providedConfig cont stop appMsg parsedMsg state m mState
-   . MonadProcessTrans m mState appMsg parsedMsg
-  => ConvertOptionsWithDefaults OptionToMaybe { | OptionalConfig cont stop parsedMsg state m} { | providedConfig } { | AllConfig cont stop parsedMsg state m}
-  => { | providedConfig } -> Effect (StartLinkResult (ServerPid cont stop state m))
-startLink' providedConfig =
-  let
-    config = convertOptionsWithDefaults OptionToMaybe defaultOptions providedConfig
-    _ = spy "config" config
-  in
-    startLink3 config
-  
-startLink
-  :: forall cont stop appMsg parsedMsg state m mState
-   . MonadProcessTrans m mState appMsg parsedMsg
-  => { | AllConfig cont stop parsedMsg state m } -> String
-startLink config = "hello"
-
-startLink2
-  :: forall cont stop appMsg parsedMsg state m mState
-   . MonadProcessTrans m mState appMsg parsedMsg
-  => Proxy m -> { | AllConfig cont stop parsedMsg state m } -> String
-startLink2 _ = startLink
 
 
 
@@ -608,15 +467,15 @@ handle_info =
         Nothing ->
           pure $ ReturnResult Nothing otpState
 
--- terminate
---   :: forall cont stop parsedMsg state m.
---      EffectFn2 Foreign (OTPState cont stop parsedMsg state m) Atom
--- terminate =
---   mkEffectFn2 \reason  otpState@(OTPState { innerState, mState, context: { mRun, maybeTerminate } }) -> do
---     case maybeTerminate of
---       Just f -> (runReaderT $ case f (parseShutdownReasonFFI reason) innerState of ResultT inner -> inner) context
---       Nothing -> pure unit
---     pure $ atom "ok"
+terminate
+  :: forall cont stop parsedMsg state m.
+     EffectFn2 Foreign (OTPState cont stop parsedMsg state m) Atom
+terminate =
+  mkEffectFn2 \reason (OTPState { innerState, mState, context: { mRun, terminate } }) -> do
+    case terminate of
+      Just f -> void $ mRun (f (parseShutdownReasonFFI reason) innerState) mState
+      Nothing -> pure unit
+    pure $ atom "ok"
 
 
 

@@ -7,20 +7,22 @@ import Prelude
 import Control.Monad.Free (Free)
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
+import Data.Time.Duration (Milliseconds(..))
 import Effect (Effect)
 import Effect.Class (liftEffect)
 import Erl.Atom (atom)
-import Erl.Process (ProcessM, getProcess, toPid, (!))
+import Erl.Process (Process, ProcessM, getProcess, send, toPid, (!))
 import Erl.Test.EUnit (TestF, suite, test)
 import Foreign (unsafeToForeign)
 import Partial.Unsafe (unsafeCrashWith)
 import Pinto.GenServer2 (Action(..), InitResult(..))
 import Pinto.GenServer2 as GS2
-import Pinto.ProcessT (receive)
+import Pinto.ProcessT (receive, receiveWithTimeout, self, spawnLink)
 import Pinto.ProcessT.Internal.Types (class MonadProcessTrans)
 import Pinto.ProcessT.MonitorT (MonitorT, monitor, spawnMonitor)
-import Pinto.Types (ExitMessage, NotStartedReason(..), RegistryName(..), RegistryReference(..), StartLinkResult, crashIfNotStarted)
-import Test.Assert (assert', assertEqual)
+import Pinto.ProcessT.TrapExitT (TrapExitT)
+import Pinto.Types (ExitMessage(..), NotStartedReason(..), RegistryName(..), RegistryReference(..), StartLinkResult, crashIfNotStarted)
+import Test.Assert (assert', assertEqual, assertEqual')
 import Test.TestHelpers (mpTest)
 import Test.ValueServer as ValueServer
 
@@ -41,7 +43,7 @@ genServer2Suite =
     testCall
     testCast
     testValueServer
-    -- --testTrapExits
+    testTrapExits
     -- testMonadStatePassedAround
 
 data TestState
@@ -58,7 +60,8 @@ data TestCont
 
 data TestMsg
   = TestMsg
-  | TrappedExit ExitMessage
+  | TestMsgNotSent
+
 
 data TestStop
   = StopReason
@@ -68,7 +71,7 @@ data MonitorMsg = MonitorMsg
 testStartLinkAnonymous :: Free TestF Unit
 testStartLinkAnonymous =
   test "Can start an anonymous GenServer" do
-    serverPid <- crashIfNotStarted <$> (GS2.startLink3 $ GS2.defaultSpec init)
+    serverPid <- crashIfNotStarted <$> GS2.startLink' {init}
     let
       instanceRef = ByPid serverPid
     state1 <- getState instanceRef
@@ -109,7 +112,7 @@ testStopNormalGlobal =
 testHandleInfo :: Free TestF Unit
 testHandleInfo =
   test "HandleInfo handler receives message" do
-    serverPid <- crashIfNotStarted <$> (GS2.startLink3 $ (GS2.defaultSpec init) { handleInfo = Just handleInfo })
+    serverPid <- crashIfNotStarted <$> GS2.startLink' { init, handleInfo }
     getProcess serverPid ! TestMsg
     state <- getState (ByPid serverPid)
     assertEqual
@@ -131,7 +134,7 @@ testHandleInfo =
 testMonadStatePassedAround :: Free TestF Unit
 testMonadStatePassedAround =
   test "Ensure MonadProcessTrans state is maintained across calls" do
-    serverPid <- crashIfNotStarted <$> (GS2.startLink3 $ (GS2.defaultSpec init) { handleInfo = Just handleInfo })
+    serverPid <- crashIfNotStarted <$> (GS2.startLink $ (GS2.defaultSpec init) { handleInfo = Just handleInfo })
     getProcess serverPid ! TestMsg
     state <- getState (ByPid serverPid)
     assertEqual
@@ -163,7 +166,7 @@ exitsImmediately = pure unit
 testCall :: Free TestF Unit
 testCall =
   test "Can create gen_server:call handlers" do
-    serverPid <- crashIfNotStarted <$> (GS2.startLink3 $ GS2.defaultSpec init)
+    serverPid <- crashIfNotStarted <$> (GS2.startLink $ GS2.defaultSpec init)
     state <- getState (ByPid serverPid)
     assertEqual
       { actual: state
@@ -178,7 +181,7 @@ testCall =
 testCast :: Free TestF Unit
 testCast =
   test "HandleCast changes state" do
-    serverPid <- crashIfNotStarted <$> (GS2.startLink3 $ (GS2.defaultSpec init))
+    serverPid <- crashIfNotStarted <$> (GS2.startLink $ (GS2.defaultSpec init))
     setStateCast (ByPid serverPid) $ TestState 42
     state <- getState (ByPid serverPid)
     assertEqual
@@ -206,9 +209,8 @@ testValueServer =
     assertEqual { actual: v3, expected: 50 }
     pure unit
 
-{-
 type TrapExitState
-  = { testPid :: Pid
+  = { testPid :: Process Boolean
     , receivedExit :: Boolean
     , receivedTerminate :: Boolean
     }
@@ -216,37 +218,52 @@ type TrapExitState
 testTrapExits :: Free TestF Unit
 testTrapExits =
   suite "Trapped exits" do
-    test "Children's exits get translated when requested" do
-      serverPid <- crashIfNotStarted <$> (GS2.startLink $ (GS2.defaultSpec init) { handleInfo = Just handleInfo, trapExits = Just TrappedExit })
-      state <- getState (ByPid serverPid)
-      assertEqual
-        { actual: state.receivedExit
-        , expected: true
-        }
-      pure unit
-    test "Parent exits arrive in the terminate callback" do
-      testPid <- Raw.self
-      void $ Raw.spawnLink $ void $ crashIfNotStarted <$> (GS2.startLink $ (GS2.defaultSpec $ init2 testPid) { terminate = Just terminate, trapExits = Just TrappedExit })
-      receivedTerminate <- Raw.receiveWithTimeout (Milliseconds 500.0) false
-      assert' "Terminate wasn't called on the genserver" receivedTerminate
+    mpTest "Children's exits get translated when requested" testChildExit
+    mpTest "Parent exits arrive in the terminate callback" testParentExit
+
   where
+  testChildExit :: ProcessM Void Unit
+  testChildExit = liftEffect do
+    serverPid <-   crashIfNotStarted <$> (GS2.startLink' {init, handleInfo })
+    state <- getState (ByPid serverPid)
+    assertEqual
+      { actual: state.receivedExit
+      , expected: true
+      }
+    pure unit
+
+  testParentExit :: ProcessM Boolean Unit
+  testParentExit = do
+    testPid <- self
+
+    let
+      spawnAndExit :: ProcessM Void Unit
+      spawnAndExit = void $ liftEffect $ crashIfNotStarted <$> (GS2.startLink' $ {init: init2 testPid, terminate})
+
+    void $ liftEffect $ spawnLink spawnAndExit
+    actual <- receiveWithTimeout (Milliseconds 50.0) false
+    liftEffect $ assertEqual' "Terminate wasn't called on the genserver" {expected: Right true, actual}
+
+
+  init :: GS2.InitFn _ _ (TrapExitT (ProcessM Void))
   init = do
-    pid <- liftEffect $ Raw.spawnLink $ Raw.receiveWithTimeout (Milliseconds 0.0) unit
+    pid <- liftEffect $ spawnLink exitsImmediately
     pure $ InitOk $ { testPid: pid, receivedExit: false, receivedTerminate: false }
 
+  init2 :: Process Boolean -> GS2.InitFn _ _ (TrapExitT (ProcessM Void))
   init2 pid = do
     pure $ InitOk $ { testPid: pid, receivedExit: false, receivedTerminate: false }
 
-  handleInfo (TrappedExit exit) s = do
+  handleInfo (Left (Exit _ _)) s = do
     pure $ GS2.return $ s { receivedExit = true }
 
   handleInfo _ _s = do
     unsafeCrashWith "Unexpected message"
 
   terminate _reason s = do
-    liftEffect $ Raw.send s.testPid true
+    liftEffect $ send s.testPid true
 
--}
+
 testStartGetSet :: RegistryName TestServerType -> Effect Unit
 testStartGetSet registryName = do
   let
@@ -260,7 +277,7 @@ testStartGetSet registryName = do
         }
 
     instanceRef = ByName registryName
-  serverPid <- crashIfNotStarted <$> (GS2.startLink3 gsSpec)
+  serverPid <- crashIfNotStarted <$> (GS2.startLink gsSpec)
   maybeServerPid <- GS2.whereIs registryName
   assert' "The pid that is looked up should be that returned by start" $ maybeServerPid == Just serverPid
   getState instanceRef >>= expectState 0 -- Starts with initial state 0
@@ -319,20 +336,20 @@ testStopNormal registryName = do
         , handleContinue = Just handleContinue
         }
     instanceRef = ByName registryName
-  serverPid <- liftEffect $ crashIfNotStarted <$> (GS2.startLink3 gsSpec)
+  serverPid <- liftEffect $ crashIfNotStarted <$> (GS2.startLink gsSpec)
   _ <- monitor (toPid $ getProcess serverPid) $ const TestMonitorMsg
   liftEffect do
     getState instanceRef >>= expectState 0 -- Starts with initial state 0
     -- Try to start the server again - should fail with already running
-    (GS2.startLink3 gsSpec) <#> isAlreadyRunning >>= expect true
+    (GS2.startLink gsSpec) <#> isAlreadyRunning >>= expect true
     triggerStopCast instanceRef
   msg <- receive
   liftEffect do
     expect msg (Left TestMonitorMsg)
-    void $ crashIfNotStarted <$> (GS2.startLink3 gsSpec)
-    (GS2.startLink3 gsSpec) <#> isAlreadyRunning >>= expect true
+    void $ crashIfNotStarted <$> (GS2.startLink gsSpec)
+    (GS2.startLink gsSpec) <#> isAlreadyRunning >>= expect true
     triggerStopCallReply instanceRef >>= expectState 42 -- New instance starts with initial state 0
-    void $ crashIfNotStarted <$> (GS2.startLink3 gsSpec)
+    void $ crashIfNotStarted <$> (GS2.startLink gsSpec)
     getState instanceRef >>= expectState 0 -- New instance starts with initial state 0
     -- TODO trigger stop from a handle_info
     triggerStopCast instanceRef

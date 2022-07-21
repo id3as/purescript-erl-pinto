@@ -21,7 +21,7 @@ import Unsafe.Coerce (unsafeCoerce)
 
 class MonadProcessTrans :: forall k. (Type -> Type) -> Type -> k -> Type -> Constraint
 class MonadProcessTrans m mState appMsg outMsg | m -> mState appMsg outMsg where
-  parseForeign :: Foreign -> m outMsg -- appMsg
+  parseForeign :: Foreign -> m outMsg  -- appMsg TODO
   run :: forall a. m a -> mState -> Effect (Tuple a mState)
   initialise :: Proxy m -> Effect mState
 
