@@ -23,6 +23,7 @@ import Test.DoorLock as DoorLock
 import Test.GenServer as TGS
 import Test.GenServer2 as TGS2
 import Test.MonitorT (testMonitorT)
+import Test.TrapExitT (testTrapExitT)
 
 foreign import filterSasl :: Effect Unit
 
@@ -36,6 +37,7 @@ main =
           TGS.genServerSuite
           TGS2.genServer2Suite
           testMonitorT
+          testTrapExitT
 
           --DoorLock.testSuite
           --supervisorSuite

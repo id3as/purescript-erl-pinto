@@ -1,66 +1,49 @@
 module Pinto.ProcessT.TrapExitT
-  -- ( TrapExitMsg(..)
-  -- , TrapExitT
-  -- )
+  ( TrapExitT
+  )
   where
 
-x = 1
-{-
 import Prelude
 
-import Control.Monad.State.Trans (StateT, get, modify_, put, runStateT)
+import Control.Monad.Identity.Trans (IdentityT, runIdentityT)
 import Control.Monad.Trans.Class (class MonadTrans, lift)
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
-import Data.Tuple (Tuple(..))
-import Effect (Effect)
-import Effect.Class (class MonadEffect, liftEffect)
-import Erl.Data.Map (Map)
-import Erl.Data.Map as Map
-import Erl.Process (Process)
-import Erl.Process.Raw (class HasPid, getPid)
-import Erl.Process.Raw as Raw
-import Foreign (Foreign)
-import Partial.Unsafe (unsafeCrashWith)
-import Pinto.GenServer (ExitMessage)
-import Pinto.ProcessT (spawn, spawnLink)
+import Debug (spy)
+import Effect.Class (class MonadEffect)
+import Erl.Process.Raw (setProcessFlagTrapExit)
 import Pinto.ProcessT.Internal.Types (class MonadProcessTrans, initialise, parseForeign, run)
+import Pinto.Types (ExitMessage(..), parseTrappedExitFFI)
 import Type.Prelude (Proxy(..))
 
-newtype TrapExitT exitMsg m a = TrapExitT (StateT (ExitMessage -> exitMsg) m a)
+newtype TrapExitT :: forall k. (k -> Type) -> k -> Type
+newtype TrapExitT m a = TrapExitT (IdentityT m a)
 
-derive newtype instance Functor m => Functor (TrapExitT exitMsg m)
-derive newtype instance Monad m => Apply (TrapExitT exitMsg m)
-derive newtype instance Monad m => Applicative (TrapExitT exitMsg m)
-derive newtype instance Monad m => Bind (TrapExitT exitMsg m)
-derive newtype instance Monad m => Monad (TrapExitT exitMsg m)
+derive newtype instance Functor m => Functor (TrapExitT m)
+derive newtype instance Monad m => Apply (TrapExitT m)
+derive newtype instance Monad m => Applicative (TrapExitT m)
+derive newtype instance Monad m => Bind (TrapExitT m)
+derive newtype instance Monad m => Monad (TrapExitT m)
 
-derive newtype instance MonadEffect m => MonadEffect (TrapExitT exitMsg m)
-derive newtype instance MonadTrans (TrapExitT exitMsg)
-
-foreign import parseTrapExitMsg :: Foreign -> Maybe TrapExitMsg
+derive newtype instance MonadEffect m => MonadEffect (TrapExitT m)
+derive newtype instance MonadTrans TrapExitT
 
 instance
   (MonadProcessTrans m innerState appMsg innerOutMsg, Monad m) =>
-  MonadProcessTrans (TrapExitT exitMsg m) (Tuple (ExitMessage -> exitMsg) innerState) appMsg (Either exitMsg innerOutMsg) where
+  MonadProcessTrans (TrapExitT m) innerState appMsg (Either ExitMessage innerOutMsg) where
   parseForeign fgn = do
-      case parseMonitorMsg fgn of
-        Just down@(Down ref _ _ _) -> TrapExitT $ do
-          mtState <- get
-          case Map.lookup ref mtState of
-            Nothing ->
-              unsafeCrashWith "Down from unknown monitor"
-            Just mapper -> do
-              put $ Map.delete ref mtState
-              pure $ Left $ mapper down
+      case parseTrappedExitFFI fgn Exit of
+        Just exitMsg -> TrapExitT $ do
+          pure $ Left exitMsg
         Nothing -> do
           lift $ Right <$> parseForeign fgn
-  run (TrapExitT mt) (Tuple mtState is) = do
-      (Tuple (Tuple res newMtState) newIs) <- run (runStateT mt mtState) is
-      pure $ Tuple res $ Tuple newMtState newIs
-  initialise _ = do
-    setProcessFlagTrapExit
-    innerState <- initialise (Proxy :: Proxy m)
-    pure $ Tuple Map.empty innerState
+  -- run (TrapExitT mt) (Tuple _ is) = do
+  --     (Tuple (Tuple res newMtState) newIs) <- run is
+  --     pure $ Tuple res $ Tuple newMtState newIs
+  run (TrapExitT mt) is =
+      run (runIdentityT mt) is
 
--}
+  initialise _ = do
+    void $ setProcessFlagTrapExit true
+    innerState <- initialise (Proxy :: Proxy m)
+    pure $ spy "inner"  innerState

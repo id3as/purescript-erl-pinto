@@ -6,3 +6,4 @@ output/
 tags
 _build
 generated-docs
+erl_crash.dump

@@ -16,11 +16,12 @@ import Foreign (unsafeToForeign)
 import Partial.Unsafe (unsafeCrashWith)
 import Pinto.GenServer2 (Action(..), InitResult(..))
 import Pinto.GenServer2 as GS2
-import Pinto.ProcessT (evalProcess, receive)
+import Pinto.ProcessT (receive)
 import Pinto.ProcessT.Internal.Types (class MonadProcessTrans)
 import Pinto.ProcessT.MonitorT (MonitorT, monitor, spawnMonitor)
 import Pinto.Types (ExitMessage, NotStartedReason(..), RegistryName(..), RegistryReference(..), StartLinkResult, crashIfNotStarted)
 import Test.Assert (assert', assertEqual)
+import Test.TestHelpers (mpTest)
 import Test.ValueServer as ValueServer
 
 foreign import sleep :: Int -> Effect Unit
@@ -97,12 +98,12 @@ testStartLinkGlobal =
 
 testStopNormalLocal :: Free TestF Unit
 testStopNormalLocal =
-  test "Can start and stop a locally named GenServer" do
+  mpTest "Can start and stop a locally named GenServer" $
     testStopNormal $ Local $ atom "testStopNormalLocal"
 
 testStopNormalGlobal :: Free TestF Unit
 testStopNormalGlobal =
-  test "Can start and stop a globally named GenServer" do
+  mpTest "Can start and stop a globally named GenServer" $
     testStopNormal $ Global (unsafeToForeign $ atom "testStopNormalGlobal")
 
 testHandleInfo :: Free TestF Unit
@@ -307,40 +308,37 @@ derive instance Eq TestMonitorMsg
 instance Show TestMonitorMsg where
   show TestMonitorMsg = "TestMonitorMsg"
 
-testStopNormal :: RegistryName TestServerType -> Effect Unit
-testStopNormal registryName = evalProcess theTest
+testStopNormal :: RegistryName TestServerType -> MonitorT TestMonitorMsg (ProcessM Void) Unit
+testStopNormal registryName = do
+  let
+    gsSpec :: GS2.GSConfig TestCont TestStop _ TestState (ProcessM TestMsg)
+    gsSpec =
+      (GS2.defaultSpec init)
+        { name = Just registryName
+        , handleInfo = Just handleInfo
+        , handleContinue = Just handleContinue
+        }
+    instanceRef = ByName registryName
+  serverPid <- liftEffect $ crashIfNotStarted <$> (GS2.startLink3 gsSpec)
+  _ <- monitor (toPid $ getProcess serverPid) $ const TestMonitorMsg
+  liftEffect do
+    getState instanceRef >>= expectState 0 -- Starts with initial state 0
+    -- Try to start the server again - should fail with already running
+    (GS2.startLink3 gsSpec) <#> isAlreadyRunning >>= expect true
+    triggerStopCast instanceRef
+  msg <- receive
+  liftEffect do
+    expect msg (Left TestMonitorMsg)
+    void $ crashIfNotStarted <$> (GS2.startLink3 gsSpec)
+    (GS2.startLink3 gsSpec) <#> isAlreadyRunning >>= expect true
+    triggerStopCallReply instanceRef >>= expectState 42 -- New instance starts with initial state 0
+    void $ crashIfNotStarted <$> (GS2.startLink3 gsSpec)
+    getState instanceRef >>= expectState 0 -- New instance starts with initial state 0
+    -- TODO trigger stop from a handle_info
+    triggerStopCast instanceRef
+  pure unit
+
   where
-  theTest :: MonitorT TestMonitorMsg (ProcessM Void) Unit
-  theTest = do
-    let
-      gsSpec :: GS2.GSConfig TestCont TestStop _ TestState (ProcessM TestMsg)
-      gsSpec =
-        (GS2.defaultSpec init)
-          { name = Just registryName
-          , handleInfo = Just handleInfo
-          , handleContinue = Just handleContinue
-          }
-      instanceRef = ByName registryName
-    serverPid <- liftEffect $ crashIfNotStarted <$> (GS2.startLink3 gsSpec)
-    _ <- monitor (toPid $ getProcess serverPid) $ const TestMonitorMsg
-    liftEffect do
-      getState instanceRef >>= expectState 0 -- Starts with initial state 0
-      -- Try to start the server again - should fail with already running
-      (GS2.startLink3 gsSpec) <#> isAlreadyRunning >>= expect true
-      triggerStopCast instanceRef
-    msg <- receive
-    liftEffect do
-      expect msg (Left TestMonitorMsg)
-      void $ crashIfNotStarted <$> (GS2.startLink3 gsSpec)
-      (GS2.startLink3 gsSpec) <#> isAlreadyRunning >>= expect true
-      triggerStopCallReply instanceRef >>= expectState 42 -- New instance starts with initial state 0
-      void $ crashIfNotStarted <$> (GS2.startLink3 gsSpec)
-      getState instanceRef >>= expectState 0 -- New instance starts with initial state 0
-      -- TODO trigger stop from a handle_info
-      triggerStopCast instanceRef
-    pure unit
-
-
   init = do
     pure $ InitOk (TestState 0)
 

@@ -1,11 +1,11 @@
 module Pinto.ProcessT
-  ( evalProcess
-  , execProcess
-  , receive
+  ( receive
   , receiveWithTimeout
-  , runProcess
   , spawn
   , spawnLink
+  , unsafeEvalProcess
+  , unsafeExecProcess
+  , unsafeRunProcess
   )
   where
 
@@ -49,35 +49,27 @@ receiveWithTimeout ms timeoutMsg = do
       parsed <- parseForeign $ unsafeToForeign rawMsg
       pure $ Right parsed
 
--- run / eval / exec to mirror the functions from StateT etc
--- names?
---   evalMonadProcessTransformer
---   evalMonadProcess
---   evalProcess
---   evalMP / MPT / ...
---   eval
-
-evalProcess
+unsafeEvalProcess
   :: forall m mState appMsg parsedMsg a
    . MonadProcessTrans m mState appMsg parsedMsg
   => MonadEffect m
   => m a -> Effect a
-evalProcess mpt =
-  fst <$> runProcess mpt
+unsafeEvalProcess mpt =
+  fst <$> unsafeRunProcess mpt
 
-execProcess
+unsafeExecProcess
   :: forall m mState appMsg parsedMsg
    . MonadProcessTrans m mState appMsg parsedMsg
   => MonadEffect m
   => m appMsg -> Effect mState
-execProcess mpt =
-  snd <$> runProcess mpt
+unsafeExecProcess mpt =
+  snd <$> unsafeRunProcess mpt
 
-runProcess
+unsafeRunProcess
   :: forall m mState appMsg parsedMsg a
    . MonadProcessTrans m mState appMsg parsedMsg
   => m a -> Effect (Tuple a mState)
-runProcess mpt =
+unsafeRunProcess mpt =
   run mpt =<< initialise (Proxy :: Proxy m)
 
 spawn
@@ -85,11 +77,11 @@ spawn
    . MonadProcessTrans m mState appMsg parsedMsg
   => MonadEffect m
   => m Unit -> Effect (Process appMsg)
-spawn = unsafeCoerce <<< Raw.spawn <<< evalProcess
+spawn = unsafeCoerce <<< Raw.spawn <<< unsafeEvalProcess
 
 spawnLink
   :: forall m mState appMsg parsedMsg
    . MonadProcessTrans m mState appMsg parsedMsg
   => MonadEffect m
   => m Unit -> Effect (Process appMsg)
-spawnLink = unsafeCoerce <<< Raw.spawnLink <<< evalProcess
+spawnLink = unsafeCoerce <<< Raw.spawnLink <<< unsafeEvalProcess
