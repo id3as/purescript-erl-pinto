@@ -11,8 +11,7 @@ import Effect.Class (liftEffect)
 import Erl.Process (ProcessM, toPid, (!))
 import Erl.Test.EUnit (TestF, suite)
 import Partial.Unsafe (unsafeCrashWith)
-import Pinto.ProcessT (receive, receiveWithTimeout, spawn, spawnLink)
-import Pinto.ProcessT.Internal.Types (mySelf)
+import Pinto.ProcessT (receive, receiveWithTimeout, spawn, spawnLink, self)
 import Pinto.ProcessT.MonitorT (MonitorT, demonitor, monitor, spawnLinkMonitor, spawnMonitor)
 import Pinto.ProcessT.TrapExitT (TrapExitT)
 import Pinto.Types (ExitMessage(..))
@@ -101,8 +100,8 @@ testDemonitor =
     pid <- liftEffect $ spawn immediatelyExitNormal
     ref <- monitor pid $ const TestMonitorMsg
     demonitor ref
-    meMySelf <- mySelf
-    --liftEffect $ meMySelf ! TestAppMsg
+    me <- self
+    --liftEffect $ me ! TestAppMsg
 
     msg <- receiveWithTimeout (Milliseconds 2.0) TestTimeoutMsg
     case spy "msg" msg of

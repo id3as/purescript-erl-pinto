@@ -1,11 +1,10 @@
 module Pinto.ProcessT.Internal.Types
   ( class MonadProcessTrans
-  , mySelf
+  , self
   , run
   , parseForeign
   , initialise
-  , class MyHasSelf
-
+  , class HasSelf
   )
   where
 
@@ -14,7 +13,8 @@ import Prelude
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Effect.Class (class MonadEffect, liftEffect)
-import Erl.Process (Process, ProcessM, self, unsafeRunProcessM)
+import Erl.Process (Process, ProcessM, unsafeRunProcessM)
+import Erl.Process as Process
 import Foreign (Foreign)
 import Type.Prelude (Proxy)
 import Unsafe.Coerce (unsafeCoerce)
@@ -32,16 +32,16 @@ instance MonadProcessTrans (ProcessM appMsg) Unit appMsg appMsg where
     pure $ Tuple res unit
   initialise _ =  pure unit
 
-class MyHasSelf  (m :: Type -> Type) msg | m -> msg where
-  mySelf :: m (Process msg)
+class HasSelf  (m :: Type -> Type) msg | m -> msg where
+  self :: m (Process msg)
 
-instance MyHasSelf (ProcessM a) a where
-  mySelf :: ProcessM a (Process a)
-  mySelf = self
+instance HasSelf (ProcessM a) a where
+  self :: ProcessM a (Process a)
+  self = Process.self
 
 else instance
   ( MonadProcessTrans m mState appMsg outMsg
   , MonadEffect m
   ) =>
-  MyHasSelf m appMsg where
-    mySelf = liftEffect $ unsafeRunProcessM self
+  HasSelf m appMsg where
+    self = liftEffect $ unsafeRunProcessM Process.self
