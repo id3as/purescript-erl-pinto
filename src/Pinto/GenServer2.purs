@@ -389,7 +389,11 @@ data OptionToMaybe
 --   convertOption _ _ val = val
 -- else instance ConvertOption OptionToMaybe "handleInfo" (InfoFn cont stop parsedMsg state m) (Maybe (InfoFn cont stop parsedMsg state m)) where
 --   convertOption _ _ val = Just val
-instance ConvertOption OptionToMaybe "handleInfo" (Maybe a) (Maybe a) where
+instance ConvertOption OptionToMaybe "name" (Maybe a) (Maybe a) where
+  convertOption _ _ val = val
+else instance ConvertOption OptionToMaybe "name" a (Maybe a) where
+  convertOption _ _ val = Just val
+else instance ConvertOption OptionToMaybe "handleInfo" (Maybe a) (Maybe a) where
   convertOption _ _ val = val
 else instance ConvertOption OptionToMaybe "handleInfo" a (Maybe a) where
   convertOption _ _ val = Just val

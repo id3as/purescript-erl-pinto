@@ -20,8 +20,8 @@ import Effect.Class (class MonadEffect, liftEffect)
 import Erl.Process (Process)
 import Erl.Process.Raw as Raw
 import Foreign (unsafeToForeign)
-import Pinto.ProcessT.Internal.Types (class MonadProcessTrans, initialise, parseForeign, run)
 import Pinto.ProcessT.Internal.Types (class HasSelf, self) as TypesExport
+import Pinto.ProcessT.Internal.Types (class MonadProcessTrans, initialise, parseForeign, run)
 import Type.Prelude (Proxy(..))
 import Unsafe.Coerce (unsafeCoerce)
 
@@ -87,3 +87,5 @@ spawnLink
   => MonadEffect m
   => m Unit -> Effect (Process appMsg)
 spawnLink = unsafeCoerce <<< Raw.spawnLink <<< unsafeEvalProcess
+
+
