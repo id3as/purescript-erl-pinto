@@ -229,7 +229,7 @@ newtype ServerType cont stop state m
 
 
 type OptionalConfig cont stop parsedMsg state m =
-  ( name           :: Maybe (RegistryName (ServerType cont stop state m))
+  ( serverName     :: Maybe (RegistryName (ServerType cont stop state m))
   , handleInfo     :: Maybe (InfoFn cont stop parsedMsg state m)
   , handleContinue :: Maybe (ContinueFn cont stop state m)
   , terminate      :: Maybe (TerminateFn state m)
@@ -275,7 +275,7 @@ startLink
    . MonadProcessTrans m mState appMsg parsedMsg
   => GSConfig cont stop parsedMsg state m
   -> Effect (StartLinkResult (ServerPid cont stop state m))
-startLink { name: maybeName, init: initFn, handleInfo, handleContinue, terminate: terminate' }
+startLink { serverName: maybeName, init: initFn, handleInfo, handleContinue, terminate: terminate' }
   = startLinkFFI maybeName (nativeModuleName pintoGenServer2) initEffect
   where
   initEffect :: Effect (InitResult cont (OTPState cont stop parsedMsg state m))
@@ -366,7 +366,7 @@ defaultSpec
   => InitFn cont state m
   -> GSConfig cont stop parsedMsg state m
 defaultSpec initFn =
-  { name: Nothing
+  { serverName: Nothing
   , init: initFn
   , handleInfo: Nothing
   , handleContinue: Nothing
@@ -376,7 +376,7 @@ defaultSpec initFn =
 
 defaultOptions :: forall cont stop parsedMsg state m. { | OptionalConfig cont stop parsedMsg state m }
 defaultOptions
-  = { name : Nothing
+  = { serverName : Nothing
     , handleInfo : Nothing
     , handleContinue : Nothing
     , terminate: Nothing
@@ -389,9 +389,9 @@ data OptionToMaybe
 --   convertOption _ _ val = val
 -- else instance ConvertOption OptionToMaybe "handleInfo" (InfoFn cont stop parsedMsg state m) (Maybe (InfoFn cont stop parsedMsg state m)) where
 --   convertOption _ _ val = Just val
-instance ConvertOption OptionToMaybe "name" (Maybe a) (Maybe a) where
+instance ConvertOption OptionToMaybe "serverName" (Maybe a) (Maybe a) where
   convertOption _ _ val = val
-else instance ConvertOption OptionToMaybe "name" a (Maybe a) where
+else instance ConvertOption OptionToMaybe "serverName" a (Maybe a) where
   convertOption _ _ val = Just val
 else instance ConvertOption OptionToMaybe "handleInfo" (Maybe a) (Maybe a) where
   convertOption _ _ val = val

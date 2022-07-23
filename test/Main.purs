@@ -97,7 +97,7 @@ testStartWithNamedChild =
   childName = Local $ atom "testNamedChild"
 
   --myChild :: ChildSpec String TestState TestMsg
-  myChild = mkChildSpec "myChildId" (GS2.startLink $ (GS2.defaultSpec childInit) { name = Just childName })
+  myChild = mkChildSpec "myChildId" (GS2.startLink $ (GS2.defaultSpec childInit) { serverName = Just childName })
 
 mkChildSpec :: forall childType. String -> Effect (StartLinkResult childType) -> ChildSpec childType
 mkChildSpec id start =

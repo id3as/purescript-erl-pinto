@@ -271,7 +271,7 @@ testStartGetSet registryName = do
     gsSpec :: GS2.GSConfig TestCont TestStop _ TestState (ProcessM TestMsg)
     gsSpec =
       (GS2.defaultSpec init)
-        { name = Just registryName
+        { serverName = Just registryName
         , handleInfo = Just handleInfo
         , handleContinue = Just handleContinue
         }
@@ -331,7 +331,7 @@ testStopNormal registryName = do
     gsSpec :: GS2.GSConfig TestCont TestStop _ TestState (ProcessM TestMsg)
     gsSpec =
       (GS2.defaultSpec init)
-        { name = Just registryName
+        { serverName = Just registryName
         , handleInfo = Just handleInfo
         , handleContinue = Just handleContinue
         }
