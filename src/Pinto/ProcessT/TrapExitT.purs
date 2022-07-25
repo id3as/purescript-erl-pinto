@@ -11,6 +11,7 @@ import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Debug (spy)
 import Effect.Class (class MonadEffect)
+import Erl.Process (class HasSelf, self)
 import Erl.Process.Raw (setProcessFlagTrapExit)
 import Pinto.ProcessT.Internal.Types (class MonadProcessTrans, initialise, parseForeign, run)
 import Pinto.Types (ExitMessage(..), parseTrappedExitFFI)
@@ -27,6 +28,9 @@ derive newtype instance Monad m => Monad (TrapExitT m)
 
 derive newtype instance MonadEffect m => MonadEffect (TrapExitT m)
 derive newtype instance MonadTrans TrapExitT
+
+instance (HasSelf m msg, Monad m) => HasSelf (TrapExitT m) msg where
+  self = lift self
 
 instance
   (MonadProcessTrans m innerState appMsg innerOutMsg, Monad m) =>

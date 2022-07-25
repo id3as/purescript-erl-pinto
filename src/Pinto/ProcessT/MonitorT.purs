@@ -24,7 +24,7 @@ import Effect (Effect)
 import Effect.Class (class MonadEffect, liftEffect)
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
-import Erl.Process (Process)
+import Erl.Process (class HasSelf, Process, self)
 import Erl.Process.Raw (class HasPid, getPid)
 import Erl.Process.Raw as Raw
 import Foreign (Foreign)
@@ -43,6 +43,9 @@ derive newtype instance Monad m => Monad (MonitorT monitorMsg m)
 
 derive newtype instance MonadEffect m => MonadEffect (MonitorT monitorMsg m)
 derive newtype instance MonadTrans (MonitorT monitorMsg)
+
+instance (HasSelf m msg, Monad m) => HasSelf (MonitorT monitorMsg m) msg where
+  self = lift self
 
 type MonitorObject
   = Foreign
