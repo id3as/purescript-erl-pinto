@@ -56,7 +56,6 @@ import Prelude
 import ConvertableOptions (class ConvertOption, class ConvertOptionsWithDefaults, convertOptionsWithDefaults)
 import Data.Maybe (Maybe(..), fromJust)
 import Data.Tuple (Tuple(..))
-import Debug (spy)
 import Effect (Effect)
 import Effect.Class (class MonadEffect, liftEffect)
 import Effect.Uncurried (EffectFn1, EffectFn2, EffectFn3, mkEffectFn1, mkEffectFn2, mkEffectFn3)
@@ -132,8 +131,7 @@ foreign import whereIs :: forall cont stop state m. RegistryName (ServerType con
 -- | See {shutdown, reason}, {timeout...} etc in the gen_server documentation
 -- | This should be constructed and returned with the xxWithAction methods inside GenServer callbacks
 data Action cont stop
-  = Timeout Int
-  | Hibernate
+  = Hibernate
   | Continue cont
   | StopNormal
   | StopOther stop
@@ -207,7 +205,6 @@ type GSMonad = MonitorT TestMonitorMsg (ProcessM TestMsg)
 -- | These roughly map onto the tuples in the OTP documentation
 data InitResult cont state
   = InitOk state
-  | InitOkTimeout state Int
   | InitOkContinue state cont
   | InitOkHibernate state
   | InitStop Foreign
@@ -215,7 +212,6 @@ data InitResult cont state
 
 instance Functor (InitResult cont) where
   map f (InitOk state) = InitOk $ f state
-  map f (InitOkTimeout state timeout) = InitOkTimeout (f state) timeout
   map f (InitOkContinue state cont) = InitOkContinue (f state) cont
   map f (InitOkHibernate state) = InitOkHibernate $ f state
   map _ (InitStop term) = InitStop term
@@ -302,11 +298,7 @@ startLink'
   => ConvertOptionsWithDefaults OptionToMaybe { | OptionalConfig cont stop parsedMsg state m} { | providedConfig } { | AllConfig cont stop parsedMsg state m}
   => { | providedConfig } -> Effect (StartLinkResult (ServerPid cont stop state m))
 startLink' providedConfig =
-  let
-    config = convertOptionsWithDefaults OptionToMaybe defaultOptions providedConfig
-    _ = spy "config" config
-  in
-    startLink config
+    startLink $ convertOptionsWithDefaults OptionToMaybe defaultOptions providedConfig
 
 
 foreign import callFFI
@@ -385,10 +377,6 @@ defaultOptions
 data OptionToMaybe
   = OptionToMaybe
 
--- instance ConvertOption OptionToMaybe "handleInfo" (Maybe (InfoFn cont stop parsedMsg state m)) (Maybe (InfoFn cont stop parsedMsg state m)) where
---   convertOption _ _ val = val
--- else instance ConvertOption OptionToMaybe "handleInfo" (InfoFn cont stop parsedMsg state m) (Maybe (InfoFn cont stop parsedMsg state m)) where
---   convertOption _ _ val = Just val
 instance ConvertOption OptionToMaybe "serverName" (Maybe a) (Maybe a) where
   convertOption _ _ val = val
 else instance ConvertOption OptionToMaybe "serverName" a (Maybe a) where
@@ -407,10 +395,6 @@ else instance ConvertOption OptionToMaybe "terminate" a (Maybe a) where
   convertOption _ _ val = Just val
 else instance ConvertOption OptionToMaybe sym a a where
   convertOption _ _ val = val
-
-
-
-
 
 --------------------------------------------------------------------------------
 -- Underlying gen_server callback that defer to the provided monadic handlers
@@ -497,14 +481,12 @@ exportInitResult = case _ of
   InitStop err -> unsafeCoerce $ tuple2 (atom "stop") err
   InitIgnore -> unsafeCoerce $ atom "ignore"
   InitOk state -> unsafeCoerce $ tuple2 (atom "ok") state
-  InitOkTimeout state timeout -> unsafeCoerce $ tuple3 (atom "timeout") state timeout
   InitOkContinue state cont -> unsafeCoerce $ tuple3 (atom "ok") state $ tuple2 (atom "continue") cont
   InitOkHibernate state -> unsafeCoerce $ tuple3 (atom "ok") state (atom "hibernate")
 
 exportReturnResult :: forall cont stop outerState. ReturnResult cont stop outerState -> NativeReturnResult cont stop outerState
 exportReturnResult = case _ of
   ReturnResult Nothing newState -> unsafeCoerce $ tuple2 (atom "noreply") newState
-  ReturnResult (Just (Timeout timeout)) newState -> unsafeCoerce $ tuple3 (atom "noreply") newState timeout
   ReturnResult (Just Hibernate) newState -> unsafeCoerce $ tuple3 (atom "noreply") newState $ atom "hibernate"
   ReturnResult (Just (Continue cont)) newState -> unsafeCoerce $ tuple3 (atom "noreply") newState $ tuple2 (atom "continue") cont
   ReturnResult (Just StopNormal) newState -> unsafeCoerce $ tuple3 (atom "stop") (atom "normal") newState
@@ -514,13 +496,11 @@ exportReturnResult = case _ of
 exportCallResult :: forall reply cont stop outerState. CallResult reply cont stop outerState -> NativeCallResult reply cont stop outerState
 exportCallResult = case _ of
   CallResult (Just r) Nothing newState -> unsafeCoerce $ tuple3 (atom "reply") r newState
-  CallResult (Just r) (Just (Timeout timeout)) newState -> unsafeCoerce $ tuple4 (atom "reply") r newState timeout
   CallResult (Just r) (Just Hibernate) newState -> unsafeCoerce $ tuple4 (atom "reply") r newState (atom "hibernate")
   CallResult (Just r) (Just (Continue cont)) newState -> unsafeCoerce $ tuple4 (atom "reply") r newState $ tuple2 (atom "continue") cont
   CallResult (Just r) (Just StopNormal) newState -> unsafeCoerce $ tuple4 (atom "stop") (atom "normal") r newState
   CallResult (Just r) (Just (StopOther reason)) newState -> unsafeCoerce $ tuple4 (atom "stop") reason r newState
   CallResult Nothing Nothing newState -> unsafeCoerce $ tuple2 (atom "noreply") newState
-  CallResult Nothing (Just (Timeout timeout)) newState -> unsafeCoerce $ tuple3 (atom "noreply") newState timeout
   CallResult Nothing (Just Hibernate) newState -> unsafeCoerce $ tuple3 (atom "noreply") newState (atom "hibernate")
   CallResult Nothing (Just (Continue cont)) newState -> unsafeCoerce $ tuple3 (atom "noreply") newState $ tuple2 (atom "continue") cont
   CallResult Nothing (Just StopNormal) newState -> unsafeCoerce $ tuple3 (atom "stop") (atom "normal") newState

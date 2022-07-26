@@ -1,5 +1,6 @@
 module Pinto.ProcessT.TrapExitT
   ( TrapExitT
+  , module TypeExports
   )
   where
 
@@ -15,6 +16,7 @@ import Erl.Process (class HasSelf, self)
 import Erl.Process.Raw (setProcessFlagTrapExit)
 import Pinto.ProcessT.Internal.Types (class MonadProcessTrans, initialise, parseForeign, run)
 import Pinto.Types (ExitMessage(..), parseTrappedExitFFI)
+import Pinto.Types (ExitMessage(..)) as TypeExports
 import Type.Prelude (Proxy(..))
 
 newtype TrapExitT :: forall k. (k -> Type) -> k -> Type
