@@ -1,7 +1,6 @@
 -module(pinto_processT_monitorT@foreign).
 
 -export([ parseMonitorMsg/1
-        , parseExitMsg/1
         , monitorImpl/1
         , demonitorImpl/1
         ]).
@@ -12,13 +11,6 @@
 %%------------------------------------------------------------------------------
 -define(just(X), {just, X}).
 -define(nothing, {nothing}).
--define(exitMsg(Pid, Reason), {exitMsg, Pid, Reason}).
--define(kill, {kill}).
--define(normal, {normal}).
--define(other(X), {other, X}).
-
-
-
 
 monitorImpl(Pid) ->
   fun() ->
@@ -29,19 +21,6 @@ demonitorImpl(Ref) ->
   fun() ->
     erlang:demonitor(Ref, [flush])
   end.
-
-
-parseExitMsg(Msg) ->
-    case Msg of
-        {'EXIT', Pid, Reason} ->
-            ?just(?exitMsg(Pid, exit_reason_to_ps(Reason)));
-        _ ->
-            ?nothing
-    end.
-
-exit_reason_to_ps(killed) -> ?kill;
-exit_reason_to_ps(normal) -> ?normal;
-exit_reason_to_ps(Other) -> ?other(Other).
 
 
 -define(down(Ref, Type, Object, Info), {down, Ref, Type, Object, Info}).

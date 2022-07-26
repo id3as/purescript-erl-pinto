@@ -2,8 +2,7 @@
 
 -include_lib("kernel/include/logger.hrl").
 
--export([ selfFFI/0
-        , startLinkFFI/3
+-export([ startLinkFFI/3
         , callFFI/2
         , castFFI/2
         , replyToFFI/2
@@ -48,11 +47,6 @@ replyToFFI(From, Reply) ->
   fun() ->
       gen_server:reply(From, Reply),
       unit
-  end.
-
-selfFFI() ->
-  fun() ->
-      self()
   end.
 
 stopFFI(ServerRef) ->
