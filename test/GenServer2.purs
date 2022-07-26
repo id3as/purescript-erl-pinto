@@ -12,14 +12,15 @@ import Effect (Effect)
 import Effect.Class (liftEffect)
 import Erl.Atom (atom)
 import Erl.Process (Process, ProcessM, getProcess, self, send, toPid, (!))
+import Erl.Process as Process
 import Erl.Test.EUnit (TestF, suite, test)
 import Foreign (unsafeToForeign)
 import Partial.Unsafe (unsafeCrashWith)
-import Pinto.GenServer2 (Action(..), InitResult(..))
+import Pinto.GenServer2 (Action(..), InitResult(..), ContinueFn)
 import Pinto.GenServer2 as GS2
 import Pinto.ProcessT (receive, receiveWithTimeout, spawnLink)
 import Pinto.ProcessT.Internal.Types (class MonadProcessTrans)
-import Pinto.ProcessT.MonitorT (MonitorT, monitor, spawnMonitor)
+import Pinto.ProcessT.MonitorT (MonitorT, monitor, spawnLinkMonitor)
 import Pinto.ProcessT.TrapExitT (TrapExitT)
 import Pinto.Types (ExitMessage(..), NotStartedReason(..), RegistryName(..), RegistryReference(..), StartLinkResult, crashIfNotStarted)
 import Test.Assert (assert', assertEqual, assertEqual')
@@ -44,7 +45,7 @@ genServer2Suite =
     testCast
     testValueServer
     testTrapExits
-    -- testMonadStatePassedAround
+    testMonadStatePassedAround
 
 data TestState
   = TestState Int
@@ -53,6 +54,12 @@ derive instance eqTestState :: Eq TestState
 
 instance showTestState :: Show TestState where
   show (TestState x) = "TestState: " <> show x
+
+
+type TestState2 =
+  { total :: Int
+  , parentPid :: Process Int
+  }
 
 data TestCont
   = TestCont
@@ -65,8 +72,6 @@ data TestMsg
 
 data TestStop
   = StopReason
-
-data MonitorMsg = MonitorMsg
 
 testStartLinkAnonymous :: Free TestF Unit
 testStartLinkAnonymous =
@@ -131,34 +136,86 @@ testHandleInfo =
   handleInfo _ _s = do
     unsafeCrashWith "Unexpected message"
 
+
+type TestMonad = MonitorT TestMonitorMsg (TrapExitT (ProcessM TestMsg))
+
 testMonadStatePassedAround :: Free TestF Unit
 testMonadStatePassedAround =
-  test "Ensure MonadProcessTrans state is maintained across calls" do
-    serverPid <- crashIfNotStarted <$> (GS2.startLink $ (GS2.defaultSpec init) { handleInfo = Just handleInfo })
-    getProcess serverPid ! TestMsg
-    state <- getState (ByPid serverPid)
-    assertEqual
-      { actual: state
-      , expected: TestState 21
-      }
-    pure unit
+  mpTest "Ensure MonadProcessTrans state is maintained across calls" theTest
   where
-  init :: GS2.InitFn TestCont TestState (MonitorT MonitorMsg (ProcessM TestMsg))
-  init = do
-    _ <- spawnMonitor exitsImmediately $ const MonitorMsg
-    pure $ InitOk $ TestState 0
+  theTest :: ProcessM Int Unit
+  theTest = do
+    -- Go through each handler in a GenServer adding a monitor in each and check that they all fire
+    -- The process we spawn waits 20ms before exit to make sure that all the monitors fire after the
+    -- setup is complete and we don't just have messages in our process queue masking for the correct state
+    -- Init (0x01) -> Continue (0x02) -> Info (0x04) -> Monitors and Exits fire -> terminate
+    me <- self
+    liftEffect $ void $ crashIfNotStarted <$> GS2.startLink' {init: init me, handleInfo, handleContinue, terminate}
+    msg <- Process.receive
+    liftEffect $ assertEqual
+      { actual: msg
+      , expected: 0x0F
+      }
 
-  -- handleInfo :: GS2.InfoFn TestCont TestStop _ TestState (MonitorT MonitorMsg (ProcessM TestMsg))
-  -- handleInfo :: ?t
-  handleInfo (Right TestMsg) (TestState x) = do
-    _ <- spawnMonitor exitsImmediately $ const MonitorMsg
-    pure $ GS2.return $ TestState $ x + 1
+  init :: Process Int -> GS2.InitFn TestCont TestState2 TestMonad
+  init parentPid = do
+    _ <- spawnLinkMonitor exitsQuickly $ const (TestMonitorMsg 0x01)
+    pure $ InitOkContinue {parentPid, total: 0} TestCont
 
-  handleInfo (Left MonitorMsg) (TestState x) = do
-    pure $ GS2.return $ TestState $ x + 10
 
-  handleInfo _ _s = do
+  handleContinue :: ContinueFn TestCont TestStop TestState2 TestMonad
+  handleContinue TestCont state = do
+    -- let _ = spy "handleContinue" state
+    me <- self
+    void $ spawnLinkMonitor exitsQuickly $ const (TestMonitorMsg 0x02)
+    liftEffect $ me ! TestMsg
+    pure $ GS2.return state
+  handleContinue (TestContFrom _) state = do
+    pure $ GS2.return $ state
+
+  handleInfo :: GS2.InfoFn TestCont TestStop _ TestState2  TestMonad
+  handleInfo (Left msg) state = handleMonitorMsg msg state
+  handleInfo (Right (Left msg)) state = handleExitMsg msg state
+  handleInfo (Right (Right msg)) state = handleAppMsg msg state
+
+  handleMonitorMsg (TestMonitorMsg i) state@{total: x} = do
+    let
+      -- _ =  spy "handleMonitorMsg" {i, state}
+      newTotal = x + i
+    case x of
+      0 -> do
+        void $ spawnLinkMonitor exitsQuickly $ const (TestMonitorMsg 0x08)
+        pure $ GS2.return $ state{total =  newTotal}
+      _ ->
+        case newTotal of
+          0x0F -> do
+            pure $ GS2.returnWithAction StopNormal state{total =  newTotal}
+          _ ->
+            pure $ GS2.return $ state{total =  newTotal}
+
+  handleExitMsg _msg state = do
+    -- let
+    --  _ =  spy "handleExitMsg" {_msg, state}
+    pure $ GS2.return $ state
+
+  handleAppMsg TestMsg state = do
+    -- let
+    --   _ =  spy "handleAppMsg" state
+
+    void $ spawnLinkMonitor exitsQuickly $ const (TestMonitorMsg 0x04)
+    pure $ GS2.return $ state
+  handleAppMsg _ _state = do
     unsafeCrashWith "Unexpected message"
+
+  terminate _reason {parentPid, total} = do
+    liftEffect $ send parentPid total
+
+  exitsQuickly :: ProcessM Void Unit
+  exitsQuickly = do
+    liftEffect $ sleep 20
+    pure unit
+
+
 
 exitsImmediately :: ProcessM Void Unit
 exitsImmediately = pure unit
@@ -320,10 +377,10 @@ testStartGetSet registryName = do
 
   stop = GS2.stop
 
-data TestMonitorMsg = TestMonitorMsg
+data TestMonitorMsg = TestMonitorMsg Int
 derive instance Eq TestMonitorMsg
 instance Show TestMonitorMsg where
-  show TestMonitorMsg = "TestMonitorMsg"
+  show (TestMonitorMsg i) = "TestMonitorMsg: " <> show i
 
 testStopNormal :: RegistryName TestServerType -> MonitorT TestMonitorMsg (ProcessM Void) Unit
 testStopNormal registryName = do
@@ -337,7 +394,7 @@ testStopNormal registryName = do
         }
     instanceRef = ByName registryName
   serverPid <- liftEffect $ crashIfNotStarted <$> (GS2.startLink gsSpec)
-  _ <- monitor (toPid $ getProcess serverPid) $ const TestMonitorMsg
+  _ <- monitor (toPid $ getProcess serverPid) $ const (TestMonitorMsg 0)
   liftEffect do
     getState instanceRef >>= expectState 0 -- Starts with initial state 0
     -- Try to start the server again - should fail with already running
@@ -345,7 +402,7 @@ testStopNormal registryName = do
     triggerStopCast instanceRef
   msg <- receive
   liftEffect do
-    expect msg (Left TestMonitorMsg)
+    expect msg (Left (TestMonitorMsg 0))
     void $ crashIfNotStarted <$> (GS2.startLink gsSpec)
     (GS2.startLink gsSpec) <#> isAlreadyRunning >>= expect true
     triggerStopCallReply instanceRef >>= expectState 42 -- New instance starts with initial state 0

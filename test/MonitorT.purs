@@ -6,7 +6,6 @@ import Control.Monad.Free (Free)
 import Control.Monad.Trans.Class (lift)
 import Data.Either (Either(..))
 import Data.Time.Duration (Milliseconds(..))
-import Debug (spy)
 import Effect.Class (liftEffect)
 import Erl.Process (ProcessM, self, toPid, (!))
 import Erl.Test.EUnit (TestF, suite)
@@ -62,7 +61,7 @@ testMonitorTrapExit =
 
   handleMsg = do
     msg <- receive
-    case spy "msg" msg of
+    case msg of
       Left (Exit _ _) -> pure 1
       Right (Left TestMonitorMsg) -> pure 2
       Right (Right _) ->
@@ -84,7 +83,7 @@ testTrapExitMonitor =
 
   handleMsg = do
     msg <- receive
-    case spy "msg" msg of
+    case msg of
       Left TestMonitorMsg -> pure 1
       Right (Left (Exit _ _)) -> pure 2
       Right (Right _) ->
@@ -100,11 +99,9 @@ testDemonitor =
     pid <- liftEffect $ spawn immediatelyExitNormal
     ref <- monitor pid $ const TestMonitorMsg
     demonitor ref
-    me <- self
-    --liftEffect $ me ! TestAppMsg
 
     msg <- receiveWithTimeout (Milliseconds 2.0) TestTimeoutMsg
-    case spy "msg" msg of
+    case msg of
       Left TestTimeoutMsg -> pure unit
       Right _ ->
         unsafeCrashWith "We received a down after demonitor!"

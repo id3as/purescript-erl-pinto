@@ -10,7 +10,6 @@ import Control.Monad.Identity.Trans (IdentityT, runIdentityT)
 import Control.Monad.Trans.Class (class MonadTrans, lift)
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
-import Debug (spy)
 import Effect.Class (class MonadEffect)
 import Erl.Process (class HasSelf, self)
 import Erl.Process.Raw (setProcessFlagTrapExit)
@@ -43,13 +42,10 @@ instance
           pure $ Left exitMsg
         Nothing -> do
           lift $ Right <$> parseForeign fgn
-  -- run (TrapExitT mt) (Tuple _ is) = do
-  --     (Tuple (Tuple res newMtState) newIs) <- run is
-  --     pure $ Tuple res $ Tuple newMtState newIs
   run (TrapExitT mt) is =
       run (runIdentityT mt) is
 
   initialise _ = do
     void $ setProcessFlagTrapExit true
     innerState <- initialise (Proxy :: Proxy m)
-    pure $ spy "inner"  innerState
+    pure $ innerState
