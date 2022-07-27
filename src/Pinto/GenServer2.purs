@@ -36,7 +36,7 @@ import ConvertableOptions (class ConvertOptionsWithDefaults)
 import Effect (Effect)
 import Effect.Class (class MonadEffect)
 import Pinto.GenServer.ContStop (From)
-import Pinto.GenServer.ContStop (InitResult(InitOk, InitOkHibernate, InitStop, InitIgnore), From, noReply, noReplyWithAction, reply, return, returnWithAction, replyWithAction) as CSExports
+import Pinto.GenServer.ContStop (Action(Hibernate, StopNormal), InitResult(InitOk, InitOkHibernate, InitStop, InitIgnore), From, noReply, noReplyWithAction, reply, return, returnWithAction, replyWithAction) as CSExports
 import Pinto.GenServer.ContStop as CS
 import Pinto.ProcessT.Internal.Types (class MonadProcessTrans)
 import Pinto.Types (RegistryInstance, RegistryReference, ShutdownReason, StartLinkResult)

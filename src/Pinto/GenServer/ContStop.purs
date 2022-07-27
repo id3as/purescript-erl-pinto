@@ -465,13 +465,11 @@ terminate =
       Nothing -> pure unit
     pure $ atom "ok"
 
-
-
+--------------------------------------------------------------------------------
+-- Internal
+--------------------------------------------------------------------------------
 updateOtpState :: forall cont stop parsedMsg state m. OTPState cont stop parsedMsg state m -> TransState -> state -> OTPState cont stop parsedMsg state m
 updateOtpState (OTPState otpState) mState innerState  = OTPState otpState{ mState = mState, innerState = innerState}
-
-
-
 
 --------------------------------------------------------------------------------
 -- Helpers to construct the appropriate erlang tuples from the GenServer ADTs
