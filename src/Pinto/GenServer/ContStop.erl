@@ -1,4 +1,4 @@
--module(pinto_genServer2@foreign).
+-module(pinto_genServer_contStop@foreign).
 
 -include_lib("kernel/include/logger.hrl").
 

@@ -1,4 +1,4 @@
--module(test_genServer2@foreign).
+-module(test_testHelpers@foreign).
 
 -export([ sleep/1
         ]).

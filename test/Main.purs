@@ -12,7 +12,7 @@ import Erl.Data.List (nil, (:))
 import Erl.Process (ProcessM)
 import Erl.Test.EUnit (TestF, runTests, suite, test)
 import Pinto (StartLinkResult)
-import Pinto.GenServer2 (InitResult(..), ServerPid, ServerRef, InitFn)
+import Pinto.GenServer2 (InitFn, InitResult(..), ServerPid)
 import Pinto.GenServer2 as GS2
 import Pinto.Supervisor (ChildShutdownTimeoutStrategy(..), ChildType(..), RestartStrategy(..), Strategy(..), SupervisorSpec, ChildSpec, spec)
 import Pinto.Supervisor as Sup
@@ -23,7 +23,9 @@ import Test.DoorLock as DoorLock
 import Test.GenServer as TGS
 import Test.GenServer2 as TGS2
 import Test.MonitorT (testMonitorT)
+import Test.TestHelpers (getState)
 import Test.TrapExitT (testTrapExitT)
+import Test.ValueServer (testValueServer)
 
 foreign import filterSasl :: Effect Unit
 
@@ -38,9 +40,9 @@ main =
           TGS2.genServer2Suite
           testMonitorT
           testTrapExitT
-
-          --DoorLock.testSuite
-          --supervisorSuite
+          testValueServer
+          DoorLock.testSuite
+          supervisorSuite
 
 supervisorSuite :: Free TestF Unit
 supervisorSuite =
@@ -90,7 +92,7 @@ testStartWithNamedChild =
           }
       , childSpecs
       }
-  childInit :: InitFn _ _  (ProcessM Void)
+  childInit :: InitFn TestState (ProcessM Void)
   childInit = do
     pure $ InitOk $ TestState 0
 
@@ -123,7 +125,7 @@ dynamicSupervisor =
       }
     pure unit
   where
-  supInit :: Effect (DynamicSup.ChildSpec Unit (ServerPid Void Void TestState (ProcessM Void)))
+  supInit :: Effect (DynamicSup.ChildSpec Unit (ServerPid TestState (ProcessM Void)))
   supInit =
     pure
       { intensity: 1
@@ -136,28 +138,6 @@ dynamicSupervisor =
 
   childStart _ = GS2.startLink $ (GS2.defaultSpec childInit)
 
-  childInit :: InitFn _ _ (ProcessM Void)
+  childInit :: InitFn TestState (ProcessM Void)
   childInit = do
     pure $ InitOk $ TestState 0
-
----------------------------------------------------------------------------------
--- Internal
----------------------------------------------------------------------------------
-getState :: forall cont stop msg state. ServerRef cont stop state (ProcessM msg) -> Effect state
-getState handle =
-  GS2.call handle \_from state ->
-    let
-      reply = state
-    in
-      pure $ GS2.reply reply state
-
-setState :: forall cont stop msg state. ServerRef cont stop state (ProcessM msg) -> state -> Effect state
-setState handle newState =
-  GS2.call handle \_from state ->
-    let
-      reply = state
-    in
-      pure $ GS2.reply reply newState
-
-setStateCast :: forall cont stop msg state . ServerRef cont stop state (ProcessM (msg)) -> state -> Effect Unit
-setStateCast handle newState = GS2.cast handle \_state -> pure $ GS2.return newState

@@ -1,30 +1,27 @@
 module Test.ValueServer
-  ( startLink
+  ( Msg
+  , ValueServerPid
   , getValue
   , setValue
   , setValueAsync
+  , startLink
   , stop
-  , Msg
-  , ValueServerPid
-  ) where
+  , testValueServer
+  )
+  where
 
 import Prelude
 
-
-import Data.Maybe (Maybe(..))
+import Control.Monad.Free (Free)
 import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Process (ProcessM)
 import Erl.Process.Raw (class HasPid)
-import Pinto.GenServer2 (InitResult(..), ServerPid, ServerRef(..), ServerType, InitFn)
+import Erl.Test.EUnit (TestF, test)
+import Pinto.GenServer2 (InitFn, InitResult(..), ServerPid, ServerType)
 import Pinto.GenServer2 as GS
 import Pinto.Types (RegistryName(..), RegistryReference(..), crashIfNotStarted)
-
-type Cont
-  = Void
-
-type Stop
-  = Void
+import Test.Assert (assertEqual)
 
 data Msg
   = SetValue Int
@@ -33,10 +30,10 @@ type State
   = { value :: Int }
 
 type ValueServerType
-  = ServerType Cont Stop State (ProcessM Msg)
+  = ServerType State (ProcessM Msg)
 
 newtype ValueServerPid
-  = ValueServerPid (ServerPid Cont Stop State (ProcessM Msg))
+  = ValueServerPid (ServerPid State (ProcessM Msg))
 
 -- Only surface the raw pid, don't implement HasProcess - we don't want folks sending us messages using our Info
 -- type
@@ -51,7 +48,7 @@ startLink = do
     <$> crashIfNotStarted
     <$> (GS.startLink' { serverName, init })
   where
-  init :: InitFn Stop State (ProcessM Msg)
+  init :: InitFn State (ProcessM Msg)
   init =
     let
       state = { value: 0 }
@@ -71,7 +68,25 @@ setValue n = GS.call (ByName serverName) impl
 setValueAsync :: Int -> Effect Unit
 setValueAsync n = GS.cast (ByName serverName) impl
   where
-  impl state@{ value } = pure $ GS.return state { value = n }
+  impl state = pure $ GS.return state { value = n }
 
 stop :: Effect Unit
 stop = GS.stop (ByName serverName)
+
+--------------------------------------------------------------------------------
+-- Tests
+--------------------------------------------------------------------------------
+testValueServer :: Free TestF Unit
+testValueServer =
+  test "Interaction with gen_server with closed API" do
+    void $ startLink
+    void $ setValue 42
+    v1 <- setValue 43
+    v2 <- getValue
+    setValueAsync 50
+    v3 <- getValue
+    stop
+    assertEqual { actual: v1, expected: 42 }
+    assertEqual { actual: v2, expected: 43 }
+    assertEqual { actual: v3, expected: 50 }
+    pure unit
