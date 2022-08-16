@@ -20,7 +20,7 @@ import Pinto.ProcessT.Internal.Types (class MonadProcessTrans)
 mpTest
   :: forall m mState appMsg parsedMsg
    . MonadProcessTrans m mState appMsg parsedMsg
-  => MonadEffect m
+--  => MonadEffect m
   => String -> m Unit -> Free TestF Unit
 mpTest desc mpt = test desc $ unsafeEvalProcess mpt
 

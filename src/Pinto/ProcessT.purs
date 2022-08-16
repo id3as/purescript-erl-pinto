@@ -76,7 +76,7 @@ receiveWithTimeout ms@(Milliseconds msNum) = do
 unsafeEvalProcess
   :: forall m mState appMsg parsedMsg a
    . MonadProcessTrans m mState appMsg parsedMsg
-  => MonadEffect m
+--  => MonadEffect m
   => m a -> Effect a
 unsafeEvalProcess mpt =
   fst <$> unsafeRunProcess mpt
@@ -84,7 +84,7 @@ unsafeEvalProcess mpt =
 unsafeExecProcess
   :: forall m mState appMsg parsedMsg
    . MonadProcessTrans m mState appMsg parsedMsg
-  => MonadEffect m
+--  => MonadEffect m
   => m appMsg -> Effect mState
 unsafeExecProcess mpt =
   snd <$> unsafeRunProcess mpt

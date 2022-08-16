@@ -19,6 +19,7 @@ import Pinto.Supervisor as Sup
 import Pinto.Supervisor.SimpleOneForOne as DynamicSup
 import Pinto.Types (RegistryName(..), RegistryReference(..), crashIfNotStarted)
 import Test.Assert (assertEqual)
+import Test.BusT (testBusT)
 import Test.DoorLock as DoorLock
 import Test.GenServer as TGS
 import Test.GenServer2 as TGS2
@@ -40,6 +41,7 @@ main =
           TGS2.genServer2Suite
           testMonitorT
           testTrapExitT
+          testBusT
           testValueServer
           DoorLock.testSuite
           supervisorSuite
