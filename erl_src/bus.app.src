@@ -1,0 +1,11 @@
+{application, bus,
+ [ {description, "Purerl wrapper on groc message busses"}
+ , {vsn, "0.0.1"}
+ , {registered, []}
+ , {modules, []}
+ , {applications, [ kernel
+                  , gproc
+                  , stdlib
+                  ]}
+ , {env, []}
+ ]}.

@@ -6,9 +6,9 @@ import Control.Monad.Free (Free)
 import Data.Maybe (Maybe(..))
 import Data.Time.Duration (Milliseconds(..), Seconds(..))
 import Effect (Effect)
-import Effect.Unsafe (unsafePerformEffect)
 import Erl.Atom (atom)
 import Erl.Data.List (nil, (:))
+import Erl.Kernel.Application (ensureAllStarted)
 import Erl.Process (ProcessM)
 import Erl.Test.EUnit (TestF, runTests, suite, test)
 import Pinto (StartLinkResult)
@@ -31,20 +31,18 @@ import Test.ValueServer (testValueServer)
 foreign import filterSasl :: Effect Unit
 
 main :: Effect Unit
-main =
-  let
-    _ = unsafePerformEffect filterSasl
-  in
-    void
-      $ runTests do
-          TGS.genServerSuite
-          TGS2.genServer2Suite
-          testMonitorT
-          testTrapExitT
-          testBusT
-          testValueServer
-          DoorLock.testSuite
-          supervisorSuite
+main = do
+  filterSasl
+  void $ ensureAllStarted $ atom "gproc"
+  void $ runTests do
+    TGS.genServerSuite
+    TGS2.genServer2Suite
+    testMonitorT
+    testTrapExitT
+    testBusT
+    testValueServer
+    DoorLock.testSuite
+    supervisorSuite
 
 supervisorSuite :: Free TestF Unit
 supervisorSuite =
