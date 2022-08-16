@@ -288,7 +288,7 @@ startLink { serverName: maybeName, init: initFn, handleInfo, handleContinue, ter
   context = { handleInfo : handleInfo
             , handleContinue : handleContinue
             , terminate: terminate'
-            , mParse : unsafeCoerce (parseForeign :: (Foreign -> m parsedMsg))
+            , mParse : unsafeCoerce (parseForeign :: (Foreign -> m (Maybe parsedMsg)))
             , mRun : unsafeCoerce (run :: forall a. m a -> mState -> Effect (Tuple a mState))
             }
 
@@ -449,9 +449,13 @@ handle_info =
     exportReturnResult <$>
       case maybeHandleInfo of
         Just f -> do
-          Tuple parsedMsg newMState <- mRun (mParse nativeMsg) mState
-          Tuple result newMState' <- mRun (f parsedMsg innerState) newMState
-          pure $ updateOtpState otpState newMState' <$> result
+          Tuple mParsedMsg newMState <- mRun (mParse nativeMsg) mState
+          case mParsedMsg of
+            Nothing ->
+              pure $ ReturnResult Nothing $ updateMonadState otpState newMState
+            Just parsedMsg -> do
+              Tuple result newMState' <- mRun (f parsedMsg innerState) newMState
+              pure $ updateOtpState otpState newMState' <$> result
         Nothing ->
           pure $ ReturnResult Nothing otpState
 
@@ -470,6 +474,10 @@ terminate =
 --------------------------------------------------------------------------------
 updateOtpState :: forall cont stop parsedMsg state m. OTPState cont stop parsedMsg state m -> TransState -> state -> OTPState cont stop parsedMsg state m
 updateOtpState (OTPState otpState) mState innerState  = OTPState otpState{ mState = mState, innerState = innerState}
+
+updateMonadState :: forall cont stop parsedMsg state m. OTPState cont stop parsedMsg state m -> TransState -> OTPState cont stop parsedMsg state m
+updateMonadState (OTPState otpState) mState = OTPState otpState{ mState = mState}
+
 
 --------------------------------------------------------------------------------
 -- Helpers to construct the appropriate erlang tuples from the GenServer ADTs

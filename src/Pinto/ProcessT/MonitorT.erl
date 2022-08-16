@@ -11,6 +11,7 @@
 %%------------------------------------------------------------------------------
 -define(just(X), {just, X}).
 -define(nothing, {nothing}).
+-define(down(Ref, Type, Object, Info), {down, Ref, Type, Object, Info}).
 
 monitorImpl(Pid) ->
   fun() ->
@@ -21,10 +22,6 @@ demonitorImpl(Ref) ->
   fun() ->
     erlang:demonitor(Ref, [flush])
   end.
-
-
--define(down(Ref, Type, Object, Info), {down, Ref, Type, Object, Info}).
-
 
 parseMonitorMsg(Msg) ->
     case Msg of

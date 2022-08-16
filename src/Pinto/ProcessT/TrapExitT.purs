@@ -36,12 +36,12 @@ instance (HasSelf m msg, Monad m) => HasSelf (TrapExitT m) msg where
 instance
   (MonadProcessTrans m innerState appMsg innerOutMsg, Monad m) =>
   MonadProcessTrans (TrapExitT m) innerState appMsg (Either ExitMessage innerOutMsg) where
-  parseForeign fgn = do
+  parseForeign fgn = TrapExitT do
       case parseTrappedExitFFI fgn Exit of
-        Just exitMsg -> TrapExitT $ do
-          pure $ Left exitMsg
+        Just exitMsg ->
+          pure $ Just $ Left exitMsg
         Nothing -> do
-          lift $ Right <$> parseForeign fgn
+          (map Right) <$> (lift $ parseForeign fgn)
   run (TrapExitT mt) is =
       run (runIdentityT mt) is
 

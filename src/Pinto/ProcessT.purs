@@ -1,5 +1,6 @@
 module Pinto.ProcessT
-  ( receive
+  ( Timeout(..)
+  , receive
   , receiveWithTimeout
   , spawn
   , spawnLink
@@ -12,10 +13,12 @@ module Pinto.ProcessT
 import Prelude
 
 import Data.Either (Either(..))
-import Data.Time.Duration (Milliseconds)
+import Data.Maybe (Maybe(..))
+import Data.Time.Duration (Milliseconds(..))
 import Data.Tuple (Tuple, fst, snd)
 import Effect (Effect)
 import Effect.Class (class MonadEffect, liftEffect)
+import Erl.Kernel.Time (milliseconds)
 import Erl.Process (Process)
 import Erl.Process.Raw as Raw
 import Foreign (unsafeToForeign)
@@ -28,26 +31,47 @@ receive
    . MonadProcessTrans m mState appMsg parsedMsg
   => MonadEffect m
   => m parsedMsg
-receive = parseForeign =<< liftEffect Raw.receive
-
+receive = do
+  mParsedMsg <- parseForeign =<< liftEffect Raw.receive
+  case mParsedMsg of
+    Nothing ->
+      receive
+    Just parsed ->
+      pure parsed
 
 data PrivateProcessTTimeoutMsg
   = PrivateProcessTTimeoutMsg__
   | ThereToGetRidOfUnreacableWarning
 
+data Timeout = Timeout
+derive instance Eq Timeout
+derive instance Ord Timeout
+instance Show Timeout where
+  show Timeout = "Timeout"
+
 receiveWithTimeout
-  :: forall m mState appMsg parsedMsg timeoutMsg
+  :: forall m mState appMsg parsedMsg
    . MonadProcessTrans m mState appMsg parsedMsg
   => MonadEffect m
-  => Milliseconds -> timeoutMsg -> m (Either timeoutMsg parsedMsg)
-receiveWithTimeout ms timeoutMsg = do
-  rawMsg  <- liftEffect $ Raw.receiveWithTimeout ms PrivateProcessTTimeoutMsg__
+  => Milliseconds -> m (Either Timeout parsedMsg)
+receiveWithTimeout ms@(Milliseconds msNum) = do
+  (Milliseconds startTime) <- liftEffect milliseconds
+  rawMsg <- liftEffect $ Raw.receiveWithTimeout ms PrivateProcessTTimeoutMsg__
   case rawMsg of
     PrivateProcessTTimeoutMsg__ ->
-      pure $ Left timeoutMsg
+      pure $ Left Timeout
     _ -> do
-      parsed <- parseForeign $ unsafeToForeign rawMsg
-      pure $ Right parsed
+      mParsed <- parseForeign $ unsafeToForeign rawMsg
+      case mParsed of
+        Nothing -> do
+          (Milliseconds ignoredAtTime) <- liftEffect milliseconds
+          let newTimeout = msNum - (ignoredAtTime - startTime)
+          if newTimeout > 0.0 then
+            receiveWithTimeout (Milliseconds newTimeout)
+          else
+            pure $ Left Timeout
+        Just parsed ->
+          pure $ Right parsed
 
 unsafeEvalProcess
   :: forall m mState appMsg parsedMsg a

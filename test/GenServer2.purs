@@ -152,13 +152,12 @@ testTrapExits =
   testParentExit :: ProcessM Boolean Unit
   testParentExit = do
     testPid <- self
-
     let
       spawnAndExit :: ProcessM Void Unit
       spawnAndExit = void $ liftEffect $ crashIfNotStarted <$> (GS2.startLink' $ {init: init2 testPid, terminate})
 
     void $ liftEffect $ spawnLink spawnAndExit
-    actual <- receiveWithTimeout (Milliseconds 50.0) false
+    actual <- receiveWithTimeout (Milliseconds 50.0)
     liftEffect $ assertEqual' "Terminate wasn't called on the genserver" {expected: Right true, actual}
 
 

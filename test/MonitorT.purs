@@ -10,7 +10,7 @@ import Effect.Class (liftEffect)
 import Erl.Process (ProcessM, toPid, (!))
 import Erl.Test.EUnit (TestF, suite)
 import Partial.Unsafe (unsafeCrashWith)
-import Pinto.ProcessT (receive, receiveWithTimeout, spawn, spawnLink)
+import Pinto.ProcessT (Timeout(..), receive, receiveWithTimeout, spawn, spawnLink)
 import Pinto.ProcessT.MonitorT (MonitorT, demonitor, monitor, spawnLinkMonitor, spawnMonitor)
 import Pinto.ProcessT.TrapExitT (TrapExitT)
 import Pinto.Types (ExitMessage(..))
@@ -100,9 +100,9 @@ testDemonitor =
     ref <- monitor pid $ const TestMonitorMsg
     demonitor ref
 
-    msg <- receiveWithTimeout (Milliseconds 2.0) TestTimeoutMsg
+    msg <- receiveWithTimeout (Milliseconds 2.0)
     case msg of
-      Left TestTimeoutMsg -> pure unit
+      Left Timeout -> pure unit
       Right _ ->
         unsafeCrashWith "We received a down after demonitor!"
 

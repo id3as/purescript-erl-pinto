@@ -11,6 +11,7 @@ You can edit this file as you like.
   , "effect"
   , "either"
   , "erl-atom"
+  , "erl-kernel"
   , "erl-lists"
   , "erl-maps"
   , "erl-modules"

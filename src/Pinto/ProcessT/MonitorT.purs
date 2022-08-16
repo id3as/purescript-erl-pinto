@@ -82,18 +82,20 @@ foreign import parseMonitorMsg :: Foreign -> Maybe MonitorMsg
 instance
   (MonadProcessTrans m innerState appMsg innerOutMsg, Monad m) =>
   MonadProcessTrans (MonitorT monitorMsg m) (Tuple (MonitorMap monitorMsg) innerState) appMsg (Either monitorMsg innerOutMsg) where
-  parseForeign fgn = do
-      case parseMonitorMsg fgn of
-        Just down@(Down ref _ _ _) -> MonitorT $ do
-          mtState <- get
-          case Map.lookup ref mtState of
-            Nothing ->
-              unsafeCrashWith "Down from unknown monitor"
-            Just mapper -> do
-              put $ Map.delete ref mtState
-              pure $ Left $ mapper down
-        Nothing -> do
-          lift $ Right <$> parseForeign fgn
+  parseForeign fgn = MonitorT do
+    case parseMonitorMsg fgn of
+      Just down@(Down ref _ _ _) -> do
+        mtState <- get
+        case Map.lookup ref mtState of
+          Nothing ->
+            unsafeCrashWith "Down from unknown monitor"
+          Just mapper -> do
+            put $ Map.delete ref mtState
+            pure $ Just $ Left $ mapper down
+      Nothing -> do
+        (map Right) <$> (lift $ parseForeign fgn)
+
+
   run (MonitorT mt) (Tuple mtState is) = do
       (Tuple (Tuple res newMtState) newIs) <- run (runStateT mt mtState) is
       pure $ Tuple res $ Tuple newMtState newIs

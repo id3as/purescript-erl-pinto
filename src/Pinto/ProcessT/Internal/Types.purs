@@ -8,6 +8,7 @@ module Pinto.ProcessT.Internal.Types
 
 import Prelude
 
+import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
 import Erl.Process (ProcessM, unsafeRunProcessM)
@@ -17,12 +18,12 @@ import Unsafe.Coerce (unsafeCoerce)
 
 class MonadProcessTrans :: forall k. (Type -> Type) -> Type -> k -> Type -> Constraint
 class MonadProcessTrans m mState appMsg outMsg | m -> mState appMsg outMsg where
-  parseForeign :: Foreign -> m outMsg  -- appMsg TODO
+  parseForeign :: Foreign -> m (Maybe outMsg)
   run :: forall a. m a -> mState -> Effect (Tuple a mState)
   initialise :: Proxy m -> Effect mState
 
 instance MonadProcessTrans (ProcessM appMsg) Unit appMsg appMsg where
-  parseForeign = pure <<< unsafeCoerce
+  parseForeign = pure <<< Just <<< unsafeCoerce
   run pm _ = do
     res <- unsafeRunProcessM pm
     pure $ Tuple res unit
