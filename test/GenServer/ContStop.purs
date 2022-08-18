@@ -24,8 +24,7 @@ import Pinto.Types (NotStartedReason(..), RegistryName(..), RegistryReference(..
 import Test.Assert (assert', assertEqual)
 import Test.TestHelpers (getState, mpTest, setState, setStateCast, sleep)
 
-type TestServerType
-  = GS2.ServerType TestCont TestStop TestState (ProcessM TestMsg)
+type TestServerType = GS2.ServerType TestCont TestStop TestState (ProcessM TestMsg)
 
 genServer2Suite :: Free TestF Unit
 genServer2Suite =
@@ -36,14 +35,12 @@ genServer2Suite =
     testStopNormalGlobal
     testMonadStatePassedAround
 
-data TestState
-  = TestState Int
+data TestState = TestState Int
 
 derive instance eqTestState :: Eq TestState
 
 instance showTestState :: Show TestState where
   show (TestState x) = "TestState: " <> show x
-
 
 type TestState2 =
   { total :: Int
@@ -58,15 +55,12 @@ data TestMsg
   = TestMsg
   | TestMsgNotSent
 
-
-data TestStop
-  = StopReason
+data TestStop = StopReason
 
 testStartLinkLocal :: Free TestF Unit
 testStartLinkLocal =
   test "Can start a locally named GenServer" do
     testStartGetSet $ Local $ atom "testStartLinkLocal"
-
 
 testStartLinkGlobal :: Free TestF Unit
 testStartLinkGlobal =
@@ -75,15 +69,16 @@ testStartLinkGlobal =
 
 testStopNormalLocal :: Free TestF Unit
 testStopNormalLocal =
-  mpTest "Can start and stop a locally named GenServer" $
-    testStopNormal $ Local $ atom "testStopNormalLocal"
+  mpTest "Can start and stop a locally named GenServer"
+    $ testStopNormal
+    $ Local
+    $ atom "testStopNormalLocal"
 
 testStopNormalGlobal :: Free TestF Unit
 testStopNormalGlobal =
-  mpTest "Can start and stop a globally named GenServer" $
-    testStopNormal $ Global (unsafeToForeign $ atom "testStopNormalGlobal")
-
-
+  mpTest "Can start and stop a globally named GenServer"
+    $ testStopNormal
+    $ Global (unsafeToForeign $ atom "testStopNormalGlobal")
 
 type TestMonad = MonitorT TestMonitorMsg (TrapExitT (ProcessM TestMsg))
 
@@ -98,7 +93,7 @@ testMonadStatePassedAround =
     -- setup is complete and we don't just have messages in our process queue masking for the correct state
     -- Init (0x01) -> Continue (0x02) -> Info (0x04) -> Monitors and Exits fire -> terminate
     me <- self
-    liftEffect $ void $ crashIfNotStarted <$> GS2.startLink' {init: init me, handleInfo, handleContinue, terminate}
+    liftEffect $ void $ crashIfNotStarted <$> GS2.startLink' { init: init me, handleInfo, handleContinue, terminate }
     msg <- Process.receive
     liftEffect $ assertEqual
       { actual: msg
@@ -108,8 +103,7 @@ testMonadStatePassedAround =
   init :: Process Int -> GS2.InitFn TestCont TestState2 TestMonad
   init parentPid = do
     _ <- spawnLinkMonitor exitsQuickly $ const (TestMonitorMsg 0x01)
-    pure $ InitOkContinue {parentPid, total: 0} TestCont
-
+    pure $ InitOkContinue { parentPid, total: 0 } TestCont
 
   handleContinue :: ContinueFn TestCont TestStop TestState2 TestMonad
   handleContinue TestCont state = do
@@ -121,25 +115,25 @@ testMonadStatePassedAround =
   handleContinue (TestContFrom _) state = do
     pure $ GS2.return $ state
 
-  handleInfo :: GS2.InfoFn TestCont TestStop _ TestState2  TestMonad
+  handleInfo :: GS2.InfoFn TestCont TestStop _ TestState2 TestMonad
   handleInfo (Left msg) state = handleMonitorMsg msg state
   handleInfo (Right (Left msg)) state = handleExitMsg msg state
   handleInfo (Right (Right msg)) state = handleAppMsg msg state
 
-  handleMonitorMsg (TestMonitorMsg i) state@{total: x} = do
+  handleMonitorMsg (TestMonitorMsg i) state@{ total: x } = do
     let
       -- _ =  spy "handleMonitorMsg" {i, state}
       newTotal = x + i
     case x of
       0 -> do
         void $ spawnLinkMonitor exitsQuickly $ const (TestMonitorMsg 0x08)
-        pure $ GS2.return $ state{total =  newTotal}
+        pure $ GS2.return $ state { total = newTotal }
       _ ->
         case newTotal of
           0x0F -> do
-            pure $ GS2.returnWithAction StopNormal state{total =  newTotal}
+            pure $ GS2.returnWithAction StopNormal state { total = newTotal }
           _ ->
-            pure $ GS2.return $ state{total =  newTotal}
+            pure $ GS2.return $ state { total = newTotal }
 
   handleExitMsg _msg state = do
     -- let
@@ -155,7 +149,7 @@ testMonadStatePassedAround =
   handleAppMsg _ _state = do
     unsafeCrashWith "Unexpected message"
 
-  terminate _reason {parentPid, total} = do
+  terminate _reason { parentPid, total } = do
     liftEffect $ send parentPid total
 
   exitsQuickly :: ProcessM Void Unit
@@ -163,14 +157,11 @@ testMonadStatePassedAround =
     liftEffect $ sleep 20
     pure unit
 
-
-
-
-type TrapExitState
-  = { testPid :: Process Boolean
-    , receivedExit :: Boolean
-    , receivedTerminate :: Boolean
-    }
+type TrapExitState =
+  { testPid :: Process Boolean
+  , receivedExit :: Boolean
+  , receivedTerminate :: Boolean
+  }
 
 testStartGetSet :: RegistryName TestServerType -> Effect Unit
 testStartGetSet registryName = do
@@ -229,6 +220,7 @@ testStartGetSet registryName = do
   stop = GS2.stop
 
 data TestMonitorMsg = TestMonitorMsg Int
+
 derive instance Eq TestMonitorMsg
 instance Show TestMonitorMsg where
   show (TestMonitorMsg i) = "TestMonitorMsg: " <> show i
@@ -284,7 +276,6 @@ testStopNormal registryName = do
   triggerStopCast handle = GS2.cast handle \state -> pure $ GS2.returnWithAction StopNormal state
 
   triggerStopCallReply handle = GS2.call handle \_from state -> pure $ GS2.replyWithAction (TestState 42) StopNormal state
-
 
 ---------------------------------------------------------------------------------
 -- Internal

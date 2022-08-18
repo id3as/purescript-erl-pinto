@@ -25,8 +25,7 @@ import Unsafe.Coerce (unsafeCoerce)
 
 foreign import sleep :: Int -> Effect Unit
 
-type TestServerType
-  = ServerType TestCont TestStop TestMsg TestState
+type TestServerType = ServerType TestCont TestStop TestMsg TestState
 
 genServerSuite :: Free TestF Unit
 genServerSuite =
@@ -42,8 +41,7 @@ genServerSuite =
     testValueServer
     testTrapExits
 
-data TestState
-  = TestState Int
+data TestState = TestState Int
 
 derive instance eqTestState :: Eq TestState
 
@@ -58,8 +56,7 @@ data TestMsg
   = TestMsg
   | TrappedExit ExitMessage
 
-data TestStop
-  = StopReason
+data TestStop = StopReason
 
 testStartLinkAnonymous :: Free TestF Unit
 testStartLinkAnonymous =
@@ -163,11 +160,11 @@ testValueServer =
     assertEqual { actual: v3, expected: 50 }
     pure unit
 
-type TrapExitState
-  = { testPid :: Pid
-    , receivedExit :: Boolean
-    , receivedTerminate :: Boolean
-    }
+type TrapExitState =
+  { testPid :: Pid
+  , receivedExit :: Boolean
+  , receivedTerminate :: Boolean
+  }
 
 testTrapExits :: Free TestF Unit
 testTrapExits =

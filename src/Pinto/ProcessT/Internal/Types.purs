@@ -3,8 +3,7 @@ module Pinto.ProcessT.Internal.Types
   , run
   , parseForeign
   , initialise
-  )
-  where
+  ) where
 
 import Prelude
 
@@ -27,4 +26,4 @@ instance MonadProcessTrans (ProcessM appMsg) Unit appMsg appMsg where
   run pm _ = do
     res <- unsafeRunProcessM pm
     pure $ Tuple res unit
-  initialise _ =  pure unit
+  initialise _ = pure unit

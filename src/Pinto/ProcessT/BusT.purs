@@ -8,8 +8,7 @@ module Pinto.ProcessT.BusT
   , raise
   , subscribe
   , unsubscribe
-  )
-  where
+  ) where
 
 import Prelude
 
@@ -29,7 +28,6 @@ import Pinto.ProcessT.Internal.Types (class MonadProcessTrans, initialise, parse
 import Type.Prelude (Proxy(..))
 import Unsafe.Coerce (unsafeCoerce)
 
-
 foreign import data BusNameForeign :: Type
 foreign import data BusMsgForeign :: Type
 
@@ -46,29 +44,30 @@ derive newtype instance Monad m => Monad (BusT monitorMsg m)
 derive newtype instance MonadEffect m => MonadEffect (BusT monitorMsg m)
 derive newtype instance MonadTrans (BusT monitorMsg)
 
-
 newtype Bus :: forall k. Type -> k -> Type
-newtype Bus name msg
-  = Bus name
+newtype Bus name msg = Bus name
 
 --------------------------------------------------------------------------------
 -- Public API
 --------------------------------------------------------------------------------
 foreign import raise :: forall name msg. Bus name msg -> msg -> Effect Unit
 
-subscribe ::
-  forall name busMsgIn busMsgOut m.
-  MonadEffect m =>
-  Bus name busMsgIn -> (busMsgIn -> busMsgOut) -> BusT busMsgOut m Unit
+subscribe
+  :: forall name busMsgIn busMsgOut m
+   . MonadEffect m
+  => Bus name busMsgIn
+  -> (busMsgIn -> busMsgOut)
+  -> BusT busMsgOut m Unit
 subscribe bus mapper =
   BusT do
     modify_ \mm -> Map.insert (toBusNameForeign bus) (toMapperForeign mapper) mm
     liftEffect $ subscribeImpl bus
 
-unsubscribe ::
-  forall name busMsgIn busMsgOut m.
-  MonadEffect m =>
-  Bus name busMsgIn -> BusT busMsgOut m Unit
+unsubscribe
+  :: forall name busMsgIn busMsgOut m
+   . MonadEffect m
+  => Bus name busMsgIn
+  -> BusT busMsgOut m Unit
 unsubscribe bus =
   BusT do
     modify_ \mm -> Map.delete (toBusNameForeign bus) mm
@@ -91,23 +90,25 @@ toMapperForeign :: forall inMsg outMsg. (inMsg -> outMsg) -> (BusMsgForeign -> o
 toMapperForeign = unsafeCoerce
 
 instance
-  (MonadProcessTrans m innerState appMsg innerOutMsg, Monad m) =>
+  ( MonadProcessTrans m innerState appMsg innerOutMsg
+  , Monad m
+  ) =>
   MonadProcessTrans (BusT busMsg m) (Tuple (BusMap busMsg) innerState) appMsg (Either busMsg innerOutMsg) where
   parseForeign fgn = BusT do
-      case parseBusMsg fgn of
-        Just busNameMsg -> do
-          mtState <- get
-          case Map.lookup (fst busNameMsg) mtState of
-            Nothing ->
-              pure Nothing
-            Just mapper -> do
-              pure $ Just $ Left $ mapper $ snd busNameMsg
-        Nothing -> do
-          (map Right) <$> (lift $ parseForeign fgn)
+    case parseBusMsg fgn of
+      Just busNameMsg -> do
+        mtState <- get
+        case Map.lookup (fst busNameMsg) mtState of
+          Nothing ->
+            pure Nothing
+          Just mapper -> do
+            pure $ Just $ Left $ mapper $ snd busNameMsg
+      Nothing -> do
+        (map Right) <$> (lift $ parseForeign fgn)
 
   run (BusT mt) (Tuple mtState is) = do
-      (Tuple (Tuple res newMtState) newIs) <- run (runStateT mt mtState) is
-      pure $ Tuple res $ Tuple newMtState newIs
+    (Tuple (Tuple res newMtState) newIs) <- run (runStateT mt mtState) is
+    pure $ Tuple res $ Tuple newMtState newIs
 
   initialise _ = do
     innerState <- initialise (Proxy :: Proxy m)

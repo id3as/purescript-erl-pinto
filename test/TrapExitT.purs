@@ -15,12 +15,10 @@ import Test.TestHelpers (mpTest)
 data TestAppMsg = TestAppMsg
 data TestTimeoutMsg = TestTimeoutMsg
 
-testTrapExitT  :: Free TestF Unit
+testTrapExitT :: Free TestF Unit
 testTrapExitT =
   suite "TrapExitM tests" do
     testTrapExit
-
-
 
 testTrapExit :: Free TestF Unit
 testTrapExit =
@@ -31,11 +29,10 @@ testTrapExit =
   theTest = do
     _pid <- liftEffect $ spawnLink immediatelyExitNormal
     msg <- receive
-    case  msg of
+    case msg of
       Left _exitMSg -> pure unit
       Right _ ->
         unsafeCrashWith "We got sent a void message!"
-
 
 immediatelyExitNormal :: ProcessM Void Unit
 immediatelyExitNormal = pure unit

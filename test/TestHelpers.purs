@@ -4,8 +4,7 @@ module Test.TestHelpers
   , setState
   , setStateCast
   , sleep
-  )
-  where
+  ) where
 
 import Prelude
 
@@ -20,18 +19,20 @@ import Pinto.ProcessT.Internal.Types (class MonadProcessTrans)
 mpTest
   :: forall m mState appMsg parsedMsg
    . MonadProcessTrans m mState appMsg parsedMsg
---  => MonadEffect m
-  => String -> m Unit -> Free TestF Unit
+  --  => MonadEffect m
+  => String
+  -> m Unit
+  -> Free TestF Unit
 mpTest desc mpt = test desc $ unsafeEvalProcess mpt
 
 foreign import sleep :: Int -> Effect Unit
-
 
 getState
   :: forall cont stop appMsg parsedMsg state m mState
    . MonadProcessTrans m mState appMsg parsedMsg
   => Monad m
-  => GS.ServerRef cont stop state m -> Effect state
+  => GS.ServerRef cont stop state m
+  -> Effect state
 getState handle =
   GS.call handle callFn
   where
@@ -39,12 +40,13 @@ getState handle =
   callFn _from state =
     pure $ GS.reply state state
 
-
 setState
   :: forall cont stop appMsg parsedMsg state m mState
    . MonadProcessTrans m mState appMsg parsedMsg
   => Monad m
-  => GS.ServerRef cont stop state m -> state -> Effect state
+  => GS.ServerRef cont stop state m
+  -> state
+  -> Effect state
 setState handle newState =
   GS.call handle callFn
   where
@@ -56,8 +58,10 @@ setStateCast
   :: forall cont stop appMsg parsedMsg state m mState
    . MonadProcessTrans m mState appMsg parsedMsg
   => Monad m
-  => GS.ServerRef cont stop state m -> state -> Effect Unit
+  => GS.ServerRef cont stop state m
+  -> state
+  -> Effect Unit
 setStateCast handle newState = GS.cast handle castFn
   where
-    castFn :: GS.CastFn cont stop state m
-    castFn _state = pure $ GS.return newState
+  castFn :: GS.CastFn cont stop state m
+  castFn _state = pure $ GS.return newState

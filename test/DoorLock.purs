@@ -87,28 +87,22 @@ instance stateHasStateId :: HasStateId StateId State where
   getStateId (UnlockedClosed _) = StateIdUnlockedClosed
   getStateId (UnlockedOpen _) = StateIdUnlockedOpen
 
-type Data
-  = { code :: String
-    , unknownEvents :: Int
-    }
+type Data =
+  { code :: String
+  , unknownEvents :: Int
+  }
 
-type Info
-  = Void
+type Info = Void
 
-type Internal
-  = Void
+type Internal = Void
 
-type TimerName
-  = Void
+type TimerName = Void
 
-data TimerContent
-  = DoorOpenTooLong
+data TimerContent = DoorOpenTooLong
 
-type DoorLockType
-  = StatemType Info Internal TimerName TimerContent Data StateId State
+type DoorLockType = StatemType Info Internal TimerName TimerContent Data StateId State
 
-newtype DoorLockPid
-  = DoorLockPid (StatemPid Info Internal TimerName TimerContent Data StateId State)
+newtype DoorLockPid = DoorLockPid (StatemPid Info Internal TimerName TimerContent Data StateId State)
 
 -- Only surface the raw pid, don't implement HasProcess - we don't want folks sending us messages using our Info
 -- type

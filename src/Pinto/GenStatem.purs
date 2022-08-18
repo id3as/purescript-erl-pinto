@@ -116,15 +116,12 @@ class SupportsNewActions builder where
   newActions :: builder
 
 type InitContext :: forall k1 k2 k3 k4 k5 k6 k7. k1 -> k2 -> k3 -> k4 -> k5 -> k6 -> k7 -> Type
-type InitContext info internal timerName timerContent commonData stateId state
-  = Context info internal timerName timerContent commonData stateId state
+type InitContext info internal timerName timerContent commonData stateId state = Context info internal timerName timerContent commonData stateId state
 
-newtype InitActionsBuilder info internal timerName timerContent
-  = InitActionsBuilder (List (EventAction info internal timerName timerContent))
+newtype InitActionsBuilder info internal timerName timerContent = InitActionsBuilder (List (EventAction info internal timerName timerContent))
 
 newtype InitT :: forall k1 k2 k3 k4 k5 k6 k7. k1 -> k2 -> k3 -> k4 -> k5 -> k6 -> k7 -> (Type -> Type) -> Type -> Type
-newtype InitT info internal timerName timerContent commonData stateId state m a
-  = InitT (StateT (InitContext info internal timerName timerContent commonData stateId state) m a)
+newtype InitT info internal timerName timerContent commonData stateId state m a = InitT (StateT (InitContext info internal timerName timerContent commonData stateId state) m a)
 
 derive newtype instance functorInit :: Functor (InitT info internal timerName timerContent commonData stateId state Effect)
 
@@ -154,17 +151,15 @@ instance supportsNextEventInitActionsBuilder :: SupportsNextEvent (InitActionsBu
   addNextEvent event (InitActionsBuilder actions) = InitActionsBuilder $ (NextEvent event) : actions
 
 type StateEnterContext :: forall k1 k2 k3 k4 k5 k6 k7. k1 -> k2 -> k3 -> k4 -> k5 -> k6 -> k7 -> Type
-type StateEnterContext info internal timerName timerContent commonData stateId state
-  = { context :: Context info internal timerName timerContent commonData stateId state
-    , changed :: Boolean
-    }
+type StateEnterContext info internal timerName timerContent commonData stateId state =
+  { context :: Context info internal timerName timerContent commonData stateId state
+  , changed :: Boolean
+  }
 
-newtype StateEnterActionsBuilder timerName timerContent
-  = StateEnterActionsBuilder (List (StateEnterAction timerName timerContent))
+newtype StateEnterActionsBuilder timerName timerContent = StateEnterActionsBuilder (List (StateEnterAction timerName timerContent))
 
 newtype StateEnterT :: forall k1 k2 k3 k4 k5 k6 k7. k1 -> k2 -> k3 -> k4 -> k5 -> k6 -> k7 -> (Type -> Type) -> Type -> Type
-newtype StateEnterT info internal timerName timerContent commonData stateId state m a
-  = StateEnterT (StateT (StateEnterContext info internal timerName timerContent commonData stateId state) m a)
+newtype StateEnterT info internal timerName timerContent commonData stateId state m a = StateEnterT (StateT (StateEnterContext info internal timerName timerContent commonData stateId state) m a)
 
 derive newtype instance functorStateEnter :: Functor (StateEnterT info internal timerName timerContent commonData stateId state Effect)
 
@@ -192,17 +187,15 @@ instance supportsAddTimeoutStateEnterActionsBuilder :: SupportsAddTimeout (State
   addTimeoutAction action (StateEnterActionsBuilder actions) = StateEnterActionsBuilder $ (TimeoutAction action) : actions
 
 type EventContext :: forall k1 k2 k3 k4 k5 k6 k7. k1 -> k2 -> k3 -> k4 -> k5 -> k6 -> k7 -> Type
-type EventContext info internal timerName timerContent commonData stateId state
-  = { context :: Context info internal timerName timerContent commonData stateId state
-    , changed :: Boolean
-    }
+type EventContext info internal timerName timerContent commonData stateId state =
+  { context :: Context info internal timerName timerContent commonData stateId state
+  , changed :: Boolean
+  }
 
-newtype EventActionsBuilder info internal timerName timerContent
-  = EventActionsBuilder (List (EventAction info internal timerName timerContent))
+newtype EventActionsBuilder info internal timerName timerContent = EventActionsBuilder (List (EventAction info internal timerName timerContent))
 
 newtype EventT :: forall k1 k2 k3 k4 k5 k6 k7. k1 -> k2 -> k3 -> k4 -> k5 -> k6 -> k7 -> (Type -> Type) -> Type -> Type
-newtype EventT info internal timerName timerContent commonData stateId state m a
-  = EventT (StateT (EventContext info internal timerName timerContent commonData stateId state) m a)
+newtype EventT info internal timerName timerContent commonData stateId state m a = EventT (StateT (EventContext info internal timerName timerContent commonData stateId state) m a)
 
 derive newtype instance functorEvent :: Functor (EventT info internal timerName timerContent commonData stateId state Effect)
 
@@ -230,73 +223,67 @@ instance supportsNextEventEventActionsBuilder :: SupportsNextEvent (EventActions
   addNextEvent event (EventActionsBuilder actions) = EventActionsBuilder $ (NextEvent event) : actions
 
 newtype StatemType :: Type -> Type -> Type -> Type -> Type -> Type -> Type -> Type
-newtype StatemType info internal timerName timerContent commonData stateId state
-  = StatemType Void
+newtype StatemType info internal timerName timerContent commonData stateId state = StatemType Void
 
 newtype StatemPid :: Type -> Type -> Type -> Type -> Type -> Type -> Type -> Type
-newtype StatemPid info internal timerName timerContent commonData stateId state
-  = StatemPid (Process info)
+newtype StatemPid info internal timerName timerContent commonData stateId state = StatemPid (Process info)
 
 derive newtype instance statemPidHasPid :: HasPid (StatemPid info internal timerName timerContent commonData stateId state)
 
 derive newtype instance statemPidHasProcess :: HasProcess info (StatemPid info internal timerName timerContent commonData stateId state)
 
-type StatemRef info internal timerName timerContent commonData stateId state
-  = RegistryReference (StatemPid info internal timerName timerContent commonData stateId state)
-      (StatemType info internal timerName timerContent commonData stateId state)
+type StatemRef info internal timerName timerContent commonData stateId state = RegistryReference (StatemPid info internal timerName timerContent commonData stateId state)
+  (StatemType info internal timerName timerContent commonData stateId state)
 
-type StatemInstance info internal timerName timerContent commonData stateId state
-  = RegistryInstance (StatemPid info internal timerName timerContent commonData stateId state)
-      (StatemType info internal timerName timerContent commonData stateId state)
+type StatemInstance info internal timerName timerContent commonData stateId state = RegistryInstance (StatemPid info internal timerName timerContent commonData stateId state)
+  (StatemType info internal timerName timerContent commonData stateId state)
 
-type Spec info internal timerName timerContent commonData stateId state
-  = { name :: Maybe (RegistryName (StatemType info internal timerName timerContent commonData stateId state))
-    , init :: InitFn info internal timerName timerContent commonData stateId state
-    , handleEvent :: HandleEventFn info internal timerName timerContent commonData stateId state
-    , handleEnter :: Maybe (EnterFn info internal timerName timerContent commonData stateId state)
-    , terminate :: Maybe (TerminateFn info internal timerName timerContent commonData stateId state)
-    , trapExits :: Maybe (ExitMessage -> info)
-    , getStateId :: state -> stateId
-    }
+type Spec info internal timerName timerContent commonData stateId state =
+  { name :: Maybe (RegistryName (StatemType info internal timerName timerContent commonData stateId state))
+  , init :: InitFn info internal timerName timerContent commonData stateId state
+  , handleEvent :: HandleEventFn info internal timerName timerContent commonData stateId state
+  , handleEnter :: Maybe (EnterFn info internal timerName timerContent commonData stateId state)
+  , terminate :: Maybe (TerminateFn info internal timerName timerContent commonData stateId state)
+  , trapExits :: Maybe (ExitMessage -> info)
+  , getStateId :: state -> stateId
+  }
 
 type InitFn :: forall k. Type -> Type -> Type -> Type -> Type -> k -> Type -> Type
-type InitFn info internal timerName timerContent commonData stateId state
-  = InitT info internal timerName timerContent commonData stateId state Effect (InitResult info internal timerName timerContent commonData state)
+type InitFn info internal timerName timerContent commonData stateId state = InitT info internal timerName timerContent commonData stateId state Effect (InitResult info internal timerName timerContent commonData state)
 
 type CastFn :: forall k. Type -> Type -> Type -> Type -> Type -> k -> Type -> Type
-type CastFn info internal timerName timerContent commonData stateId state
-  = EventFn info internal timerName timerContent commonData stateId state
+type CastFn info internal timerName timerContent commonData stateId state = EventFn info internal timerName timerContent commonData stateId state
 
 type CallFn :: forall k. k -> Type -> Type -> Type -> Type -> Type -> Type -> Type -> Type
-type CallFn reply info internal timerName timerContent commonData stateId state
-  = From reply ->
-    EventFn info internal timerName timerContent commonData stateId state
+type CallFn reply info internal timerName timerContent commonData stateId state =
+  From reply
+  -> EventFn info internal timerName timerContent commonData stateId state
 
 type HandleEventFn :: forall k. Type -> Type -> Type -> Type -> Type -> k -> Type -> Type
-type HandleEventFn info internal timerName timerContent commonData stateId state
-  = Event info internal timerName timerContent ->
-    EventFn info internal timerName timerContent commonData stateId state
+type HandleEventFn info internal timerName timerContent commonData stateId state =
+  Event info internal timerName timerContent
+  -> EventFn info internal timerName timerContent commonData stateId state
 
 type EventFn :: forall k. Type -> Type -> Type -> Type -> Type -> k -> Type -> Type
-type EventFn info internal timerName timerContent commonData stateId state
-  = state ->
-    commonData ->
-    EventT info internal timerName timerContent commonData stateId state Effect (EventResult info internal timerName timerContent commonData state)
+type EventFn info internal timerName timerContent commonData stateId state =
+  state
+  -> commonData
+  -> EventT info internal timerName timerContent commonData stateId state Effect (EventResult info internal timerName timerContent commonData state)
 
 type TerminateFn :: forall k. Type -> Type -> Type -> Type -> Type -> k -> Type -> Type
-type TerminateFn info internal timerName timerContent commonData stateId state
-  = ShutdownReason ->
-    state ->
-    commonData ->
-    EventT info internal timerName timerContent commonData stateId state Effect Unit
+type TerminateFn info internal timerName timerContent commonData stateId state =
+  ShutdownReason
+  -> state
+  -> commonData
+  -> EventT info internal timerName timerContent commonData stateId state Effect Unit
 
 type EnterFn :: forall k1 k2. k1 -> k2 -> Type -> Type -> Type -> Type -> Type -> Type
-type EnterFn info internal timerName timerContent commonData stateId state
-  = stateId ->
-    stateId ->
-    state ->
-    commonData ->
-    StateEnterT info internal timerName timerContent commonData stateId state Effect (StateEnterResult timerName timerContent commonData)
+type EnterFn info internal timerName timerContent commonData stateId state =
+  stateId
+  -> stateId
+  -> state
+  -> commonData
+  -> StateEnterT info internal timerName timerContent commonData stateId state Effect (StateEnterResult timerName timerContent commonData)
 
 data EventResult info internal timerName timerContent commonData state
   = EventKeepStateAndData
@@ -319,8 +306,7 @@ data InitResult info internal timerName timerContent commonData state
   | InitStop Foreign
   | InitIgnore
 
-type StateEnterAction timerName timerContent
-  = CommonAction timerName timerContent
+type StateEnterAction timerName timerContent = CommonAction timerName timerContent
 
 -- This is what Erlang calls an action, and is supported
 -- for handle_event (not for state enter though) and for
@@ -362,12 +348,11 @@ data Timeout timerContent
   | Cancel
 
 type Context :: forall k1 k2 k3 k4 k5 k6 k7. k1 -> k2 -> k3 -> k4 -> k5 -> k6 -> k7 -> Type
-type Context info internal timerName timerContent commonData stateId state
-  = {
-    }
+type Context info internal timerName timerContent commonData stateId state =
+  {
+  }
 
-newtype OuterData info internal timerName timerContent commonData stateId state
-  = OuterData
+newtype OuterData info internal timerName timerContent commonData stateId state = OuterData
   { state :: state
   , commonData :: commonData
   , trapExits :: Maybe (ExitMessage -> info)
@@ -404,53 +389,52 @@ foreign import data Reply :: Type
 foreign import data FromForeign :: Type
 
 newtype From :: forall k. k -> Type
-newtype From reply
-  = From FromForeign
+newtype From reply = From FromForeign
 
-foreign import startLinkFFI ::
-  forall info internal timerName timerContent commonData stateId state.
-  Maybe (RegistryName (StatemType info internal timerName timerContent commonData stateId state)) ->
-  NativeModuleName ->
-  Spec info internal timerName timerContent commonData stateId state ->
-  Effect (StartLinkResult (StatemPid info internal timerName timerContent commonData stateId state))
+foreign import startLinkFFI
+  :: forall info internal timerName timerContent commonData stateId state
+   . Maybe (RegistryName (StatemType info internal timerName timerContent commonData stateId state))
+  -> NativeModuleName
+  -> Spec info internal timerName timerContent commonData stateId state
+  -> Effect (StartLinkResult (StatemPid info internal timerName timerContent commonData stateId state))
 
-foreign import procLibStartLinkFFI ::
-  forall info internal timerName timerContent commonData stateId state.
-  Maybe (RegistryName (StatemType info internal timerName timerContent commonData stateId state)) ->
-  NativeModuleName ->
-  Spec info internal timerName timerContent commonData stateId state ->
-  Effect (StartLinkResult (StatemPid info internal timerName timerContent commonData stateId state))
+foreign import procLibStartLinkFFI
+  :: forall info internal timerName timerContent commonData stateId state
+   . Maybe (RegistryName (StatemType info internal timerName timerContent commonData stateId state))
+  -> NativeModuleName
+  -> Spec info internal timerName timerContent commonData stateId state
+  -> Effect (StartLinkResult (StatemPid info internal timerName timerContent commonData stateId state))
 
-foreign import selfFFI ::
-  forall info internal timerName timerContent commonData stateId state.
-  Effect (StatemPid info internal timerName timerContent commonData stateId state)
+foreign import selfFFI
+  :: forall info internal timerName timerContent commonData stateId state
+   . Effect (StatemPid info internal timerName timerContent commonData stateId state)
 
 foreign import reply :: forall reply. From reply -> reply -> Reply
 
-foreign import callFFI ::
-  forall reply info internal timerName timerContent commonData stateId state.
-  StatemInstance info internal timerName timerContent commonData stateId state ->
-  CallFn reply info internal timerName timerContent commonData stateId state ->
-  Effect reply
+foreign import callFFI
+  :: forall reply info internal timerName timerContent commonData stateId state
+   . StatemInstance info internal timerName timerContent commonData stateId state
+  -> CallFn reply info internal timerName timerContent commonData stateId state
+  -> Effect reply
 
-foreign import castFFI ::
-  forall info internal timerName timerContent commonData stateId state.
-  StatemInstance info internal timerName timerContent commonData stateId state ->
-  CastFn info internal timerName timerContent commonData stateId state ->
-  Effect Unit
+foreign import castFFI
+  :: forall info internal timerName timerContent commonData stateId state
+   . StatemInstance info internal timerName timerContent commonData stateId state
+  -> CastFn info internal timerName timerContent commonData stateId state
+  -> Effect Unit
 
-startLink ::
-  forall info internal timerName timerContent commonData stateId state.
-  HasStateId stateId state =>
-  Spec info internal timerName timerContent commonData stateId state ->
-  Effect (StartLinkResult (StatemPid info internal timerName timerContent commonData stateId state))
+startLink
+  :: forall info internal timerName timerContent commonData stateId state
+   . HasStateId stateId state
+  => Spec info internal timerName timerContent commonData stateId state
+  -> Effect (StartLinkResult (StatemPid info internal timerName timerContent commonData stateId state))
 startLink args@{ name: maybeName } = startLinkFFI maybeName (nativeModuleName pintoGenStatem) args
 
-procLibStartLink ::
-  forall info internal timerName timerContent commonData stateId state.
-  HasStateId stateId state =>
-  Spec info internal timerName timerContent commonData stateId state ->
-  Effect (StartLinkResult (StatemPid info internal timerName timerContent commonData stateId state))
+procLibStartLink
+  :: forall info internal timerName timerContent commonData stateId state
+   . HasStateId stateId state
+  => Spec info internal timerName timerContent commonData stateId state
+  -> Effect (StartLinkResult (StatemPid info internal timerName timerContent commonData stateId state))
 procLibStartLink args@{ name: maybeName } = procLibStartLinkFFI maybeName (nativeModuleName pintoGenStatem) args
 
 -- enterLoop ::
@@ -458,12 +442,12 @@ procLibStartLink args@{ name: maybeName } = procLibStartLinkFFI maybeName (nativ
 --   HasStateId stateId state =>
 --   Spec info internal timerName timerContent commonData stateId state -> Effect Unit
 -- enterLoop = enterLoopFFI (nativeModuleName pintoGenStatem)
-defaultSpec ::
-  forall info internal timerName timerContent commonData stateId state.
-  HasStateId stateId state =>
-  InitFn info internal timerName timerContent commonData stateId state ->
-  HandleEventFn info internal timerName timerContent commonData stateId state ->
-  Spec info internal timerName timerContent commonData stateId state
+defaultSpec
+  :: forall info internal timerName timerContent commonData stateId state
+   . HasStateId stateId state
+  => InitFn info internal timerName timerContent commonData stateId state
+  -> HandleEventFn info internal timerName timerContent commonData stateId state
+  -> Spec info internal timerName timerContent commonData stateId state
 defaultSpec initFn handleEventFn =
   { name: Nothing
   , trapExits: Nothing
@@ -474,28 +458,28 @@ defaultSpec initFn handleEventFn =
   , getStateId: getStateId
   }
 
-call ::
-  forall reply info internal timerName timerContent commonData stateId state.
-  HasStateId stateId state =>
-  StatemRef info internal timerName timerContent commonData stateId state ->
-  CallFn reply info internal timerName timerContent commonData stateId state ->
-  Effect reply
+call
+  :: forall reply info internal timerName timerContent commonData stateId state
+   . HasStateId stateId state
+  => StatemRef info internal timerName timerContent commonData stateId state
+  -> CallFn reply info internal timerName timerContent commonData stateId state
+  -> Effect reply
 call r callFn = callFFI (registryInstance r) callFn
 
-cast ::
-  forall info internal timerName timerContent commonData stateId state.
-  HasStateId stateId state =>
-  StatemRef info internal timerName timerContent commonData stateId state ->
-  CastFn info internal timerName timerContent commonData stateId state ->
-  Effect Unit
+cast
+  :: forall info internal timerName timerContent commonData stateId state
+   . HasStateId stateId state
+  => StatemRef info internal timerName timerContent commonData stateId state
+  -> CastFn info internal timerName timerContent commonData stateId state
+  -> Effect Unit
 cast r castFn = castFFI (registryInstance r) castFn
 
-runEventFn ::
-  forall info internal timerName timerContent commonData stateId state.
-  (state -> stateId) ->
-  EventFn info internal timerName timerContent commonData stateId state ->
-  OuterData info internal timerName timerContent commonData stateId state ->
-  Effect (OuterEventResult info internal timerName timerContent commonData stateId state)
+runEventFn
+  :: forall info internal timerName timerContent commonData stateId state
+   . (state -> stateId)
+  -> EventFn info internal timerName timerContent commonData stateId state
+  -> OuterData info internal timerName timerContent commonData stateId state
+  -> Effect (OuterEventResult info internal timerName timerContent commonData stateId state)
 runEventFn getStateId eventFn (OuterData outerData@{ state, commonData, context }) = do
   let
     (EventT stateT) = eventFn state commonData
@@ -526,52 +510,53 @@ runEventFn getStateId eventFn (OuterData outerData@{ state, commonData, context 
 callback_mode :: List Atom
 callback_mode = (atom "handle_event_function") : (atom "state_enter") : nil
 
-init ::
-  forall info internal timerName timerContent commonData stateId state.
-  EffectFn1 (Spec info internal timerName timerContent commonData stateId state) NativeInitResult
+init
+  :: forall info internal timerName timerContent commonData stateId state
+   . EffectFn1 (Spec info internal timerName timerContent commonData stateId state) NativeInitResult
 init =
-  mkEffectFn1 \{ init: (InitT f)
-  , handleEnter: maybeHandleEnter
-  , handleEvent
-  , trapExits
-  , terminate: terminate'
-  , getStateId
-  } -> do
-    _ <- case trapExits of
-      Nothing -> pure unit
-      Just _ -> void $ setProcessFlagTrapExit true
-    result <- StateT.runStateT f {}
-    let
-      result' = Tuple.fst result
+  mkEffectFn1
+    \{ init: (InitT f)
+     , handleEnter: maybeHandleEnter
+     , handleEvent
+     , trapExits
+     , terminate: terminate'
+     , getStateId
+     } -> do
+      _ <- case trapExits of
+        Nothing -> pure unit
+        Just _ -> void $ setProcessFlagTrapExit true
+      result <- StateT.runStateT f {}
+      let
+        result' = Tuple.fst result
 
-      contextResult = Tuple.snd result
+        contextResult = Tuple.snd result
 
-      mkOuterData state commonData innerContext =
-        OuterData
-          { state
-          , commonData
-          , handleEnter: fromMaybe (\_ _ _ _ -> pure StateEnterKeepData) maybeHandleEnter
-          , handleEvent
-          , terminate: terminate'
-          , trapExits
-          , context: innerContext
-          , getStateId: getStateId
-          }
-    pure
-      $ export
-      $ case result' of
-          (InitOk state commonData) -> OuterInitOk (getStateId state) (mkOuterData state commonData contextResult)
-          (InitOkWithActions state commonData actions) -> OuterInitOkWithActions (getStateId state) (mkOuterData state commonData contextResult) actions
-          (InitStop error) -> OuterInitStop error
-          (InitIgnore) -> OuterInitIgnore
+        mkOuterData state commonData innerContext =
+          OuterData
+            { state
+            , commonData
+            , handleEnter: fromMaybe (\_ _ _ _ -> pure StateEnterKeepData) maybeHandleEnter
+            , handleEvent
+            , terminate: terminate'
+            , trapExits
+            , context: innerContext
+            , getStateId: getStateId
+            }
+      pure
+        $ export
+        $ case result' of
+            (InitOk state commonData) -> OuterInitOk (getStateId state) (mkOuterData state commonData contextResult)
+            (InitOkWithActions state commonData actions) -> OuterInitOkWithActions (getStateId state) (mkOuterData state commonData contextResult) actions
+            (InitStop error) -> OuterInitStop error
+            (InitIgnore) -> OuterInitIgnore
 
-runEnterState ::
-  forall info internal timerName timerContent commonData stateId state.
-  EnterFn info internal timerName timerContent commonData stateId state ->
-  stateId ->
-  stateId ->
-  OuterData info internal timerName timerContent commonData stateId state ->
-  Effect (OuterStateEnterResult info internal timerName timerContent commonData stateId state)
+runEnterState
+  :: forall info internal timerName timerContent commonData stateId state
+   . EnterFn info internal timerName timerContent commonData stateId state
+  -> stateId
+  -> stateId
+  -> OuterData info internal timerName timerContent commonData stateId state
+  -> Effect (OuterStateEnterResult info internal timerName timerContent commonData stateId state)
 runEnterState handleEnter oldStateId newStateId (OuterData currentData@{ state, commonData, context }) = do
   let
     (StateEnterT stateT) = handleEnter oldStateId newStateId state commonData
@@ -594,9 +579,9 @@ runEnterState handleEnter oldStateId newStateId (OuterData currentData@{ state, 
       else
         pure $ OuterStateEnterKeepDataWithActions actions
 
-handle_event ::
-  forall info internal timerName timerContent commonData stateId state.
-  EffectFn4 Foreign Foreign stateId (OuterData info internal timerName timerContent commonData stateId state) NativeHandleEventResult
+handle_event
+  :: forall info internal timerName timerContent commonData stateId state
+   . EffectFn4 Foreign Foreign stateId (OuterData info internal timerName timerContent commonData stateId state) NativeHandleEventResult
 handle_event =
   mkEffectFn4 \t e stateId dat@(OuterData { getStateId, handleEvent, handleEnter, trapExits }) -> do
     let
@@ -614,9 +599,9 @@ handle_event =
 assumeExpectedMessage :: forall msg. Foreign -> msg
 assumeExpectedMessage = unsafeCoerce
 
-terminate ::
-  forall info internal timerName timerContent commonData stateId state.
-  EffectFn3 Foreign stateId (OuterData info internal timerName timerContent commonData stateId state) Atom
+terminate
+  :: forall info internal timerName timerContent commonData stateId state
+   . EffectFn3 Foreign stateId (OuterData info internal timerName timerContent commonData stateId state) Atom
 terminate =
   mkEffectFn3 \reason _stateId (OuterData { terminate: maybeTerminate, state, commonData, context }) -> do
     case maybeTerminate of
@@ -634,9 +619,12 @@ data HandleEvent reply info internal timerName timerContent commonData stateId s
   | HandleEventCast (CastFn info internal timerName timerContent commonData stateId state)
   | HandleEvent (Event info internal timerName timerContent)
 
-foreign import parseEventFFI ::
-  forall reply info internal timerName timerContent commonData stateId state.
-  Foreign -> (Foreign -> info) -> Foreign -> HandleEvent reply info internal timerName timerContent commonData stateId state
+foreign import parseEventFFI
+  :: forall reply info internal timerName timerContent commonData stateId state
+   . Foreign
+  -> (Foreign -> info)
+  -> Foreign
+  -> HandleEvent reply info internal timerName timerContent commonData stateId state
 
 foreign import data NativeInitResult :: Type
 

@@ -20,7 +20,6 @@ import Pinto.Types (ExitMessage(..), RegistryReference(..), crashIfNotStarted)
 import Test.Assert (assertEqual, assertEqual')
 import Test.TestHelpers (getState, mpTest, setState, setStateCast)
 
-
 genServer2Suite :: Free TestF Unit
 genServer2Suite =
   suite "Pinto genServer tests" do
@@ -30,14 +29,12 @@ genServer2Suite =
     testCast
     testTrapExits
 
-data TestState
-  = TestState Int
+data TestState = TestState Int
 
 derive instance eqTestState :: Eq TestState
 
 instance showTestState :: Show TestState where
   show (TestState x) = "TestState: " <> show x
-
 
 type TestState2 =
   { total :: Int
@@ -48,11 +45,10 @@ data TestMsg
   = TestMsg
   | TestMsgNotSent
 
-
 testStartLinkAnonymous :: Free TestF Unit
 testStartLinkAnonymous =
   test "Can start an anonymous GenServer" do
-    serverPid <- crashIfNotStarted <$> GS2.startLink' {init}
+    serverPid <- crashIfNotStarted <$> GS2.startLink' { init }
     let
       instanceRef = ByPid serverPid
     state1 <- getState instanceRef
@@ -68,7 +64,6 @@ testStartLinkAnonymous =
   where
   init :: GS2.InitFn TestState (ProcessM Void)
   init = pure $ GS2.InitOk (TestState 0)
-
 
 testHandleInfo :: Free TestF Unit
 testHandleInfo =
@@ -91,7 +86,6 @@ testHandleInfo =
 
   handleInfo _ _s = do
     unsafeCrashWith "Unexpected message"
-
 
 type TestMonad = MonitorT TestMonitorMsg (TrapExitT (ProcessM TestMsg))
 
@@ -126,11 +120,11 @@ testCast =
   init = do
     pure $ InitOk $ TestState 0
 
-type TrapExitState
-  = { testPid :: Process Boolean
-    , receivedExit :: Boolean
-    , receivedTerminate :: Boolean
-    }
+type TrapExitState =
+  { testPid :: Process Boolean
+  , receivedExit :: Boolean
+  , receivedTerminate :: Boolean
+  }
 
 testTrapExits :: Free TestF Unit
 testTrapExits =
@@ -141,7 +135,7 @@ testTrapExits =
   where
   testChildExit :: ProcessM Void Unit
   testChildExit = liftEffect do
-    serverPid <-   crashIfNotStarted <$> (GS2.startLink' {init, handleInfo })
+    serverPid <- crashIfNotStarted <$> (GS2.startLink' { init, handleInfo })
     state <- getState (ByPid serverPid)
     assertEqual
       { actual: state.receivedExit
@@ -154,12 +148,11 @@ testTrapExits =
     testPid <- self
     let
       spawnAndExit :: ProcessM Void Unit
-      spawnAndExit = void $ liftEffect $ crashIfNotStarted <$> (GS2.startLink' $ {init: init2 testPid, terminate})
+      spawnAndExit = void $ liftEffect $ crashIfNotStarted <$> (GS2.startLink' $ { init: init2 testPid, terminate })
 
     void $ liftEffect $ spawnLink spawnAndExit
     actual <- receiveWithTimeout (Milliseconds 50.0)
-    liftEffect $ assertEqual' "Terminate wasn't called on the genserver" {expected: Right true, actual}
-
+    liftEffect $ assertEqual' "Terminate wasn't called on the genserver" { expected: Right true, actual }
 
   init :: GS2.InitFn _ (TrapExitT (ProcessM Void))
   init = do
@@ -179,13 +172,11 @@ testTrapExits =
   terminate _reason s = do
     liftEffect $ send s.testPid true
 
-
-
 data TestMonitorMsg = TestMonitorMsg Int
+
 derive instance Eq TestMonitorMsg
 instance Show TestMonitorMsg where
   show (TestMonitorMsg i) = "TestMonitorMsg: " <> show i
-
 
 ---------------------------------------------------------------------------------
 -- Internal

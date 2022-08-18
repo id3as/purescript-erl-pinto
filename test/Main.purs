@@ -50,19 +50,16 @@ supervisorSuite =
     testStartWithNamedChild
     dynamicSupervisor
 
-data TestState
-  = TestState Int
+data TestState = TestState Int
 
 derive instance eqTestState :: Eq TestState
 
 instance showTestState :: Show TestState where
   show (TestState x) = "TestState: " <> show x
 
-data TestCont
-  = TestCont
+data TestCont = TestCont
 
-data TestMsg
-  = TestMsg
+data TestMsg = TestMsg
 
 --------------------------------------------------------------------------------
 -- Standard Supervisor Test
@@ -92,6 +89,7 @@ testStartWithNamedChild =
           }
       , childSpecs
       }
+
   childInit :: InitFn TestState (ProcessM Void)
   childInit = do
     pure $ InitOk $ TestState 0

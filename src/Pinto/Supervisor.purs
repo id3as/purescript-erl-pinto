@@ -47,9 +47,9 @@ data StartChildResult childProcess
   | ChildStartReturnedIgnore
   | ChildFailed Foreign
   | ChildStarted
-    { pid :: childProcess
-    , info :: Maybe Foreign
-    }
+      { pid :: childProcess
+      , info :: Maybe Foreign
+      }
 
 data DeleteChildResult
   = ChildDeleted
@@ -80,13 +80,13 @@ data ChildType
 -- | with the difference that none of them are optional.
 -- |
 -- | `childProcess` is the typed pid of the started process (commonly GenServer.ServerPid)
-type ChildSpec childProcess
-  = { id :: String
-    , start :: Effect (StartLinkResult childProcess)
-    , restartStrategy :: RestartStrategy
-    , shutdownStrategy :: ChildShutdownTimeoutStrategy
-    , childType :: ChildType
-    }
+type ChildSpec childProcess =
+  { id :: String
+  , start :: Effect (StartLinkResult childProcess)
+  , restartStrategy :: RestartStrategy
+  , shutdownStrategy :: ChildShutdownTimeoutStrategy
+  , childType :: ChildType
+  }
 
 -- | The strategy employed by this supervision tree, this maps to
 -- | one_for_all | one_for_one | rest_for_one in the underlying supervisor API
@@ -98,39 +98,35 @@ data Strategy
   | RestForOne
 
 -- | The flags for a supervision tree, mapping onto sup_flags from the underlying supervisor API
-type Flags
-  = { strategy :: Strategy
-    , intensity :: Int
-    , period :: Seconds
-    }
+type Flags =
+  { strategy :: Strategy
+  , intensity :: Int
+  , period :: Seconds
+  }
 
-newtype SupervisorType
-  = SupervisorType Void
+newtype SupervisorType = SupervisorType Void
 
-newtype SupervisorPid
-  = SupervisorPid Pid
+newtype SupervisorPid = SupervisorPid Pid
 
 derive newtype instance supervisorPidHasPid :: HasPid SupervisorPid
 
-type SupervisorRef
-  = RegistryReference SupervisorPid SupervisorType
+type SupervisorRef = RegistryReference SupervisorPid SupervisorType
 
-type SupervisorInstance
-  = RegistryInstance SupervisorPid SupervisorType
+type SupervisorInstance = RegistryInstance SupervisorPid SupervisorType
 
 -- | A complete specification for a supervisor, see `Result` in the underlying supervisor API
-type SupervisorSpec
-  = { flags :: Flags
-    , childSpecs :: List ErlChildSpec
-    }
+type SupervisorSpec =
+  { flags :: Flags
+  , childSpecs :: List ErlChildSpec
+  }
 
 -- | Given an (optional) name for the supervisor
 -- | an effect that will be executed within the context of the new supervisor
 -- | execute that effect to get the specification and start a supervisor with that specification
-foreign import startLink ::
-  Maybe (RegistryName SupervisorType) ->
-  Effect SupervisorSpec ->
-  Effect (StartLinkResult SupervisorPid)
+foreign import startLink
+  :: Maybe (RegistryName SupervisorType)
+  -> Effect SupervisorSpec
+  -> Effect (StartLinkResult SupervisorPid)
 
 foreign import stopFFI :: SupervisorInstance -> Effect Unit
 
@@ -140,33 +136,33 @@ stop = registryInstance >>> stopFFI
 
 foreign import data ErlChildSpec :: Type
 
-foreign import specFFI ::
-  forall childProcess.
-  ChildSpec childProcess ->
-  ErlChildSpec
+foreign import specFFI
+  :: forall childProcess
+   . ChildSpec childProcess
+  -> ErlChildSpec
 
-spec ::
-  forall childProcess.
-  HasPid childProcess =>
-  ChildSpec childProcess ->
-  ErlChildSpec
+spec
+  :: forall childProcess
+   . HasPid childProcess
+  => ChildSpec childProcess
+  -> ErlChildSpec
 spec = specFFI
 
-foreign import startChildFFI ::
-  forall childProcess.
-  SupervisorInstance ->
-  ChildSpec childProcess ->
-  StartChildResult childProcess
+foreign import startChildFFI
+  :: forall childProcess
+   . SupervisorInstance
+  -> ChildSpec childProcess
+  -> StartChildResult childProcess
 
 -- | Given a supervisor reference and a child specification
 -- | start a new child within the context of that supervisor
 -- | See also supervisor:start_child
-startChild ::
-  forall childProcess.
-  HasPid childProcess =>
-  SupervisorRef ->
-  ChildSpec childProcess ->
-  StartChildResult childProcess
+startChild
+  :: forall childProcess
+   . HasPid childProcess
+  => SupervisorRef
+  -> ChildSpec childProcess
+  -> StartChildResult childProcess
 startChild r = startChildFFI $ registryInstance r
 
 foreign import terminateChildFFI :: SupervisorInstance -> String -> Effect TerminateChildResult

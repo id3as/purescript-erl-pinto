@@ -21,7 +21,7 @@ data TestMonitorMsg = TestMonitorMsg
 data TestAppMsg = TestAppMsg
 data TestTimeoutMsg = TestTimeoutMsg
 
-testMonitorT  :: Free TestF Unit
+testMonitorT :: Free TestF Unit
 testMonitorT =
   suite "MonitorM tests" do
     testMonitor
@@ -66,7 +66,6 @@ testMonitorTrapExit =
       Right (Left TestMonitorMsg) -> pure 2
       Right (Right _) ->
         unsafeCrashWith "We got sent a void message!"
-
 
 testTrapExitMonitor :: Free TestF Unit
 testTrapExitMonitor =
@@ -120,7 +119,6 @@ testSpawnMonitor =
       Right _ ->
         unsafeCrashWith "We got sent a void message!"
 
-
 testSpawnLinkMonitor :: Free TestF Unit
 testSpawnLinkMonitor =
   mpTest "spawnLinkMonitor a process, send it a message and confirm we get a monitor message when it exits" theTest
@@ -138,7 +136,6 @@ testSpawnLinkMonitor =
 
 immediatelyExitNormal :: ProcessM Void Unit
 immediatelyExitNormal = pure unit
-
 
 exitOnMessage :: ProcessM TestAppMsg Unit
 exitOnMessage = do

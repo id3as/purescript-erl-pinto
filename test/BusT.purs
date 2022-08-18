@@ -1,7 +1,6 @@
 module Test.BusT
   ( testBusT
-  )
-  where
+  ) where
 
 import Prelude
 
@@ -26,10 +25,9 @@ data TestMappedMsg = TestMappedMsg
 data TestAppMsg = TestAppMsg
 data TestTimeoutMsg = TestTimeoutMsg
 
-
 foreign import sendSelfLateMessage :: forall name msg. Bus name msg -> msg -> Milliseconds -> Effect Unit
 
-testBusT  :: Free TestF Unit
+testBusT :: Free TestF Unit
 testBusT =
   suite "BusM tests" do
     testReceiveMsg
@@ -128,7 +126,6 @@ testMessageAfterUnsubscribe =
     | duration > 11.0 = unsafeCrashWith "Message timeout too long"
     | otherwise = pure unit
 
-
 testMultipleBusses :: Free TestF Unit
 testMultipleBusses =
   mpTest "Can subscribe to multiple busses - each with their own mapper" theTest
@@ -143,7 +140,7 @@ testMultipleBusses =
 
     int1 <- doReceive
     int2 <- doReceive
-    liftEffect $ assertEqual {actual: int1 + int2, expected: 11}
+    liftEffect $ assertEqual { actual: int1 + int2, expected: 11 }
 
   doReceive = do
     msg <- receive
@@ -156,11 +153,11 @@ testMultipleBusses =
 -- Helpers
 --------------------------------------------------------------------------------
 raiseBusMessage :: ProcessM Void Unit
-raiseBusMessage  = do
+raiseBusMessage = do
   liftEffect $ raise testBus TestBusMsg
 
 raiseBusMessage2 :: ProcessM Void Unit
-raiseBusMessage2  = do
+raiseBusMessage2 = do
   liftEffect $ raise testBus2 TestBusMsg
 
 testBus :: Bus String TestBusMsg

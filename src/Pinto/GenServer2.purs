@@ -27,8 +27,7 @@ module Pinto.GenServer2
   , startLink'
   , stop
   , module CSExports
-  )
-  where
+  ) where
 
 import Prelude
 
@@ -41,7 +40,6 @@ import Pinto.GenServer.ContStop as CS
 import Pinto.ProcessT.Internal.Types (class MonadProcessTrans)
 import Pinto.Types (RegistryInstance, RegistryReference, ShutdownReason, StartLinkResult)
 
-
 -- In general a gen_server can return continue and stop actions but in practice they
 -- very rarely do.  As a result the "full" interface as implemented in Pinto.GenServer.ContStop
 -- module is typed over cont and stop messages in addition to state and m (where m is the monad
@@ -51,23 +49,19 @@ import Pinto.Types (RegistryInstance, RegistryReference, ShutdownReason, StartLi
 
 -- | Simplified CS.ServerPid without cont and stop
 type ServerPid :: forall k1 k2. k1 -> k2 -> Type
-type ServerPid state m
-  = CS.ServerPid Void Void state m
+type ServerPid state m = CS.ServerPid Void Void state m
 
 -- | Simplified CS.ServerType without cont and stop
 type ServerType :: forall k1 k2. k1 -> k2 -> Type
-type ServerType state m
-  = CS.ServerType Void Void state m
+type ServerType state m = CS.ServerType Void Void state m
 
 -- | Simplified CS.ServerRef without cont and stop
 type ServerRef :: forall k1 k2. k1 -> k2 -> Type
-type ServerRef state m
-  = RegistryReference (ServerPid state m) (ServerType state m)
+type ServerRef state m = RegistryReference (ServerPid state m) (ServerType state m)
 
 -- | Simplified CS.ServerInstance without cont and stop
 type ServerInstance :: forall k1 k2. k1 -> k2 -> Type
-type ServerInstance state m
-  = RegistryInstance (ServerPid state m) (ServerType state m)
+type ServerInstance state m = RegistryInstance (ServerPid state m) (ServerType state m)
 
 -- | Simplified CS.Action without cont and stop
 type Action' = CS.Action Void Void
@@ -82,14 +76,14 @@ type CallResult' reply state = CS.CallResult reply Void Void state
 -- | The result of a GenServer.handle_info or GenServer.handle_cast callback
 type ReturnResult' state = CS.ReturnResult Void Void state
 
-
 type InitFn :: forall k. Type -> (Type -> k) -> k
-type InitFn state m           =                            m (InitResult' state)
-type InfoFn parsedMsg state m = parsedMsg      -> state -> m (ReturnResult' state)
-type ContinueFn state m       =                   state -> m (ReturnResult' state)
-type CastFn state m           =                   state -> m (ReturnResult' state)
-type CallFn reply state m     = From reply     -> state -> m (CallResult' reply state)
-type TerminateFn state m      = ShutdownReason -> state -> m  Unit
+type InitFn state m = m (InitResult' state)
+
+type InfoFn parsedMsg state m = parsedMsg -> state -> m (ReturnResult' state)
+type ContinueFn state m = state -> m (ReturnResult' state)
+type CastFn state m = state -> m (ReturnResult' state)
+type CallFn reply state m = From reply -> state -> m (CallResult' reply state)
+type TerminateFn state m = ShutdownReason -> state -> m Unit
 
 type OptionalConfig parsedMsg state m = CS.OptionalConfig Void Void parsedMsg state m
 type AllConfig parsedMsg state m = CS.AllConfig Void Void parsedMsg state m
@@ -105,8 +99,9 @@ startLink = CS.startLink
 startLink'
   :: forall providedConfig appMsg parsedMsg state m mState
    . MonadProcessTrans m mState appMsg parsedMsg
-  => ConvertOptionsWithDefaults CS.OptionToMaybe { | OptionalConfig parsedMsg state m} { | providedConfig } { | AllConfig parsedMsg state m}
-  => { | providedConfig } -> Effect (StartLinkResult (ServerPid state m))
+  => ConvertOptionsWithDefaults CS.OptionToMaybe { | OptionalConfig parsedMsg state m } { | providedConfig } { | AllConfig parsedMsg state m }
+  => { | providedConfig }
+  -> Effect (StartLinkResult (ServerPid state m))
 startLink' = CS.startLink'
 
 call
@@ -138,9 +133,10 @@ stop = CS.stop
 replyTo
   :: forall reply m
    . MonadEffect m
-  => From reply -> reply -> m Unit
+  => From reply
+  -> reply
+  -> m Unit
 replyTo = CS.replyTo
-
 
 defaultSpec
   :: forall parsedMsg appMsg state m mState

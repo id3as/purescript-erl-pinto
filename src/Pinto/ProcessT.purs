@@ -7,8 +7,7 @@ module Pinto.ProcessT
   , unsafeEvalProcess
   , unsafeExecProcess
   , unsafeRunProcess
-  )
-  where
+  ) where
 
 import Prelude
 
@@ -44,6 +43,7 @@ data PrivateProcessTTimeoutMsg
   | ThereToGetRidOfUnreacableWarning
 
 data Timeout = Timeout
+
 derive instance Eq Timeout
 derive instance Ord Timeout
 instance Show Timeout where
@@ -53,7 +53,8 @@ receiveWithTimeout
   :: forall m mState appMsg parsedMsg
    . MonadProcessTrans m mState appMsg parsedMsg
   => MonadEffect m
-  => Milliseconds -> m (Either Timeout parsedMsg)
+  => Milliseconds
+  -> m (Either Timeout parsedMsg)
 receiveWithTimeout ms@(Milliseconds msNum) = do
   (Milliseconds startTime) <- liftEffect milliseconds
   rawMsg <- liftEffect $ Raw.receiveWithTimeout ms PrivateProcessTTimeoutMsg__
@@ -76,23 +77,26 @@ receiveWithTimeout ms@(Milliseconds msNum) = do
 unsafeEvalProcess
   :: forall m mState appMsg parsedMsg a
    . MonadProcessTrans m mState appMsg parsedMsg
---  => MonadEffect m
-  => m a -> Effect a
+  --  => MonadEffect m
+  => m a
+  -> Effect a
 unsafeEvalProcess mpt =
   fst <$> unsafeRunProcess mpt
 
 unsafeExecProcess
   :: forall m mState appMsg parsedMsg
    . MonadProcessTrans m mState appMsg parsedMsg
---  => MonadEffect m
-  => m appMsg -> Effect mState
+  --  => MonadEffect m
+  => m appMsg
+  -> Effect mState
 unsafeExecProcess mpt =
   snd <$> unsafeRunProcess mpt
 
 unsafeRunProcess
   :: forall m mState appMsg parsedMsg a
    . MonadProcessTrans m mState appMsg parsedMsg
-  => m a -> Effect (Tuple a mState)
+  => m a
+  -> Effect (Tuple a mState)
 unsafeRunProcess mpt =
   run mpt =<< initialise (Proxy :: Proxy m)
 
@@ -100,14 +104,15 @@ spawn
   :: forall m mState appMsg parsedMsg
    . MonadProcessTrans m mState appMsg parsedMsg
   => MonadEffect m
-  => m Unit -> Effect (Process appMsg)
+  => m Unit
+  -> Effect (Process appMsg)
 spawn = unsafeCoerce <<< Raw.spawn <<< unsafeEvalProcess
 
 spawnLink
   :: forall m mState appMsg parsedMsg
    . MonadProcessTrans m mState appMsg parsedMsg
   => MonadEffect m
-  => m Unit -> Effect (Process appMsg)
+  => m Unit
+  -> Effect (Process appMsg)
 spawnLink = unsafeCoerce <<< Raw.spawnLink <<< unsafeEvalProcess
-
 

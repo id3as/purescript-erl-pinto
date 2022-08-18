@@ -17,8 +17,7 @@ import Erl.Process.Raw (Pid)
 -- | Reference to a running router
 -- |
 -- | - `handle` is the value returned by the start mechanism of the worker
-data RouterRef handle
-  = RouterRef handle Pid
+data RouterRef handle = RouterRef handle Pid
 
 -- | Given an `Effect handle`, runs that effect in a new process, returning a RouterRef for that new process
 -- |

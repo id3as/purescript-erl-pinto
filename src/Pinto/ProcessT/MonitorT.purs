@@ -10,8 +10,7 @@ module Pinto.ProcessT.MonitorT
   , monitor
   , spawnLinkMonitor
   , spawnMonitor
-  )
-  where
+  ) where
 
 import Prelude
 
@@ -47,22 +46,18 @@ derive newtype instance MonadTrans (MonitorT monitorMsg)
 instance (HasSelf m msg, Monad m) => HasSelf (MonitorT monitorMsg m) msg where
   self = lift self
 
-type MonitorObject
-  = Foreign
+type MonitorObject = Foreign
 
 -- | The 'reason' for the monitor being invoked, if this needs unpacking
 -- | then FFI will need to be written
-type MonitorInfo
-  = Foreign
+type MonitorInfo = Foreign
 
 -- | The type of monitor this message is being sent on behalf
 data MonitorType
   = Process
   | Port
 
-data MonitorMsg
-  = Down MonitorRef MonitorType MonitorObject MonitorInfo
-
+data MonitorMsg = Down MonitorRef MonitorType MonitorObject MonitorInfo
 
 -- | Reference to a monitor, used to stop the monitor once it is started
 foreign import data MonitorRef :: Type
@@ -70,7 +65,7 @@ foreign import data MonitorRef :: Type
 type MonitorMap msg = Map MonitorRef (MonitorMsg -> msg)
 
 foreign import monitorImpl :: Raw.Pid -> Effect MonitorRef
-foreign import demonitorImpl ::  MonitorRef -> Effect Unit
+foreign import demonitorImpl :: MonitorRef -> Effect Unit
 foreign import parseMonitorMsg :: Foreign -> Maybe MonitorMsg
 
 -- instance
@@ -78,9 +73,10 @@ foreign import parseMonitorMsg :: Foreign -> Maybe MonitorMsg
 --   HasTypedPid (MonitorT monitorMsg m) msg where
 --     getTypedPid _ = getTypedPid (Proxy :: Proxy m)
 
-
 instance
-  (MonadProcessTrans m innerState appMsg innerOutMsg, Monad m) =>
+  ( MonadProcessTrans m innerState appMsg innerOutMsg
+  , Monad m
+  ) =>
   MonadProcessTrans (MonitorT monitorMsg m) (Tuple (MonitorMap monitorMsg) innerState) appMsg (Either monitorMsg innerOutMsg) where
   parseForeign fgn = MonitorT do
     case parseMonitorMsg fgn of
@@ -96,8 +92,8 @@ instance
         (map Right) <$> (lift $ parseForeign fgn)
 
   run (MonitorT mt) (Tuple mtState is) = do
-      (Tuple (Tuple res newMtState) newIs) <- run (runStateT mt mtState) is
-      pure $ Tuple res $ Tuple newMtState newIs
+    (Tuple (Tuple res newMtState) newIs) <- run (runStateT mt mtState) is
+    pure $ Tuple res $ Tuple newMtState newIs
 
   initialise _ = do
     innerState <- initialise (Proxy :: Proxy m)
@@ -106,21 +102,24 @@ instance
 --------------------------------------------------------------------------------
 -- Public API
 --------------------------------------------------------------------------------
-monitor ::
-  forall monitorMsg m pid.
-  MonadEffect m =>
-  HasPid pid =>
-  pid -> (MonitorMsg -> monitorMsg) -> MonitorT monitorMsg m MonitorRef
+monitor
+  :: forall monitorMsg m pid
+   . MonadEffect m
+  => HasPid pid
+  => pid
+  -> (MonitorMsg -> monitorMsg)
+  -> MonitorT monitorMsg m MonitorRef
 monitor pid mapper = do
   MonitorT do
     ref <- liftEffect $ monitorImpl $ getPid pid
     modify_ \mm -> Map.insert ref mapper mm
     pure ref
 
-demonitor ::
-  forall monitorMsg m.
-  MonadEffect m =>
-  MonitorRef -> MonitorT monitorMsg m Unit
+demonitor
+  :: forall monitorMsg m
+   . MonadEffect m
+  => MonitorRef
+  -> MonitorT monitorMsg m Unit
 demonitor ref = do
   MonitorT do
     liftEffect $ demonitorImpl ref
@@ -131,7 +130,9 @@ spawnMonitor
    . MonadProcessTrans m mState msg outMsg
   => MonadEffect m
   => MonadEffect m2
-  => m Unit -> (MonitorMsg -> monitorMsg) -> MonitorT monitorMsg m2 (Process msg)
+  => m Unit
+  -> (MonitorMsg -> monitorMsg)
+  -> MonitorT monitorMsg m2 (Process msg)
 spawnMonitor = doSpawnMonitor spawn
 
 spawnLinkMonitor
@@ -139,9 +140,10 @@ spawnLinkMonitor
    . MonadProcessTrans m mState msg outMsg
   => MonadEffect m
   => MonadEffect m2
-  => m Unit -> (MonitorMsg -> monitorMsg) -> MonitorT monitorMsg m2 (Process msg)
+  => m Unit
+  -> (MonitorMsg -> monitorMsg)
+  -> MonitorT monitorMsg m2 (Process msg)
 spawnLinkMonitor = doSpawnMonitor spawnLink
-
 
 -- TODO - consider modelling the erlang capabilities around  alias, reply_demonitor, user defined tags etc
 
@@ -151,7 +153,10 @@ spawnLinkMonitor = doSpawnMonitor spawnLink
 doSpawnMonitor
   :: forall m msg m2 monitorMsg
    . MonadEffect m2
-  => (m -> Effect (Process msg)) -> m -> (MonitorMsg -> monitorMsg) -> MonitorT monitorMsg m2 (Process msg)
+  => (m -> Effect (Process msg))
+  -> m
+  -> (MonitorMsg -> monitorMsg)
+  -> MonitorT monitorMsg m2 (Process msg)
 doSpawnMonitor spawner m mapper = do
   pid <- liftEffect $ spawner m
   void $ monitor pid mapper

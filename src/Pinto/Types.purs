@@ -60,10 +60,11 @@ foreign import data RegistryInstance :: Type -> Type -> Type
 -- |
 -- | Create a `RegistryInstance serverPid serverType` that can be used
 -- | to communicate with that process directly
-registryInstance ::
-  forall serverPid serverType.
-  HasPid serverPid =>
-  RegistryReference serverPid serverType -> RegistryInstance serverPid serverType
+registryInstance
+  :: forall serverPid serverType
+   . HasPid serverPid
+  => RegistryReference serverPid serverType
+  -> RegistryInstance serverPid serverType
 registryInstance (ByPid pid) = registryPidToInstance pid
 
 registryInstance (ByName name) = registryNameToInstance name
@@ -76,8 +77,7 @@ registryNameToInstance (Local atom) = unsafeCoerce atom
 
 registryNameToInstance other = unsafeCoerce other
 
-data ExitMessage
-  = Exit Pid Foreign
+data ExitMessage = Exit Pid Foreign
 
 data ShutdownReason
   = ReasonNormal
@@ -100,8 +100,7 @@ instance (Show serverProcess) => Show (NotStartedReason serverProcess) where
   show (AlreadyStarted process) = "(AlreadyStarted " <> show process <> ")"
   show (Failed _) = "Failed (foreign)"
 
-type StartLinkResult serverProcess
-  = Either (NotStartedReason serverProcess) serverProcess
+type StartLinkResult serverProcess = Either (NotStartedReason serverProcess) serverProcess
 
 data TerminateReason
   = Normal

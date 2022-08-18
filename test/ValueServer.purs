@@ -7,8 +7,7 @@ module Test.ValueServer
   , startLink
   , stop
   , testValueServer
-  )
-  where
+  ) where
 
 import Prelude
 
@@ -23,17 +22,13 @@ import Pinto.GenServer2 as GS
 import Pinto.Types (RegistryName(..), RegistryReference(..), crashIfNotStarted)
 import Test.Assert (assertEqual)
 
-data Msg
-  = SetValue Int
+data Msg = SetValue Int
 
-type State
-  = { value :: Int }
+type State = { value :: Int }
 
-type ValueServerType
-  = ServerType State (ProcessM Msg)
+type ValueServerType = ServerType State (ProcessM Msg)
 
-newtype ValueServerPid
-  = ValueServerPid (ServerPid State (ProcessM Msg))
+newtype ValueServerPid = ValueServerPid (ServerPid State (ProcessM Msg))
 
 -- Only surface the raw pid, don't implement HasProcess - we don't want folks sending us messages using our Info
 -- type
