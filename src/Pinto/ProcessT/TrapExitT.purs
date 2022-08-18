@@ -42,6 +42,7 @@ instance
           pure $ Just $ Left exitMsg
         Nothing -> do
           (map Right) <$> (lift $ parseForeign fgn)
+
   run (TrapExitT mt) is =
       run (runIdentityT mt) is
 

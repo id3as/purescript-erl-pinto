@@ -95,10 +95,10 @@ instance
       Nothing -> do
         (map Right) <$> (lift $ parseForeign fgn)
 
-
   run (MonitorT mt) (Tuple mtState is) = do
       (Tuple (Tuple res newMtState) newIs) <- run (runStateT mt mtState) is
       pure $ Tuple res $ Tuple newMtState newIs
+
   initialise _ = do
     innerState <- initialise (Proxy :: Proxy m)
     pure $ Tuple Map.empty innerState

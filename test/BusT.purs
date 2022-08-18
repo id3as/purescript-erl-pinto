@@ -152,8 +152,9 @@ testMultipleBusses =
       Right _ ->
         unsafeCrashWith "We got sent a void message!"
 
-
-
+--------------------------------------------------------------------------------
+-- Helpers
+--------------------------------------------------------------------------------
 raiseBusMessage :: ProcessM Void Unit
 raiseBusMessage  = do
   liftEffect $ raise testBus TestBusMsg
