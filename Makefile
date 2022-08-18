@@ -1,4 +1,4 @@
-.PHONY: all test runtest erl ci clean cleandist
+.PHONY: all test runtest erl ci clean cleandist formatPS
 
 PS_SRC = src
 TEST_SRC = test
@@ -41,8 +41,8 @@ test: rebar.lock output/.testcomplete
 	rebar3 as test_profile compile
 	erl -pa ebin -pa $$(rebar3 as test_profile path) -noshell -sname "runner" -eval '(test_main@ps:main())()' -eval 'init:stop()'
 
-prettier:
-	prettier --write src test --plugin $$PRETTIER_PURESCRIPT
+formatPS:
+	purs-tidy format-in-place src/ test/
 
 clean:
 	rebar3 as dist clean
