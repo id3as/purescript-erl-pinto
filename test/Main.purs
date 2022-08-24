@@ -24,6 +24,7 @@ import Test.DoorLock as DoorLock
 import Test.GenServer as TGS
 import Test.GenServer2 as TGS2
 import Test.MonitorT (testMonitorT)
+import Test.StateBusT (testStateBusT)
 import Test.TestHelpers (getState)
 import Test.TrapExitT (testTrapExitT)
 import Test.ValueServer (testValueServer)
@@ -40,6 +41,7 @@ main = do
     testMonitorT
     testTrapExitT
     testBusT
+    testStateBusT
     testValueServer
     DoorLock.testSuite
     supervisorSuite
