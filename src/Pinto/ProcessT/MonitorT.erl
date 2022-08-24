@@ -12,10 +12,11 @@
 -define(just(X), {just, X}).
 -define(nothing, {nothing}).
 -define(down(Ref, Type, Object, Info), {down, Ref, Type, Object, Info}).
+-define(monitorTag, 'MonitorT').
 
 monitorImpl(Pid) ->
   fun() ->
-    erlang:monitor(process, Pid)
+    erlang:monitor(process, Pid, [{tag, ?monitorTag}])
   end.
 
 demonitorImpl(Ref) ->
@@ -25,7 +26,7 @@ demonitorImpl(Ref) ->
 
 parseMonitorMsg(Msg) ->
     case Msg of
-        {'DOWN', MonitorRef, MonitorType, MonitorObject, MonitorInfo} ->
+        {?monitorTag, MonitorRef, MonitorType, MonitorObject, MonitorInfo} ->
             ?just(?down(MonitorRef, MonitorType, MonitorObject, MonitorInfo));
         _ ->
             ?nothing
