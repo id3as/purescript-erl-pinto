@@ -33,16 +33,16 @@ foreign import data BusMsgForeign :: Type
 
 type BusMap msg = Map BusNameForeign (BusMsgForeign -> msg)
 
-newtype BusT monitorMsg m a = BusT (StateT (BusMap monitorMsg) m a)
+newtype BusT busMsg m a = BusT (StateT (BusMap busMsg) m a)
 
-derive newtype instance Functor m => Functor (BusT monitorMsg m)
-derive newtype instance Monad m => Apply (BusT monitorMsg m)
-derive newtype instance Monad m => Applicative (BusT monitorMsg m)
-derive newtype instance Monad m => Bind (BusT monitorMsg m)
-derive newtype instance Monad m => Monad (BusT monitorMsg m)
+derive newtype instance Functor m => Functor (BusT busMsg m)
+derive newtype instance Monad m => Apply (BusT busMsg m)
+derive newtype instance Monad m => Applicative (BusT busMsg m)
+derive newtype instance Monad m => Bind (BusT busMsg m)
+derive newtype instance Monad m => Monad (BusT busMsg m)
 
-derive newtype instance MonadEffect m => MonadEffect (BusT monitorMsg m)
-derive newtype instance MonadTrans (BusT monitorMsg)
+derive newtype instance MonadEffect m => MonadEffect (BusT busMsg m)
+derive newtype instance MonadTrans (BusT busMsg)
 
 newtype Bus :: forall k. Type -> k -> Type
 newtype Bus name msg = Bus name
