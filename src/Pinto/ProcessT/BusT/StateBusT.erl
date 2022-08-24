@@ -17,7 +17,7 @@
 -define(gprocNameKey(Name),     {n,l,{?stateBusTag, Name}}).
 
 -define(stateTag, state).
--define(stateAttribute(Generation, State), {?stateTag, Generation, State}).
+-define(stateAttribute(Generation, State), {?stateTag, {Generation, State}}).
 -define(initialStateMsg(Generation, State), {initialStateMsg, Generation, State}).
 -record(dataMsg, {generation :: non_neg_integer(), msg :: term()}).
 
@@ -46,26 +46,30 @@ raiseMsgInt(BusName, Msg) ->
 raiseImpl(Updater, BusName, Msg) ->
   fun() ->
     NameKey = ?gprocNameKey(BusName),
-    ?stateAttribute(Generation, State) = gproc:get_attribute(NameKey, ?stateTag),
+    {Generation, State} = gproc:get_attribute(NameKey, ?stateTag),
     NewGeneration = Generation + 1,
-    NewState = Updater(Msg, State),
-    gproc:set_attributes(NameKey, ?stateAttribute(NewGeneration, NewState)),
+    NewState = (Updater(Msg))(State),
+    gproc:set_attributes(NameKey, [?stateAttribute(NewGeneration, NewState)]),
     raiseMsgInt(BusName, #dataMsg{generation = NewGeneration, msg = Msg})
   end.
 
 subscribeImpl(BusName) ->
   fun() ->
-      true = gproc:reg(?gprocNameKey(BusName)),
+      true = gproc:reg(?gprocPropertyKey(BusName)),
       ?unit
   end.
 
 unsubscribeImpl(BusName) ->
   fun() ->
-      gproc:unreg(?gprocNameKey(BusName)),
+      gproc:unreg(?gprocPropertyKey(BusName)),
       ?unit
   end.
 
-parseBusMsg({?msgTag, Name, Msg}) ->
+parseBusMsg(X) ->
+  io:format(user, "Parse ~p~n", [X]),
+  parseBusMsg_(X).
+parseBusMsg_({?msgTag, Name, Msg}) ->
+  io:format(user, "Matched~n", []),
   ?just({Name, Msg});
-parseBusMsg(_) ->
+parseBusMsg_(_) ->
   ?nothing.

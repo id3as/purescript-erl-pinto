@@ -1,23 +1,17 @@
 module Test.StateBusT
   ( testStateBusT
-  )
-  where
+  ) where
 
 import Prelude
 
 import Control.Monad.Free (Free)
 import Data.Either (Either(..))
-import Data.Time.Duration (Milliseconds(..))
-import Effect (Effect)
 import Effect.Class (liftEffect)
-import Erl.Atom (Atom, atom)
-import Erl.Kernel.Time (milliseconds)
 import Erl.Process (ProcessM)
 import Erl.Test.EUnit (TestF, suite)
 import Partial.Unsafe (unsafeCrashWith)
-import Pinto.ProcessT (Timeout(..), receive, receiveWithTimeout, spawn)
-import Pinto.ProcessT.BusT.StateBusT (class UpdateState, Bus, BusMsg(..), BusRef, StateBusT, busRef, create, raise, subscribe, unsubscribe)
-import Test.Assert (assertEqual)
+import Pinto.ProcessT (receive)
+import Pinto.ProcessT.BusT.StateBusT (class UpdateState, Bus, BusMsg(..), BusRef, StateBusT, busRef, create, raise, subscribe)
 import Test.TestHelpers (mpTest)
 
 type TestBus = Bus String TestBusMsg TestBusState
@@ -37,22 +31,28 @@ data TestTimeoutMsg = TestTimeoutMsg
 testStateBusT :: Free TestF Unit
 testStateBusT =
   suite "BusM tests" do
-    testReceiveMsg
+    testInitialStateSubscribeThenCreate
 
-testReceiveMsg :: Free TestF Unit
-testReceiveMsg =
-  mpTest "Can send and receive messages" theTest
+-- TODO testInitialStateCreateTheSubscribe - will fail :)
+
+testInitialStateSubscribeThenCreate :: Free TestF Unit
+testInitialStateSubscribeThenCreate =
+  mpTest "If you subscribe before a bus is created you get initial state" theTest
   where
 
   theTest :: StateBusT (BusMsg TestBusMsg TestBusState) (ProcessM Void) Unit
   theTest = do
-    testBus <- createTestBus
     subscribe testBusRef identity
+    testBus <- createTestBus
     raiseBusMessage testBus
 
     msg <- receive
     case msg of
-      Left (Msg TestBusMsg) -> pure unit
+      Left (State (TestBusState i))
+        | i == 0 ->
+            pure unit
+        | otherwise ->
+            unsafeCrashWith $ "Initial state (" <> show i <> ") wrong!"
       Left _ ->
         unsafeCrashWith "We got sent the wrong message!"
       Right _ ->
@@ -166,9 +166,11 @@ raiseBusMessage testBus = do
   liftEffect $ raise testBus TestBusMsg
 
 --raiseBusMessage2 :: ProcessM Void Unit
+raiseBusMessage2 :: forall t22 name24 state26. MonadEffect t22 => UpdateState state26 TestBusMsg => Bus name24 TestBusMsg state26 -> t22 Unit
 raiseBusMessage2 testBus = do
   liftEffect $ raise testBus TestBusMsg
 
+createTestBus :: forall t37. MonadEffect t37 => t37 (Bus String TestBusMsg TestBusState)
 createTestBus = liftEffect $ create testBusRef (TestBusState 0)
 
 testBusRef :: TestBusRef

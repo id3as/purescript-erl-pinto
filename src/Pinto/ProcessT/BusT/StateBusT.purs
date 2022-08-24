@@ -7,6 +7,7 @@ import Control.Monad.Trans.Class (class MonadTrans, lift)
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple(..))
+import Debug (spy)
 import Effect (Effect)
 import Effect.Class (class MonadEffect, liftEffect)
 import Erl.Data.Map (Map)
@@ -43,9 +44,9 @@ data BusMsgInternal msg state
   | BusTerminatedInternal Generation
 
 data BusMsg msg state
-   = Msg msg
-   | State state
-   | BusTerminated
+  = Msg msg
+  | State state
+  | BusTerminated
 
 foreign import data BusNameForeign :: Type
 foreign import data BusMsgForeign :: Type
@@ -94,7 +95,6 @@ foreign import raiseImpl :: forall name msg state. (msg -> state -> state) -> Bu
 foreign import subscribeImpl :: forall name msg state. BusRef name msg state -> Effect Unit
 foreign import unsubscribeImpl :: forall name msg state. BusRef name msg state -> Effect Unit
 
-
 subscribe
   :: forall name busMsgIn busStateIn msgOut m
    . MonadEffect m
@@ -115,7 +115,6 @@ unsubscribe bus =
   StateBusT do
     modify_ \mm -> Map.delete (toBusNameForeign bus) mm
     liftEffect $ unsubscribeImpl bus
-
 
 foreign import parseBusMsg :: Foreign -> Maybe (Tuple2 BusNameForeign (BusMsgInternal BusMsgForeign BusStateForeign))
 
@@ -138,9 +137,9 @@ toBusMsg currentGeneration busMsgInternal =
       case currentGeneration of
         Just c
           | g > c ->
-            Just { generation: g, message: Msg msg }
+              Just { generation: g, message: Msg msg }
           | otherwise ->
-            Nothing
+              Nothing
         Nothing ->
           Nothing
   where
@@ -150,9 +149,9 @@ toBusMsg currentGeneration busMsgInternal =
         Just { generation: g, message }
       Just c
         | g > c ->
-          Just { generation: g, message }
+            Just { generation: g, message }
         | otherwise ->
-          Nothing
+            Nothing
 
 instance
   ( MonadProcessTrans m innerState appMsg innerOutMsg
@@ -160,19 +159,27 @@ instance
   ) =>
   MonadProcessTrans (StateBusT msgOut m) (Tuple (StateBusInternal msgOut) innerState) appMsg (Either msgOut innerOutMsg) where
   parseForeign fgn = StateBusT do
+    let _ = spy "parseForeign" fgn
     case parseBusMsg fgn of
       Just busNameMsg -> do
+        let _ = spy "busNameMsg" busNameMsg
         let busName = fst busNameMsg
         let busMsgInternal = snd busNameMsg
         mtState <- get
+        let _ = spy "mtState" mtState
         case Map.lookup busName mtState of
-          Nothing ->
+          Nothing -> do
+            let _ = spy "waat" unit
             pure Nothing
           Just { generation, mapper } -> do
+            let _ = spy "found" { generation, mapper }
             case toBusMsg generation busMsgInternal of
-              Nothing -> pure Nothing
+              Nothing -> do
+                let _ = spy "waat2" unit
+                pure Nothing
               Just { generation: newGeneration, message: busMsg } -> do
-                put $ Map.insert busName { generation: Just newGeneration, mapper} mtState
+                let _ = spy "just2" { generation: newGeneration, message: busMsg }
+                put $ Map.insert busName { generation: Just newGeneration, mapper } mtState
                 pure $ Just $ Left $ mapper busMsg
       Nothing -> do
         (map Right) <$> (lift $ parseForeign fgn)
