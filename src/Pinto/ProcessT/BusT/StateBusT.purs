@@ -25,6 +25,9 @@ class UpdateState state msg where
 newtype Bus :: Type -> Type -> Type -> Type
 newtype Bus name msg state = Bus name
 
+instance Show name => Show (Bus name msg state) where
+  show (Bus name) = "Bus " <> show name
+
 newtype BusRef :: Type -> Type -> Type -> Type
 newtype BusRef name msg state = BusRef name
 
@@ -37,6 +40,8 @@ derive newtype instance Eq Generation
 derive newtype instance Ord Generation
 instance Show (Generation) where
   show (Generation gen) = "Generation " <> show gen
+
+data SubscriptionResp state = SubscriptionResp Generation state
 
 data BusMsgInternal msg state
   = DataMsg Generation msg
@@ -92,7 +97,7 @@ foreign import raiseImpl :: forall name msg state. (msg -> state -> state) -> Bu
 --------------------------------------------------------------------------------
 -- Internal
 --------------------------------------------------------------------------------
-foreign import subscribeImpl :: forall name msg state. BusRef name msg state -> Effect Unit
+foreign import subscribeImpl :: forall name msg state. BusRef name msg state -> Effect (Maybe (Tuple2 Generation state))
 foreign import unsubscribeImpl :: forall name msg state. BusRef name msg state -> Effect Unit
 
 subscribe
@@ -100,11 +105,17 @@ subscribe
    . MonadEffect m
   => BusRef name busMsgIn busStateIn
   -> (BusMsg busMsgIn busStateIn -> msgOut)
-  -> StateBusT msgOut m Unit
+  -> StateBusT msgOut m (Maybe busStateIn)
 subscribe bus mapper =
   StateBusT do
-    modify_ \mm -> Map.insert (toBusNameForeign bus) { generation: Nothing, mapper: toMapperForeign mapper } mm
-    liftEffect $ subscribeImpl bus
+    resp <- liftEffect $ subscribeImpl bus
+    case resp of
+      Nothing -> do
+        modify_ \mm -> Map.insert (toBusNameForeign bus) { mapper: toMapperForeign mapper, generation: Nothing } mm
+        pure Nothing
+      Just genAndState -> do
+        modify_ \mm -> Map.insert (toBusNameForeign bus) { mapper: toMapperForeign mapper, generation: Just $ fst genAndState } mm
+        pure $ Just $ snd genAndState
 
 unsubscribe
   :: forall name busMsgIn busState msgOut m

@@ -6,12 +6,17 @@ import Prelude
 
 import Control.Monad.Free (Free)
 import Data.Either (Either(..))
-import Effect.Class (liftEffect)
+import Data.Generic.Rep (class Generic)
+import Data.Maybe (Maybe(..))
+import Data.Show.Generic (genericShow)
+import Effect (Effect)
+import Effect.Class (class MonadEffect, liftEffect)
 import Erl.Process (ProcessM)
 import Erl.Test.EUnit (TestF, suite)
 import Partial.Unsafe (unsafeCrashWith)
 import Pinto.ProcessT (receive)
 import Pinto.ProcessT.BusT.StateBusT (class UpdateState, Bus, BusMsg(..), BusRef, StateBusT, busRef, create, raise, subscribe)
+import Test.Assert (assertEqual)
 import Test.TestHelpers (mpTest)
 
 type TestBus = Bus String TestBusMsg TestBusState
@@ -23,6 +28,11 @@ data TestMappedMsg = TestMappedMsg
 instance UpdateState TestBusState TestBusMsg where
   updateState TestBusMsg (TestBusState i) = TestBusState (i + 1)
 
+derive instance Eq TestBusState
+derive instance Generic TestBusState _
+instance Show TestBusState where
+  show = genericShow
+
 data TestAppMsg = TestAppMsg
 data TestTimeoutMsg = TestTimeoutMsg
 
@@ -32,6 +42,7 @@ testStateBusT :: Free TestF Unit
 testStateBusT =
   suite "BusM tests" do
     testInitialStateSubscribeThenCreate
+    testInitialStateCreateThenSubscribe
 
 -- TODO testInitialStateCreateTheSubscribe - will fail :)
 
@@ -42,9 +53,9 @@ testInitialStateSubscribeThenCreate =
 
   theTest :: StateBusT (BusMsg TestBusMsg TestBusState) (ProcessM Void) Unit
   theTest = do
-    subscribe testBusRef identity
+    subscribe testBusRef identity >>= expect Nothing
     testBus <- createTestBus
-    raiseBusMessage testBus
+    -- raiseBusMessage testBus
 
     msg <- receive
     case msg of
@@ -57,6 +68,16 @@ testInitialStateSubscribeThenCreate =
         unsafeCrashWith "We got sent the wrong message!"
       Right _ ->
         unsafeCrashWith "We got sent a void message!"
+
+testInitialStateCreateThenSubscribe :: Free TestF Unit
+testInitialStateCreateThenSubscribe =
+  mpTest "If you subscribe after a bus is created you get initial state" theTest
+  where
+
+  theTest :: StateBusT (BusMsg TestBusMsg TestBusState) (ProcessM Void) Unit
+  theTest = do
+    testBus <- createTestBus
+    subscribe testBusRef identity >>= (expect (Just (TestBusState 0)))
 
 {-
 testMapMsg :: Free TestF Unit
@@ -166,11 +187,9 @@ raiseBusMessage testBus = do
   liftEffect $ raise testBus TestBusMsg
 
 --raiseBusMessage2 :: ProcessM Void Unit
-raiseBusMessage2 :: forall t22 name24 state26. MonadEffect t22 => UpdateState state26 TestBusMsg => Bus name24 TestBusMsg state26 -> t22 Unit
 raiseBusMessage2 testBus = do
   liftEffect $ raise testBus TestBusMsg
 
-createTestBus :: forall t37. MonadEffect t37 => t37 (Bus String TestBusMsg TestBusState)
 createTestBus = liftEffect $ create testBusRef (TestBusState 0)
 
 testBusRef :: TestBusRef
@@ -178,3 +197,9 @@ testBusRef = busRef "TestBus"
 
 --testBusRef2 :: BusRef Atom TestBusMsg TestBusState
 --testBusRef2 = busRef $ atom "TestBus2"
+
+expect :: forall a busMsg m. MonadEffect m => Eq a => Show a => a -> a -> StateBusT busMsg m Unit
+expect a b = liftEffect $ expect' a b
+
+expect' :: forall a. Eq a => Show a => a -> a -> Effect Unit
+expect' expected actual = assertEqual { actual, expected: expected }

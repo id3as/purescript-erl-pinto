@@ -56,7 +56,14 @@ raiseImpl(Updater, BusName, Msg) ->
 subscribeImpl(BusName) ->
   fun() ->
       true = gproc:reg(?gprocPropertyKey(BusName)),
-      ?unit
+      try
+        GenAndState = gproc:get_attribute(?gprocNameKey(BusName), ?stateTag),
+        %% self() ! snd GenAndState
+        ?just(GenAndState)
+      catch
+        error:badarg ->
+        ?nothing
+      end
   end.
 
 unsubscribeImpl(BusName) ->
