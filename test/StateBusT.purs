@@ -13,7 +13,6 @@ import Effect (Effect)
 import Effect.Class (class MonadEffect, liftEffect)
 import Erl.Process (ProcessM)
 import Erl.Test.EUnit (TestF, suite)
-import Partial.Unsafe (unsafeCrashWith)
 import Pinto.ProcessT (receive)
 import Pinto.ProcessT.BusT.StateBusT (class UpdateState, Bus, BusMsg(..), BusRef, StateBusT, busRef, create, raise, subscribe)
 import Test.Assert (assertEqual)
@@ -21,17 +20,28 @@ import Test.TestHelpers (mpTest)
 
 type TestBus = Bus String TestBusMsg TestBusState
 type TestBusRef = BusRef String TestBusMsg TestBusState
-data TestBusMsg = TestBusMsg
-data TestBusState = TestBusState Int
-data TestMappedMsg = TestMappedMsg
 
-instance UpdateState TestBusState TestBusMsg where
-  updateState TestBusMsg (TestBusState i) = TestBusState (i + 1)
+data TestBusMsg = TestBusMsg
+
+derive instance Eq TestBusMsg
+derive instance Generic TestBusMsg _
+instance Show TestBusMsg where
+  show = genericShow
+
+data TestBusState = TestBusState Int
 
 derive instance Eq TestBusState
 derive instance Generic TestBusState _
 instance Show TestBusState where
   show = genericShow
+
+instance UpdateState TestBusState TestBusMsg where
+  updateState TestBusMsg (TestBusState i) = TestBusState (i + 1)
+
+-- data TestMappedMsg
+--   = MappedState Int
+--   | TestMappedMsg
+--   | TestMappedTerminate
 
 data TestAppMsg = TestAppMsg
 data TestTimeoutMsg = TestTimeoutMsg
@@ -43,6 +53,7 @@ testStateBusT =
   suite "BusM tests" do
     testInitialStateSubscribeThenCreate
     testInitialStateCreateThenSubscribe
+    testInitialStateAfterUpdates
 
 -- TODO testInitialStateCreateTheSubscribe - will fail :)
 
@@ -55,19 +66,10 @@ testInitialStateSubscribeThenCreate =
   theTest = do
     subscribe testBusRef identity >>= expect Nothing
     testBus <- createTestBus
-    -- raiseBusMessage testBus
+    receive >>= expect (Left (State (TestBusState 0)))
 
-    msg <- receive
-    case msg of
-      Left (State (TestBusState i))
-        | i == 0 ->
-            pure unit
-        | otherwise ->
-            unsafeCrashWith $ "Initial state (" <> show i <> ") wrong!"
-      Left _ ->
-        unsafeCrashWith "We got sent the wrong message!"
-      Right _ ->
-        unsafeCrashWith "We got sent a void message!"
+    raiseBusMessage testBus
+    receive >>= expect (Left (Msg (TestBusMsg)))
 
 testInitialStateCreateThenSubscribe :: Free TestF Unit
 testInitialStateCreateThenSubscribe =
@@ -78,6 +80,21 @@ testInitialStateCreateThenSubscribe =
   theTest = do
     testBus <- createTestBus
     subscribe testBusRef identity >>= (expect (Just (TestBusState 0)))
+    raiseBusMessage testBus
+    receive >>= expect (Left (Msg (TestBusMsg)))
+
+testInitialStateAfterUpdates :: Free TestF Unit
+testInitialStateAfterUpdates =
+  mpTest "If you subscribe after messages have been raised, you received the latest state" theTest
+  where
+
+  theTest :: StateBusT (BusMsg TestBusMsg TestBusState) (ProcessM Void) Unit
+  theTest = do
+    testBus <- createTestBus
+    raiseBusMessage testBus
+    subscribe testBusRef identity >>= (expect (Just (TestBusState 1)))
+    raiseBusMessage testBus
+    receive >>= expect (Left (Msg (TestBusMsg)))
 
 {-
 testMapMsg :: Free TestF Unit
@@ -96,8 +113,7 @@ testMapMsg =
       Right _ ->
         unsafeCrashWith "We got sent a void message!"
 
-  mapper TestBusMsg = TestMappedMsg
-
+  mapper (State (TestBusState i) = TestMappedMsg
 testUnsubscribe :: Free TestF Unit
 testUnsubscribe =
   mpTest "No longer receive messages after unsubscribe" theTest

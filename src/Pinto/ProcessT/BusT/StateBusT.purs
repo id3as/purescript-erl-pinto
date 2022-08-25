@@ -53,6 +53,12 @@ data BusMsg msg state
   | State state
   | BusTerminated
 
+derive instance (Eq msg, Eq state) => Eq (BusMsg msg state)
+instance (Show msg, Show state) => Show (BusMsg msg state) where
+  show (Msg msg) = "Msg " <> show msg
+  show (State state) = "State " <> show state
+  show BusTerminated = "BusTerminated"
+
 foreign import data BusNameForeign :: Type
 foreign import data BusMsgForeign :: Type
 foreign import data BusStateForeign :: Type
