@@ -1,6 +1,6 @@
 -module(pinto_processT_busT_stateBusT@foreign).
 
--export([ create/2
+-export([ createImpl/3
         , deleteImpl/2
         , raiseImpl/3
         , subscribeImpl/1
@@ -19,15 +19,15 @@
 -define(stateTag, state).
 -define(stateAttribute(Generation, State), {?stateTag, {Generation, State}}).
 -define(initialStateMsg(Generation, State), {initialStateMsg, Generation, State}).
--record(dataMsg, {generation :: non_neg_integer(), msg :: term()}).
+-record(dataMsg, {generation, msg}).
 
 -define(msgTag, '__StateBusTMsg').
 
-create(BusName, InitialState) ->
+createImpl(BusName, Generation, InitialState) ->
   fun() ->
       NameKey = ?gprocNameKey(BusName),
-      gproc:reg(NameKey, undefined, [?stateAttribute(0, InitialState)]),
-      raiseMsgInt(BusName, ?initialStateMsg(0, InitialState)),
+      gproc:reg(NameKey, undefined, [?stateAttribute(Generation, InitialState)]),
+      raiseMsgInt(BusName, ?initialStateMsg(Generation, InitialState)),
       BusName
   end.
 
@@ -46,8 +46,8 @@ raiseMsgInt(BusName, Msg) ->
 raiseImpl(Updater, BusName, Msg) ->
   fun() ->
     NameKey = ?gprocNameKey(BusName),
-    {Generation, State} = gproc:get_attribute(NameKey, ?stateTag),
-    NewGeneration = Generation + 1,
+    {{Id, Generation}, State} = gproc:get_attribute(NameKey, ?stateTag),
+    NewGeneration = {Id, Generation + 1},
     NewState = (Updater(Msg))(State),
     gproc:set_attributes(NameKey, [?stateAttribute(NewGeneration, NewState)]),
     raiseMsgInt(BusName, #dataMsg{generation = NewGeneration, msg = Msg})

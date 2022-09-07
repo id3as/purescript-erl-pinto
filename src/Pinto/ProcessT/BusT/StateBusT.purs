@@ -12,8 +12,10 @@ import Effect (Effect)
 import Effect.Class (class MonadEffect, liftEffect)
 import Erl.Data.Map (Map)
 import Erl.Data.Map as Map
-import Erl.Data.Tuple (Tuple2, fst, snd)
+import Erl.Data.Tuple (Tuple2, fst, snd, tuple2, uncurry2)
+import Erl.Kernel.Erlang (monotonicTime)
 import Erl.Process (class HasSelf, self)
+import Erl.Types (MonotonicTime)
 import Foreign (Foreign)
 import Pinto.ProcessT.Internal.Types (class MonadProcessTrans, initialise, parseForeign, run)
 import Type.Prelude (Proxy(..))
@@ -34,12 +36,15 @@ newtype BusRef name msg state = BusRef name
 busRef :: forall name msg state. name -> BusRef name msg state
 busRef = BusRef
 
-newtype Generation = Generation Int
+newtype Generation = Generation (Tuple2 MonotonicTime Int)
 
 derive newtype instance Eq Generation
-derive newtype instance Ord Generation
+instance Ord Generation where
+  compare = \(Generation tg1) -> tg1 # uncurry2 \t1 g1 ->
+    \(Generation tg2) -> tg2 # uncurry2 \t2 g2 ->
+      compare t1 t2 <> compare g1 g2
 instance Show (Generation) where
-  show (Generation gen) = "Generation " <> show gen
+  show (Generation gen) = "Generation " <> uncurry2 (const show) gen
 
 data SubscriptionResp state = SubscriptionResp Generation state
 
@@ -81,7 +86,11 @@ derive newtype instance MonadTrans (StateBusT msg)
 -- Public API
 --------------------------------------------------------------------------------
 
-foreign import create :: forall name msg state. BusRef name msg state -> state -> Effect (Bus name msg state)
+create :: forall name msg state. BusRef name msg state -> state -> Effect (Bus name msg state)
+create busName state = do
+  t <- monotonicTime
+  createImpl busName (Generation (tuple2 t 0)) state
+foreign import createImpl :: forall name msg state. BusRef name msg state -> Generation -> state -> Effect (Bus name msg state)
 foreign import deleteImpl :: forall name msg state. Bus name msg state -> (Generation -> BusMsgInternal msg state) -> Effect Unit
 
 delete :: forall name msg state. Bus name msg state -> Effect Unit
