@@ -4,10 +4,13 @@
         , deleteImpl/2
         , raiseImpl/3
         , subscribeImpl/1
-        , unsubscribeImpl/1
+        , monitorImpl/2
+        , unsubscribeImpl/2
         , parseBusMsg/1
         ]).
 
+-define(left(X), {left, X}).
+-define(right(X), {right, X}).
 -define(just(X), {just, X}).
 -define(nothing, {nothing}).
 -define(unit, unit).
@@ -22,6 +25,7 @@
 -record(dataMsg, {generation, msg}).
 
 -define(msgTag, '__StateBusTMsg').
+-define(monitorTag, '__StateBusTMonitor').
 
 createImpl(BusName, Generation, InitialState) ->
   fun() ->
@@ -41,7 +45,7 @@ deleteImpl(BusName, TerminatedMsg) ->
   end.
 
 raiseMsgInt(BusName, Msg) ->
-  gproc:send(?gprocPropertyKey(BusName), {?msgTag, BusName, Msg}).
+  gproc:send(?gprocPropertyKey(BusName), {?msgTag, BusName, Msg, self()}).
 
 raiseImpl(Updater, BusName, Msg) ->
   fun() ->
@@ -56,27 +60,40 @@ raiseImpl(Updater, BusName, Msg) ->
 subscribeImpl(BusName) ->
   fun() ->
       true = gproc:reg(?gprocPropertyKey(BusName)),
-      try
-        GenAndState = gproc:get_attribute(?gprocNameKey(BusName), ?stateTag),
-        %% self() ! snd GenAndState
-        ?just(GenAndState)
-      catch
-        error:badarg ->
-        ?nothing
+      Pid = gproc:where(?gprocNameKey(BusName)),
+      case Pid of
+        undefined -> ?nothing;
+        _ ->
+          Ref = (monitorImpl(Pid, BusName))(),
+          {Gen, State} = gproc:get_attribute(?gprocNameKey(BusName), Pid, ?stateTag),
+          %% self() ! snd GenAndState
+          ?just({Gen, State, Ref})
       end
   end.
 
-unsubscribeImpl(BusName) ->
+monitorImpl(Pid, BusName) ->
+  % fun () -> ok end.
+  fun () -> erlang:monitor(process, Pid, [{tag, {?monitorTag, BusName}}]) end.
+
+
+% sender exits
+% immediately calling unsubscribe from other thread
+% unreg message not even on the queue yet, would be received later
+% causing conflicts if there's like a GprocT also receiving those kinds of message
+% (if we delete the Key from the map)
+unsubscribeImpl(MaybeRef, BusName) ->
   fun() ->
+      case MaybeRef of
+        ?just(Ref) -> erlang:demonitor(Ref, [flush]);
+        ?nothing -> ok
+      end,
       gproc:unreg(?gprocPropertyKey(BusName)),
       ?unit
   end.
 
-parseBusMsg(X) ->
-  io:format(user, "Parse ~p~n", [X]),
-  parseBusMsg_(X).
-parseBusMsg_({?msgTag, Name, Msg}) ->
-  io:format(user, "Matched~n", []),
-  ?just({Name, Msg});
-parseBusMsg_(_) ->
+parseBusMsg({?msgTag, Name, Msg, Pid}) ->
+  ?just(?left({Name, Msg, Pid}));
+parseBusMsg({{?monitorTag, BusName}, _MonitorRef, _MonitorType, _MonitorObject, _MonitorInfo}) ->
+  ?just(?right(BusName));
+parseBusMsg(_) ->
   ?nothing.

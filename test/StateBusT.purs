@@ -12,12 +12,13 @@ import Data.Show.Generic (genericShow)
 import Data.Time.Duration (Milliseconds(..))
 import Effect (Effect)
 import Effect.Class (class MonadEffect, liftEffect)
+import Effect.Class.Console (log)
 import Erl.Atom (Atom, atom)
-import Erl.Process (ProcessM)
+import Erl.Process (Process, ProcessM, self, (!))
 import Erl.Test.EUnit (TestF, suite)
 import Partial.Unsafe (unsafeCrashWith)
 import Pinto.ProcessT (Timeout(..), receive, receiveWithTimeout, spawn)
-import Pinto.ProcessT.BusT.StateBusT (class UpdateState, Bus, BusMsg(..), BusRef, StateBusT, busRef, create, raise, subscribe, unsubscribe)
+import Pinto.ProcessT.BusT.StateBusT (class UpdateState, Bus, BusMsg(..), BusRef, StateBusT, busRef, create, delete, raise, subscribe, unsubscribe)
 import Test.Assert (assertEqual)
 import Test.TestHelpers (mpTest)
 
@@ -65,6 +66,7 @@ testStateBusT =
     testMapMsg
     testUnsubscribe
     testMultipleBusses
+    testSenderExits
 
 -- TODO testInitialStateCreateTheSubscribe - will fail :)
 
@@ -146,6 +148,67 @@ testUnsubscribe =
       Right _ ->
         unsafeCrashWith "Message after unsubscribe"
 
+testSenderExits :: Free TestF Unit
+testSenderExits = do
+  mpTest "Receive BusTerminated if sender exits (create then subscribe, normal exit)" (theTest ExitNormal)
+  mpTest "Receive BusTerminated if sender exits (create then subscribe, crash exit)" (theTest ExitCrash)
+  mpTest "Receive BusTerminated if sender exits (subscribe then create, normal exit)" (theTest2 ExitNormal)
+  mpTest "Receive BusTerminated if sender exits (subscribe then create, deletion)" (theTest2 DeleteAndExit)
+  where
+
+  theTest :: _ -> StateBusT (BusMsg TestBusMsg TestBusState) (ProcessM Ack) Unit
+  theTest howToExit = do
+    -- Create a StateBus
+    -- Register for it
+    -- The StateBus sneder thread goes away (exits normally, crashes, etc.)
+    let ourTestBus = busRef $ atom "TestingBus"
+    me <- self
+    senderPid <- liftEffect $ spawn (testBusThreadHelper (Just Ack) me ourTestBus)
+
+    liftEffect $ senderPid ! CreateBus (TestBusState 0)
+    receive >>= case _ of
+      Right Ack -> pure unit
+      Left _ -> unsafeCrashWith "Expected Ack"
+    subscribe ourTestBus identity >>= expect (Just (TestBusState 0))
+
+    liftEffect $ senderPid ! RaiseMessage TestBusMsg
+    receive >>= expect (Left (Msg TestBusMsg))
+
+    liftEffect $ senderPid ! howToExit
+    -- Milliseconds 2.0 is too short for crashing case on my machine
+    receiveWithTimeout (Milliseconds 6.0) >>= case _ of
+      Left Timeout ->
+        unsafeCrashWith "Did not receive BusTerminated before timeout"
+      Right (Right Ack) ->
+        unsafeCrashWith "Did not want acknowledgement at this time :("
+      Right (Left BusTerminated) ->
+        pure unit
+      Right (Left _) ->
+        unsafeCrashWith "Received unexpected message (not BusTerminated)"
+
+  theTest2 :: _ -> StateBusT (BusMsg TestBusMsg TestBusState) (ProcessM Void) Unit
+  theTest2 howToExit = do
+    let ourTestBus = busRef $ atom "TestingBus"
+    me <- self
+    -- Subscribe before creation
+    subscribe ourTestBus identity >>= expect Nothing
+    senderPid <- liftEffect $ spawn (testBusThreadHelper Nothing me ourTestBus)
+
+    liftEffect $ senderPid ! CreateBus (TestBusState 0)
+    receive >>= expect (Left (State (TestBusState 0)))
+
+    liftEffect $ senderPid ! RaiseMessage TestBusMsg
+    receive >>= expect (Left (Msg TestBusMsg))
+
+    liftEffect $ senderPid ! howToExit
+    receiveWithTimeout (Milliseconds 6.0) >>= case _ of
+      Left Timeout ->
+        unsafeCrashWith "Did not receive BusTerminated before timeout"
+      Right (Left BusTerminated) ->
+        pure unit
+      Right _ ->
+        unsafeCrashWith "Received unexpected message (not BusTerminated)"
+
 {-
 testMessageAfterUnsubscribe :: Free TestF Unit
 testMessageAfterUnsubscribe =
@@ -203,10 +266,11 @@ testMultipleBusses =
     int1 <- doReceive
     int2 <- doReceive
     int3 <- doReceive
+    int4 <- doReceive
     -- We should see one Msg from testBus
     -- And one State and one Msg from testBus2
     -- (since it is created after subscription)
-    liftEffect $ assertEqual { actual: int1 + int2 + int3, expected: 111 }
+    liftEffect $ assertEqual { actual: int1 + int2 + int3 + int4, expected: 1111 }
 
   doReceive = do
     msg <- receive
@@ -230,6 +294,46 @@ testBus2Thread :: (Bus Atom TestBusMsg TestBusState -> Effect Unit) -> ProcessM 
 testBus2Thread doStuff = liftEffect do
   testBus2 <- create testBusRef2 (TestBusState 0)
   doStuff testBus2
+
+data Ack = Ack
+derive instance Eq Ack
+instance Show Ack where show Ack = "Ack"
+
+data HelperMsg
+  = CreateBus TestBusState
+  | RaiseMessage TestBusMsg
+  | DeleteAndExit
+  | ExitNormal
+  | ExitCrash
+
+testBusThreadHelper :: forall ack. Maybe ack -> Process ack -> BusRef Atom TestBusMsg TestBusState -> ProcessM HelperMsg Unit
+testBusThreadHelper ack parent localBusRef = do
+  localBus <- receive >>= case _ of
+    CreateBus initialState -> do
+      localBus <- liftEffect $ create localBusRef initialState
+      case ack of
+        Just msg -> liftEffect $ parent ! msg
+        Nothing -> pure unit
+      pure localBus
+    _ -> do
+      log "Unexpected helper message"
+      unsafeCrashWith "Unexpected helper message"
+  testBusThreadLoop localBus
+  where
+  testBusThreadLoop localBus =
+    receive >>= case _ of
+      CreateBus _ -> do
+        log "Cannot create twice!"
+        unsafeCrashWith "Cannot create twice!"
+      RaiseMessage msg -> do
+        liftEffect $ raise localBus msg
+        testBusThreadLoop localBus
+      DeleteAndExit ->
+        liftEffect $ delete localBus
+      ExitNormal ->
+        pure unit
+      ExitCrash -> do
+        unsafeCrashWith "Asked to crash"
 
 testBusRef :: TestBusRef
 testBusRef = busRef "TestBus"
