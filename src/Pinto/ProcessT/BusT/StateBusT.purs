@@ -7,7 +7,6 @@ import Control.Monad.Trans.Class (class MonadTrans, lift)
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple(..))
-import Debug (spy)
 import Effect (Effect)
 import Effect.Class (class MonadEffect, liftEffect)
 import Erl.Data.Map (Map)
@@ -194,7 +193,6 @@ instance
   ) =>
   MonadProcessTrans (StateBusT msgOut m) (Tuple (StateBusInternal msgOut) innerState) appMsg (Either msgOut innerOutMsg) where
   parseForeign fgn = StateBusT do
-    let _ = spy "parseForeign" fgn
     case parseBusMsg fgn of
       Just (Left busNameMsg) ->
         busNameMsg # uncurry3 \busName busMsgInternal busPid -> do

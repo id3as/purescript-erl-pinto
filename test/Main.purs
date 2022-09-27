@@ -23,6 +23,7 @@ import Test.BusT (testBusT)
 import Test.DoorLock as DoorLock
 import Test.GenServer as TGS
 import Test.GenServer2 as TGS2
+import Test.MetadataBusT (testMetadataBusT)
 import Test.MonitorT (testMonitorT)
 import Test.StateBusT (testStateBusT)
 import Test.TestHelpers (getState)
@@ -42,6 +43,7 @@ main = do
     -- testTrapExitT
     -- testBusT
     testStateBusT
+    testMetadataBusT
 
 -- testValueServer
 -- DoorLock.testSuite

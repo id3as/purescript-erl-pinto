@@ -65,14 +65,18 @@ subscribeImpl(BusName) ->
         undefined -> ?nothing;
         _ ->
           Ref = (monitorImpl(Pid, BusName))(),
-          {Gen, State} = gproc:get_attribute(?gprocNameKey(BusName), Pid, ?stateTag),
-          %% self() ! snd GenAndState
-          ?just({Gen, State, Ref})
+          try
+            {Gen, State} = gproc:get_attribute(?gprocNameKey(BusName), Pid, ?stateTag),
+            ?just({Gen, State, Ref})
+          catch
+            error:badarg ->
+              erlang:demonitor(Ref, [flush]),
+              ?nothing
+          end
       end
   end.
 
 monitorImpl(Pid, BusName) ->
-  % fun () -> ok end.
   fun () -> erlang:monitor(process, Pid, [{tag, {?monitorTag, BusName}}]) end.
 
 
