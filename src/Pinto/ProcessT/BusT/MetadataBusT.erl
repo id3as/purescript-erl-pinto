@@ -61,7 +61,7 @@ updateMetadataImpl(BusName, NewMetadata) ->
     {{Id, Generation}, _} = gproc:get_attribute(NameKey, ?metadataTag),
     NewGeneration = {Id, Generation + 1},
     gproc:set_attributes(NameKey, [?metadataAttribute(NewGeneration, NewMetadata)]),
-    raiseMsgInt(BusName, #metadataMsgInternal{generation = {Id, Generation}, msg = NewMetadata})
+    raiseMsgInt(BusName, #metadataMsgInternal{generation = NewGeneration, msg = NewMetadata})
   end.
 
 subscribeImpl(BusName) ->

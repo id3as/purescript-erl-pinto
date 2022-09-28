@@ -37,11 +37,11 @@ main = do
   filterSasl
   void $ ensureAllStarted $ atom "gproc"
   void $ runTests do
-    -- TGS.genServerSuite
-    -- TGS2.genServer2Suite
-    -- testMonitorT
-    -- testTrapExitT
-    -- testBusT
+    TGS.genServerSuite
+    TGS2.genServer2Suite
+    testMonitorT
+    testTrapExitT
+    testBusT
     testStateBusT
     testMetadataBusT
 

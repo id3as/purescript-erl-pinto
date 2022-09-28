@@ -18,7 +18,7 @@ import Erl.Process (Process, ProcessM, self, (!))
 import Erl.Test.EUnit (TestF, suite)
 import Partial.Unsafe (unsafeCrashWith)
 import Pinto.ProcessT (Timeout(..), receive, receiveWithTimeout, spawn)
-import Pinto.ProcessT.BusT.MetadataBusT (Bus, BusMsg(..), BusRef, MetadataBusT, busRef, create, delete, raise, subscribe, unsubscribe)
+import Pinto.ProcessT.BusT.MetadataBusT (Bus, BusMsg(..), BusRef, MetadataBusT, busRef, create, delete, raise, subscribe, unsubscribe, updateMetadata)
 import Test.Assert (assertEqual)
 import Test.TestHelpers (mpTest)
 
@@ -79,6 +79,17 @@ testInitialMetadataSubscribeThenCreate =
     raiseBusMessage testBus
     receive >>= expect (Left (DataMsg (TestBusMsg)))
 
+    raiseBusState testBus (TestBusMetadata 1)
+    receive >>= expect (Left (MetadataMsg (TestBusMetadata 1)))
+
+    raiseBusMessage testBus
+    receive >>= expect (Left (DataMsg (TestBusMsg)))
+
+    raiseBusState testBus (TestBusMetadata 0)
+    receive >>= expect (Left (MetadataMsg (TestBusMetadata 0)))
+
+    noMoreMessages
+
 testInitialMetadataCreateThenSubscribe :: Free TestF Unit
 testInitialMetadataCreateThenSubscribe =
   mpTest "If you subscribe after a bus is created you get initial state" theTest
@@ -88,8 +99,20 @@ testInitialMetadataCreateThenSubscribe =
   theTest = do
     testBus <- createTestBus
     subscribe testBusRef identity >>= (expect (Just (TestBusMetadata 0)))
+
+    raiseBusState testBus (TestBusMetadata 1)
+    receive >>= expect (Left (MetadataMsg (TestBusMetadata 1)))
+
     raiseBusMessage testBus
     receive >>= expect (Left (DataMsg (TestBusMsg)))
+
+    raiseBusState testBus (TestBusMetadata 0)
+    receive >>= expect (Left (MetadataMsg (TestBusMetadata 0)))
+
+    raiseBusMessage testBus
+    receive >>= expect (Left (DataMsg (TestBusMsg)))
+
+    noMoreMessages
 
 testInitialMetadataAfterUpdates :: Free TestF Unit
 testInitialMetadataAfterUpdates =
@@ -99,10 +122,25 @@ testInitialMetadataAfterUpdates =
   theTest :: MetadataBusT (BusMsg TestBusMsg TestBusMetadata) (ProcessM Void) Unit
   theTest = do
     testBus <- createTestBus
+
     raiseBusMessage testBus
-    subscribe testBusRef identity >>= (expect (Just (TestBusMetadata 0)))
+
+    raiseBusState testBus (TestBusMetadata 1)
+
+    raiseBusMessage testBus
+
+    subscribe testBusRef identity >>= (expect (Just (TestBusMetadata 1)))
+
     raiseBusMessage testBus
     receive >>= expect (Left (DataMsg (TestBusMsg)))
+
+    raiseBusState testBus (TestBusMetadata 2)
+    receive >>= expect (Left (MetadataMsg (TestBusMetadata 2)))
+
+    raiseBusMessage testBus
+    receive >>= expect (Left (DataMsg (TestBusMsg)))
+
+    noMoreMessages
 
 testMapMsg :: Free TestF Unit
 testMapMsg =
@@ -118,6 +156,11 @@ testMapMsg =
     raiseBusMessage testBus
     receive >>= expect (Left TestMappedMsg)
 
+    raiseBusState testBus (TestBusMetadata 2)
+    receive >>= expect (Left (TestMappedMetadata 2))
+
+    noMoreMessages
+
   mapper (MetadataMsg (TestBusMetadata i)) = TestMappedMetadata i
   mapper (DataMsg TestBusMsg) = TestMappedMsg
   mapper BusTerminated = TestMappedTerminated
@@ -131,9 +174,10 @@ testUnsubscribe =
   theTest = do
     testBus <- createTestBus
     subscribe testBusRef identity >>= expect (Just (TestBusMetadata 0))
-    raiseBusMessage testBus
 
+    raiseBusMessage testBus
     receive >>= expect (Left (DataMsg TestBusMsg))
+
     unsubscribe testBusRef
     raiseBusMessage testBus
     msg2 <- receiveWithTimeout (Milliseconds 2.0)
@@ -286,6 +330,10 @@ raiseBusMessage :: forall m. MonadEffect m => TestBus -> m Unit
 raiseBusMessage testBus = do
   liftEffect $ raise testBus TestBusMsg
 
+raiseBusState :: forall m. MonadEffect m => TestBus -> TestBusMetadata -> m Unit
+raiseBusState testBus m = do
+  liftEffect $ updateMetadata testBus m
+
 createTestBus :: forall busMsg. MetadataBusT busMsg (ProcessM Void) TestBus
 createTestBus = liftEffect $ create testBusRef (TestBusMetadata 0)
 
@@ -350,3 +398,8 @@ expect a b = liftEffect $ expect' a b
 
 expect' :: forall a. Eq a => Show a => a -> a -> Effect Unit
 expect' expected actual = assertEqual { actual, expected: expected }
+
+noMoreMessages :: forall a b. MetadataBusT a (ProcessM b) Unit
+noMoreMessages = receiveWithTimeout (Milliseconds 6.0) >>= case _ of
+  Left _ -> pure unit
+  Right _ -> unsafeCrashWith "Received unexpected message"
