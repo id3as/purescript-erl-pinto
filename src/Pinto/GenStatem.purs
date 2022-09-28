@@ -293,6 +293,7 @@ data EventResult info internal timerName timerContent commonData state
   | EventNextState state commonData
   | EventNextStateWithActions state commonData (EventActionsBuilder info internal timerName timerContent)
   | EventStopNormal
+  | EventStopOther Foreign
 
 data StateEnterResult timerName timerContent commonData
   = StateEnterOk commonData
@@ -383,6 +384,7 @@ data OuterEventResult info internal timerName timerContent commonData stateId st
   | OuterEventNextState stateId (OuterData info internal timerName timerContent commonData stateId state)
   | OuterEventNextStateWithActions stateId (OuterData info internal timerName timerContent commonData stateId state) (EventActionsBuilder info internal timerName timerContent)
   | OuterEventStopNormal
+  | OuterEventStopOther Foreign
 
 foreign import data Reply :: Type
 
@@ -504,6 +506,7 @@ runEventFn getStateId eventFn (OuterData outerData@{ state, commonData, context 
     EventNextState newState newData -> pure $ OuterEventNextState (getStateId newState) (OuterData $ outerData { state = newState, commonData = newData, context = newContext })
     EventNextStateWithActions newState newData actions -> pure $ OuterEventNextStateWithActions (getStateId newState) (OuterData $ outerData { state = newState, commonData = newData, context = newContext }) actions
     EventStopNormal -> pure $ OuterEventStopNormal
+    EventStopOther reason -> pure $ OuterEventStopOther reason
 
 -- NOTE: we don't need to check whether the new state id matches the old one, Erlang does that, it treats things -- like keep_state_and_data as a synonym for {next_state, OldState, OldData}
 -- GenStatem API
@@ -648,6 +651,7 @@ instance exportOuterEventResult :: ExportsTo (OuterEventResult info internal tim
     OuterEventNextState newState newData -> unsafeCoerce $ unsafeCoerce $ tuple3 (atom "next_state") newState newData
     OuterEventNextStateWithActions newState newData actions -> unsafeCoerce $ tuple4 (atom "next_state") newState newData (export actions :: List NativeAction)
     OuterEventStopNormal -> unsafeCoerce $ atom "stop"
+    OuterEventStopOther reason -> unsafeCoerce $ tuple2 (atom "stop") reason
 
 instance exportOuterInitResult :: ExportsTo (OuterInitResult info internal timerName timerContent commonData stateId state) NativeInitResult where
   export = case _ of
