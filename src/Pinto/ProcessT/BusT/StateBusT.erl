@@ -66,6 +66,8 @@ subscribeImpl(BusName) ->
         _ ->
           Ref = (monitorImpl(Pid, BusName))(),
           try
+            % For verifying this try/catch is necessary, see Test.StateBusT.testErrorHandling
+            % timer:sleep(10),
             {Gen, State} = gproc:get_attribute(?gprocNameKey(BusName), Pid, ?stateTag),
             ?just({Gen, State, Ref})
           catch

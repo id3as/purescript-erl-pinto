@@ -14,6 +14,7 @@ import Effect (Effect)
 import Effect.Class (class MonadEffect, liftEffect)
 import Effect.Class.Console (log)
 import Erl.Atom (Atom, atom)
+import Erl.Kernel.Erlang (sleep)
 import Erl.Process (Process, ProcessM, self, (!))
 import Erl.Test.EUnit (TestF, suite)
 import Partial.Unsafe (unsafeCrashWith)
@@ -65,6 +66,7 @@ testStateBusT =
     testUnsubscribe
     testMultipleBusses
     testSenderExits
+    testErrorHandling
 
 testInitialStateSubscribeThenCreate :: Free TestF Unit
 testInitialStateSubscribeThenCreate =
@@ -278,6 +280,41 @@ testMultipleBusses =
       Left x -> pure x
       Right _ ->
         unsafeCrashWith "We got sent a void message!"
+
+-- Test that a particular error can happen in subscribe
+-- Bad code to trigger `error:badarg` from `gproc:get_attribute`:
+--
+-- ```
+-- true = gproc:reg(?gprocPropertyKey(BusName)),
+-- Pid = gproc:where(?gprocNameKey(BusName)),
+-- case Pid of
+--   undefined -> ?nothing;
+--   _ ->
+--     Ref = (monitorImpl(Pid, BusName))(),
+--     timer:sleep(10),
+--     {Gen, State} = gproc:get_attribute(?gprocNameKey(BusName), Pid, ?stateTag),
+--     ?just({Gen, State, Ref})
+-- end
+-- ```
+testErrorHandling :: Free TestF Unit
+testErrorHandling =
+  mpTest "Handles unregistration-during-subscribe gracefully" theTest
+  where
+
+  theTest :: StateBusT _ (ProcessM Unit) Unit
+  theTest = do
+    me <- self
+    _ <- liftEffect $ spawn $ testBus2Thread \testBus -> do
+      me ! unit
+      -- wait to hit internal `timer:sleep(10)` in subscribe
+      sleep (Milliseconds 5.0)
+      delete testBus
+    -- wait for bus creation
+    receive >>= expect (Right unit)
+    -- We receive `Just (TestBusState 0)` if subscribe is quick
+    -- We would receive `Nothing` if subscribe is delayed
+    -- But without a try/catch around `gproc:getattribute`, it would throw `error:badarg`
+    subscribe testBusRef2 identity >>= expect (Just (TestBusState 0))
 
 --------------------------------------------------------------------------------
 -- Helpers
