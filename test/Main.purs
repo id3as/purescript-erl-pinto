@@ -26,6 +26,7 @@ import Test.GenServer2 as TGS2
 import Test.MetadataBusT (testMetadataBusT)
 import Test.MonitorT (testMonitorT)
 import Test.StateBusT (testStateBusT)
+import Test.StateMetadataBusT (testStateMetadataBusT)
 import Test.TestHelpers (getState)
 import Test.TrapExitT (testTrapExitT)
 import Test.ValueServer (testValueServer)
@@ -44,6 +45,7 @@ main = do
     testBusT
     testStateBusT
     testMetadataBusT
+    testStateMetadataBusT
 
 -- testValueServer
 -- DoorLock.testSuite

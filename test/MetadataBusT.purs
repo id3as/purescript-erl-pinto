@@ -56,7 +56,7 @@ data TestTimeoutMsg = TestTimeoutMsg
 
 testMetadataBusT :: Free TestF Unit
 testMetadataBusT =
-  suite "BusM tests" do
+  suite "MetadataBusT tests" do
     testInitialMetadataSubscribeThenCreate
     testInitialMetadataCreateThenSubscribe
     testInitialMetadataAfterUpdates

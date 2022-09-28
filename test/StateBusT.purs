@@ -57,7 +57,7 @@ data TestTimeoutMsg = TestTimeoutMsg
 
 testStateBusT :: Free TestF Unit
 testStateBusT =
-  suite "BusM tests" do
+  suite "StateBusT tests" do
     testInitialStateSubscribeThenCreate
     testInitialStateCreateThenSubscribe
     testInitialStateAfterUpdates
