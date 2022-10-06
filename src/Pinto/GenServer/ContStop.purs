@@ -86,7 +86,7 @@ foreign import data FromForeign :: Type
 newtype From :: Type -> Type
 newtype From reply = From FromForeign
 
-newtype ServerPid :: forall k1 k2 k3 k4. k1 -> k2 -> k3 -> k4 -> Type
+newtype ServerPid :: Type -> Type -> Type -> (Type -> Type) -> Type
 newtype ServerPid cont stop state m = ServerPid Raw.Pid
 
 derive newtype instance Eq (ServerPid cont stop state m)
@@ -109,12 +109,12 @@ instance Show (ServerPid cont stop state m) where
 
 -- | The typed reference of a GenServer, containing all the information required to get hold of
 -- | an instance
-type ServerRef :: forall k1 k2 k3 k4. k1 -> k2 -> k3 -> k4 -> Type
+type ServerRef :: Type -> Type -> Type -> (Type -> Type) -> Type
 type ServerRef cont stop state m = RegistryReference (ServerPid cont stop state m) (ServerType cont stop state m)
 
 -- | The typed instance of a GenServer, containing all the information required to call into
 -- | a GenServer
-type ServerInstance :: forall k1 k2 k3 k4. k1 -> k2 -> k3 -> k4 -> Type
+type ServerInstance :: Type -> Type -> Type -> (Type -> Type) -> Type
 type ServerInstance cont stop state m = RegistryInstance (ServerPid cont stop state m) (ServerType cont stop state m)
 
 -- | Given a RegistryName with a valid (ServerType), get hold of a typed Process `msg` to which messages
@@ -174,7 +174,7 @@ return state = ReturnResult Nothing state
 returnWithAction :: forall cont stop state. Action cont stop -> state -> ReturnResult cont stop state
 returnWithAction action state = ReturnResult (Just action) state
 
-type InitFn :: forall k. Type -> Type -> (Type -> k) -> k
+type InitFn :: Type -> Type -> (Type -> Type) -> Type
 type InitFn cont state m = m (InitResult cont state)
 
 type InfoFn cont stop parsedMsg state m = parsedMsg -> state -> m (ReturnResult cont stop state)
@@ -202,8 +202,7 @@ instance Functor (InitResult cont) where
   map _ (InitStop term) = InitStop term
   map _ InitIgnore = InitIgnore
 
---newtype ServerType :: Type -> Type -> Type -> Type -> Type
-newtype ServerType :: forall k1 k2 k3 k4. k1 -> k2 -> k3 -> k4 -> Type
+newtype ServerType :: Type -> Type -> Type -> (Type -> Type) -> Type
 newtype ServerType cont stop state m = ServerType Void
 
 type OptionalConfig cont stop parsedMsg state m =

@@ -48,19 +48,19 @@ import Pinto.Types (RegistryInstance, RegistryReference, ShutdownReason, StartLi
 -- This covers most uses cases seen in the field while cutting down on the type noise...
 
 -- | Simplified CS.ServerPid without cont and stop
-type ServerPid :: forall k1 k2. k1 -> k2 -> Type
+type ServerPid :: Type -> (Type -> Type) -> Type
 type ServerPid state m = CS.ServerPid Void Void state m
 
 -- | Simplified CS.ServerType without cont and stop
-type ServerType :: forall k1 k2. k1 -> k2 -> Type
+type ServerType :: Type -> (Type -> Type) -> Type
 type ServerType state m = CS.ServerType Void Void state m
 
 -- | Simplified CS.ServerRef without cont and stop
-type ServerRef :: forall k1 k2. k1 -> k2 -> Type
+type ServerRef :: Type -> (Type -> Type) -> Type
 type ServerRef state m = RegistryReference (ServerPid state m) (ServerType state m)
 
 -- | Simplified CS.ServerInstance without cont and stop
-type ServerInstance :: forall k1 k2. k1 -> k2 -> Type
+type ServerInstance :: Type -> (Type -> Type) -> Type
 type ServerInstance state m = RegistryInstance (ServerPid state m) (ServerType state m)
 
 -- | Simplified CS.Action without cont and stop
