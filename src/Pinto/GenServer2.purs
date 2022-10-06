@@ -108,7 +108,8 @@ startLink' = CS.startLink'
 
 call
   :: forall reply appMsg parsedMsg state m mState
-   . MonadProcessTrans m mState appMsg parsedMsg
+   . MonadProcessHandled m parsedMsg
+  => MonadProcessTrans m mState appMsg parsedMsg
   => Monad m -- TODO - why is the monad constraint needed?
   => ServerRef state m
   -> CallFn reply state m
@@ -117,7 +118,8 @@ call = CS.call
 
 cast
   :: forall appMsg parsedMsg state m mState
-   . MonadProcessTrans m mState appMsg parsedMsg
+   . MonadProcessHandled m parsedMsg
+  => MonadProcessTrans m mState appMsg parsedMsg
   => Monad m
   => ServerRef state m
   -> CastFn state m
@@ -126,7 +128,8 @@ cast = CS.cast
 
 stop
   :: forall appMsg parsedMsg state m mState
-   . MonadProcessTrans m mState appMsg parsedMsg
+   . MonadProcessHandled m parsedMsg
+  => MonadProcessTrans m mState appMsg parsedMsg
   => Monad m
   => ServerRef state m
   -> Effect Unit
@@ -142,7 +145,8 @@ replyTo = CS.replyTo
 
 defaultSpec
   :: forall parsedMsg appMsg state m mState
-   . MonadProcessTrans m mState appMsg parsedMsg
+   . MonadProcessHandled m parsedMsg
+  => MonadProcessTrans m mState appMsg parsedMsg
   => InitFn state m
   -> GSConfig parsedMsg state m
 defaultSpec = CS.defaultSpec
