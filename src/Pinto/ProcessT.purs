@@ -21,13 +21,15 @@ import Erl.Kernel.Time (milliseconds)
 import Erl.Process (Process)
 import Erl.Process.Raw as Raw
 import Foreign (unsafeToForeign)
-import Pinto.ProcessT.Internal.Types (class MonadProcessTrans, initialise, parseForeign, run)
+import Pinto.ProcessT.Internal.Types (class MonadProcessHandled, class MonadProcessTrans, initialise, parseForeign, run)
 import Type.Prelude (Proxy(..))
 import Unsafe.Coerce (unsafeCoerce)
 
+-- Can only be lifted through `IdentityT` due to the `MonadProcessHandled m parsedMsg` constraint
 receive
   :: forall m mState appMsg parsedMsg
-   . MonadProcessTrans m mState appMsg parsedMsg
+   . MonadProcessHandled m parsedMsg
+  => MonadProcessTrans m mState appMsg parsedMsg
   => MonadEffect m
   => m parsedMsg
 receive = do
@@ -40,7 +42,7 @@ receive = do
 
 data PrivateProcessTTimeoutMsg
   = PrivateProcessTTimeoutMsg__
-  | ThereToGetRidOfUnreacableWarning
+  | ThereToGetRidOfUnreachableWarning
 
 data Timeout = Timeout
 
@@ -51,7 +53,8 @@ instance Show Timeout where
 
 receiveWithTimeout
   :: forall m mState appMsg parsedMsg
-   . MonadProcessTrans m mState appMsg parsedMsg
+   . MonadProcessHandled m parsedMsg
+  => MonadProcessTrans m mState appMsg parsedMsg
   => MonadEffect m
   => Milliseconds
   -> m (Either Timeout parsedMsg)
@@ -76,8 +79,8 @@ receiveWithTimeout ms@(Milliseconds msNum) = do
 
 unsafeEvalProcess
   :: forall m mState appMsg parsedMsg a
-   . MonadProcessTrans m mState appMsg parsedMsg
-  --  => MonadEffect m
+   . MonadProcessHandled m parsedMsg
+  => MonadProcessTrans m mState appMsg parsedMsg
   => m a
   -> Effect a
 unsafeEvalProcess mpt =
@@ -85,8 +88,8 @@ unsafeEvalProcess mpt =
 
 unsafeExecProcess
   :: forall m mState appMsg parsedMsg
-   . MonadProcessTrans m mState appMsg parsedMsg
-  --  => MonadEffect m
+   . MonadProcessHandled m parsedMsg
+  => MonadProcessTrans m mState appMsg parsedMsg
   => m appMsg
   -> Effect mState
 unsafeExecProcess mpt =
@@ -94,7 +97,8 @@ unsafeExecProcess mpt =
 
 unsafeRunProcess
   :: forall m mState appMsg parsedMsg a
-   . MonadProcessTrans m mState appMsg parsedMsg
+   . MonadProcessHandled m parsedMsg
+  => MonadProcessTrans m mState appMsg parsedMsg
   => m a
   -> Effect (Tuple a mState)
 unsafeRunProcess mpt =
@@ -102,7 +106,8 @@ unsafeRunProcess mpt =
 
 spawn
   :: forall m mState appMsg parsedMsg
-   . MonadProcessTrans m mState appMsg parsedMsg
+   . MonadProcessHandled m parsedMsg
+  => MonadProcessTrans m mState appMsg parsedMsg
   => MonadEffect m
   => m Unit
   -> Effect (Process appMsg)
@@ -110,7 +115,8 @@ spawn = unsafeCoerce <<< Raw.spawn <<< unsafeEvalProcess
 
 spawnLink
   :: forall m mState appMsg parsedMsg
-   . MonadProcessTrans m mState appMsg parsedMsg
+   . MonadProcessHandled m parsedMsg
+  => MonadProcessTrans m mState appMsg parsedMsg
   => MonadEffect m
   => m Unit
   -> Effect (Process appMsg)

@@ -14,11 +14,12 @@ import Effect.Class (class MonadEffect)
 import Erl.Test.EUnit (TestF, test)
 import Pinto.GenServer.ContStop as GS
 import Pinto.ProcessT (unsafeEvalProcess)
-import Pinto.ProcessT.Internal.Types (class MonadProcessTrans)
+import Pinto.ProcessT.Internal.Types (class MonadProcessHandled, class MonadProcessTrans)
 
 mpTest
   :: forall m mState appMsg parsedMsg
    . MonadProcessTrans m mState appMsg parsedMsg
+  => MonadProcessHandled m parsedMsg
   --  => MonadEffect m
   => String
   -> m Unit

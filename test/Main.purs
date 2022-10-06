@@ -9,11 +9,11 @@ import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Data.List (nil, (:))
 import Erl.Kernel.Application (ensureAllStarted)
-import Erl.Process (ProcessM)
 import Erl.Test.EUnit (TestF, runTests, suite, test)
 import Pinto (StartLinkResult)
 import Pinto.GenServer2 (InitFn, InitResult(..), ServerPid)
 import Pinto.GenServer2 as GS2
+import Pinto.ProcessT.Internal.Types (ProcessTM)
 import Pinto.Supervisor (ChildShutdownTimeoutStrategy(..), ChildType(..), RestartStrategy(..), Strategy(..), SupervisorSpec, ChildSpec, spec)
 import Pinto.Supervisor as Sup
 import Pinto.Supervisor.SimpleOneForOne as DynamicSup
@@ -40,12 +40,14 @@ main = do
   void $ runTests do
     TGS.genServerSuite
     TGS2.genServer2Suite
+    DoorLock.testSuite
     testMonitorT
     testTrapExitT
     testBusT
     testStateBusT
     testMetadataBusT
     testStateMetadataBusT
+    testValueServer
 
 -- testValueServer
 -- DoorLock.testSuite
@@ -97,7 +99,7 @@ testStartWithNamedChild =
       , childSpecs
       }
 
-  childInit :: InitFn TestState (ProcessM Void)
+  childInit :: InitFn TestState (ProcessTM Void Void)
   childInit = do
     pure $ InitOk $ TestState 0
 
@@ -130,7 +132,7 @@ dynamicSupervisor =
       }
     pure unit
   where
-  supInit :: Effect (DynamicSup.ChildSpec Unit (ServerPid TestState (ProcessM Void)))
+  supInit :: Effect (DynamicSup.ChildSpec Unit (ServerPid TestState (ProcessTM Void Void)))
   supInit =
     pure
       { intensity: 1
@@ -143,6 +145,6 @@ dynamicSupervisor =
 
   childStart _ = GS2.startLink $ (GS2.defaultSpec childInit)
 
-  childInit :: InitFn TestState (ProcessM Void)
+  childInit :: InitFn TestState (ProcessTM Void Void)
   childInit = do
     pure $ InitOk $ TestState 0

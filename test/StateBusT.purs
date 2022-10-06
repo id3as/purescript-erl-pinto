@@ -15,11 +15,12 @@ import Effect.Class (class MonadEffect, liftEffect)
 import Effect.Class.Console (log)
 import Erl.Atom (Atom, atom)
 import Erl.Kernel.Erlang (sleep)
-import Erl.Process (Process, ProcessM, self, (!))
+import Erl.Process (Process, self, (!))
 import Erl.Test.EUnit (TestF, suite)
 import Partial.Unsafe (unsafeCrashWith)
 import Pinto.ProcessT (Timeout(..), receive, receiveWithTimeout, spawn)
 import Pinto.ProcessT.BusT.StateBusT (class UpdateState, Bus, BusMsg(..), BusRef, StateBusT, busRef, create, delete, raise, subscribe, unsubscribe)
+import Pinto.ProcessT.Internal.Types (ProcessTM)
 import Test.Assert (assertEqual)
 import Test.TestHelpers (mpTest)
 
@@ -73,7 +74,7 @@ testInitialStateSubscribeThenCreate =
   mpTest "If you subscribe before a bus is created you get initial state" theTest
   where
 
-  theTest :: StateBusT (BusMsg TestBusMsg TestBusState) (ProcessM Void) Unit
+  theTest :: StateBusT (BusMsg TestBusMsg TestBusState) (ProcessTM Void _) Unit
   theTest = do
     subscribe testBusRef identity >>= expect Nothing
     testBus <- createTestBus
@@ -87,7 +88,7 @@ testInitialStateCreateThenSubscribe =
   mpTest "If you subscribe after a bus is created you get initial state" theTest
   where
 
-  theTest :: StateBusT (BusMsg TestBusMsg TestBusState) (ProcessM Void) Unit
+  theTest :: StateBusT (BusMsg TestBusMsg TestBusState) (ProcessTM Void _) Unit
   theTest = do
     testBus <- createTestBus
     subscribe testBusRef identity >>= (expect (Just (TestBusState 0)))
@@ -99,7 +100,7 @@ testInitialStateAfterUpdates =
   mpTest "If you subscribe after messages have been raised, you received the latest state" theTest
   where
 
-  theTest :: StateBusT (BusMsg TestBusMsg TestBusState) (ProcessM Void) Unit
+  theTest :: StateBusT (BusMsg TestBusMsg TestBusState) (ProcessTM Void _) Unit
   theTest = do
     testBus <- createTestBus
     raiseBusMessage testBus
@@ -112,7 +113,7 @@ testMapMsg =
   mpTest "We receive mapped messages" theTest
   where
 
-  theTest :: StateBusT TestMappedMsg (ProcessM Void) Unit
+  theTest :: StateBusT TestMappedMsg (ProcessTM Void _) Unit
   theTest = do
     testBus <- createTestBus
     raiseBusMessage testBus
@@ -130,7 +131,7 @@ testUnsubscribe =
   mpTest "No longer receive messages after unsubscribe" theTest
   where
 
-  theTest :: StateBusT (BusMsg TestBusMsg TestBusState) (ProcessM Void) Unit
+  theTest :: StateBusT (BusMsg TestBusMsg TestBusState) (ProcessTM Void _) Unit
   theTest = do
     testBus <- createTestBus
     subscribe testBusRef identity >>= expect (Just (TestBusState 0))
@@ -154,7 +155,7 @@ testSenderExits = do
   mpTest "Receive BusTerminated if sender exits (subscribe then create, deletion)" (theTest2 DeleteAndWait)
   where
 
-  theTest :: _ -> StateBusT (BusMsg TestBusMsg TestBusState) (ProcessM Ack) Unit
+  theTest :: _ -> StateBusT (BusMsg TestBusMsg TestBusState) (ProcessTM Ack _) Unit
   theTest howToExit = do
     -- Create a StateBus
     -- Register for it
@@ -186,7 +187,7 @@ testSenderExits = do
     when (howToExit == DeleteAndWait) do
       liftEffect $ senderPid ! ExitNormal
 
-  theTest2 :: _ -> StateBusT (BusMsg TestBusMsg TestBusState) (ProcessM Void) Unit
+  theTest2 :: _ -> StateBusT (BusMsg TestBusMsg TestBusState) (ProcessTM Void _) Unit
   theTest2 howToExit = do
     let ourTestBus = busRef $ atom "TestingBus"
     me <- self
@@ -251,7 +252,7 @@ testMultipleBusses =
   mpTest "Can subscribe to multiple busses - each with their own mapper" theTest
   where
 
-  theTest :: StateBusT Int (ProcessM Void) Unit
+  theTest :: StateBusT Int (ProcessTM Void _) Unit
   theTest = do
     testBus <- createTestBus
     subscribe testBusRef (const 1) >>= expect (Just (TestBusState 0))
@@ -301,7 +302,7 @@ testErrorHandling =
   mpTest "Handles unregistration-during-subscribe gracefully" theTest
   where
 
-  theTest :: StateBusT _ (ProcessM Unit) Unit
+  theTest :: StateBusT _ (ProcessTM Unit _) Unit
   theTest = do
     me <- self
     _ <- liftEffect $ spawn $ testBus2Thread \testBus -> do
@@ -324,10 +325,10 @@ raiseBusMessage :: forall m. MonadEffect m => TestBus -> m Unit
 raiseBusMessage testBus = do
   liftEffect $ raise testBus TestBusMsg
 
-createTestBus :: forall busMsg. StateBusT busMsg (ProcessM Void) TestBus
+createTestBus :: forall handledMsg busMsg. StateBusT busMsg (ProcessTM Void handledMsg) TestBus
 createTestBus = liftEffect $ create testBusRef (TestBusState 0)
 
-testBus2Thread :: (Bus Atom TestBusMsg TestBusState -> Effect Unit) -> ProcessM Void Unit
+testBus2Thread :: (Bus Atom TestBusMsg TestBusState -> Effect Unit) -> ProcessTM Void Void Unit
 testBus2Thread doStuff = liftEffect do
   testBus2 <- create testBusRef2 (TestBusState 0)
   doStuff testBus2
@@ -345,7 +346,7 @@ data HelperMsg
   | ExitCrash
 derive instance Eq HelperMsg
 
-testBusThreadHelper :: forall ack. Maybe ack -> Process ack -> BusRef Atom TestBusMsg TestBusState -> ProcessM HelperMsg Unit
+testBusThreadHelper :: forall ack. Maybe ack -> Process ack -> BusRef Atom TestBusMsg TestBusState -> ProcessTM HelperMsg HelperMsg Unit
 testBusThreadHelper ack parent localBusRef = do
   localBus <- receive >>= case _ of
     CreateBus initialState -> do

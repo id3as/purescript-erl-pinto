@@ -10,7 +10,7 @@ import Data.Maybe (Maybe(..))
 import Effect (Effect)
 import Effect.Class (liftEffect)
 import Erl.Atom (atom)
-import Erl.Process (Process, ProcessM, getProcess, self, send, toPid, (!))
+import Erl.Process (Process, getProcess, self, send, toPid, (!))
 import Erl.Process as Process
 import Erl.Test.EUnit (TestF, suite, test)
 import Foreign (unsafeToForeign)
@@ -18,13 +18,14 @@ import Partial.Unsafe (unsafeCrashWith)
 import Pinto.GenServer.ContStop (Action(..), InitResult(..), ContinueFn)
 import Pinto.GenServer.ContStop as GS2
 import Pinto.ProcessT (receive)
+import Pinto.ProcessT.Internal.Types (ProcessTM)
 import Pinto.ProcessT.MonitorT (MonitorT, monitor, spawnLinkMonitor)
 import Pinto.ProcessT.TrapExitT (TrapExitT)
 import Pinto.Types (NotStartedReason(..), RegistryName(..), RegistryReference(..), StartLinkResult, crashIfNotStarted)
 import Test.Assert (assert', assertEqual)
 import Test.TestHelpers (getState, mpTest, setState, setStateCast, sleep)
 
-type TestServerType = GS2.ServerType TestCont TestStop TestState (ProcessM TestMsg)
+type TestServerType = GS2.ServerType TestCont TestStop TestState (ProcessTM TestMsg TestMsg)
 
 genServer2Suite :: Free TestF Unit
 genServer2Suite =
@@ -80,13 +81,13 @@ testStopNormalGlobal =
     $ testStopNormal
     $ Global (unsafeToForeign $ atom "testStopNormalGlobal")
 
-type TestMonad = MonitorT TestMonitorMsg (TrapExitT (ProcessM TestMsg))
+type TestMonad handledMsg = MonitorT TestMonitorMsg (TrapExitT (ProcessTM TestMsg handledMsg))
 
 testMonadStatePassedAround :: Free TestF Unit
 testMonadStatePassedAround =
   mpTest "Ensure MonadProcessTrans state is maintained across calls" theTest
   where
-  theTest :: ProcessM Int Unit
+  theTest :: ProcessTM Int _ Unit
   theTest = do
     -- Go through each handler in a GenServer adding a monitor in each and check that they all fire
     -- The process we spawn waits 20ms before exit to make sure that all the monitors fire after the
@@ -100,12 +101,12 @@ testMonadStatePassedAround =
       , expected: 0x0F
       }
 
-  init :: Process Int -> GS2.InitFn TestCont TestState2 TestMonad
+  init :: Process Int -> GS2.InitFn TestCont TestState2 (TestMonad _)
   init parentPid = do
     _ <- spawnLinkMonitor exitsQuickly $ const (TestMonitorMsg 0x01)
     pure $ InitOkContinue { parentPid, total: 0 } TestCont
 
-  handleContinue :: ContinueFn TestCont TestStop TestState2 TestMonad
+  handleContinue :: ContinueFn TestCont TestStop TestState2 (TestMonad _)
   handleContinue TestCont state = do
     -- let _ = spy "handleContinue" state
     me <- self
@@ -115,7 +116,7 @@ testMonadStatePassedAround =
   handleContinue (TestContFrom _) state = do
     pure $ GS2.return $ state
 
-  handleInfo :: GS2.InfoFn TestCont TestStop _ TestState2 TestMonad
+  handleInfo :: GS2.InfoFn TestCont TestStop _ TestState2 (TestMonad _)
   handleInfo (Left msg) state = handleMonitorMsg msg state
   handleInfo (Right (Left msg)) state = handleExitMsg msg state
   handleInfo (Right (Right msg)) state = handleAppMsg msg state
@@ -152,7 +153,7 @@ testMonadStatePassedAround =
   terminate _reason { parentPid, total } = do
     liftEffect $ send parentPid total
 
-  exitsQuickly :: ProcessM Void Unit
+  exitsQuickly :: ProcessTM Void _ Unit
   exitsQuickly = do
     liftEffect $ sleep 20
     pure unit
@@ -167,7 +168,7 @@ testStartGetSet :: RegistryName TestServerType -> Effect Unit
 testStartGetSet registryName = do
   let
     --gsSpec :: GS2.ServerSpec TestCont TestStop TestMsg _ TestState (ProcessM TestMsg)
-    gsSpec :: GS2.GSConfig TestCont TestStop _ TestState (ProcessM TestMsg)
+    gsSpec :: GS2.GSConfig TestCont TestStop _ TestState (ProcessTM _ TestMsg)
     gsSpec =
       (GS2.defaultSpec init)
         { serverName = Just registryName
@@ -225,10 +226,10 @@ derive instance Eq TestMonitorMsg
 instance Show TestMonitorMsg where
   show (TestMonitorMsg i) = "TestMonitorMsg: " <> show i
 
-testStopNormal :: RegistryName TestServerType -> MonitorT TestMonitorMsg (ProcessM Void) Unit
+testStopNormal :: RegistryName TestServerType -> MonitorT TestMonitorMsg (ProcessTM Void (Either TestMonitorMsg Void)) Unit
 testStopNormal registryName = do
   let
-    gsSpec :: GS2.GSConfig TestCont TestStop _ TestState (ProcessM TestMsg)
+    gsSpec :: GS2.GSConfig TestCont TestStop _ TestState (ProcessTM TestMsg _)
     gsSpec =
       (GS2.defaultSpec init)
         { serverName = Just registryName

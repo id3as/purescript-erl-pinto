@@ -29,7 +29,7 @@ import Erl.Process.Raw as Raw
 import Foreign (Foreign)
 import Partial.Unsafe (unsafeCrashWith)
 import Pinto.ProcessT (spawn, spawnLink)
-import Pinto.ProcessT.Internal.Types (class MonadProcessTrans, initialise, parseForeign, run)
+import Pinto.ProcessT.Internal.Types (class MonadProcessHandled, class MonadProcessTrans, initialise, parseForeign, run)
 import Type.Prelude (Proxy(..))
 
 newtype MonitorT monitorMsg m a = MonitorT (StateT (MonitorMap monitorMsg) m a)
@@ -127,7 +127,8 @@ demonitor ref = do
 
 spawnMonitor
   :: forall m mState msg outMsg m2 monitorMsg
-   . MonadProcessTrans m mState msg outMsg
+   . MonadProcessHandled m outMsg
+  => MonadProcessTrans m mState msg outMsg
   => MonadEffect m
   => MonadEffect m2
   => m Unit
@@ -137,7 +138,8 @@ spawnMonitor = doSpawnMonitor spawn
 
 spawnLinkMonitor
   :: forall m mState msg outMsg m2 monitorMsg
-   . MonadProcessTrans m mState msg outMsg
+   . MonadProcessHandled m outMsg
+  => MonadProcessTrans m mState msg outMsg
   => MonadEffect m
   => MonadEffect m2
   => m Unit

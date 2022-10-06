@@ -7,10 +7,11 @@ import Control.Monad.Trans.Class (lift)
 import Data.Either (Either(..))
 import Data.Time.Duration (Milliseconds(..))
 import Effect.Class (liftEffect)
-import Erl.Process (ProcessM, toPid, (!))
+import Erl.Process (toPid, (!))
 import Erl.Test.EUnit (TestF, suite)
 import Partial.Unsafe (unsafeCrashWith)
 import Pinto.ProcessT (Timeout(..), receive, receiveWithTimeout, spawn, spawnLink)
+import Pinto.ProcessT.Internal.Types (ProcessTM)
 import Pinto.ProcessT.MonitorT (MonitorT, demonitor, monitor, spawnLinkMonitor, spawnMonitor)
 import Pinto.ProcessT.TrapExitT (TrapExitT)
 import Pinto.Types (ExitMessage(..))
@@ -36,7 +37,7 @@ testMonitor =
   mpTest "Spawn a process and confirm we get a monitor message when it exits" theTest
   where
 
-  theTest :: MonitorT TestMonitorMsg (ProcessM Void) Unit
+  theTest :: MonitorT TestMonitorMsg (ProcessTM Void _) Unit
   theTest = do
     pid <- liftEffect $ spawn immediatelyExitNormal
     _ <- monitor (toPid pid) $ const TestMonitorMsg
@@ -51,7 +52,7 @@ testMonitorTrapExit =
   mpTest "Spawn a process and confirm we get both a monitor and exit message" theTest
   where
 
-  theTest :: TrapExitT (MonitorT TestMonitorMsg (ProcessM Void)) Unit
+  theTest :: TrapExitT (MonitorT TestMonitorMsg (ProcessTM Void _)) Unit
   theTest = do
     pid <- liftEffect $ spawnLink immediatelyExitNormal
     _ <- lift $ monitor (toPid pid) $ const TestMonitorMsg
@@ -72,7 +73,7 @@ testTrapExitMonitor =
   mpTest "Spawn a process and confirm we get both a monitor and exit message" theTest
   where
 
-  theTest :: MonitorT TestMonitorMsg (TrapExitT (ProcessM Void)) Unit
+  theTest :: MonitorT TestMonitorMsg (TrapExitT (ProcessTM Void _)) Unit
   theTest = do
     pid <- liftEffect $ spawnLink immediatelyExitNormal
     _ <- monitor (toPid pid) $ const TestMonitorMsg
@@ -93,7 +94,7 @@ testDemonitor =
   mpTest "Confirm we get no message on exit after a demonitor call" theTest
   where
 
-  theTest :: MonitorT TestMonitorMsg (ProcessM TestAppMsg) Unit
+  theTest :: MonitorT TestMonitorMsg (ProcessTM TestAppMsg _) Unit
   theTest = do
     pid <- liftEffect $ spawn immediatelyExitNormal
     ref <- monitor pid $ const TestMonitorMsg
@@ -110,7 +111,7 @@ testSpawnMonitor =
   mpTest "spawnMonitor a process and confirm we get a monitor message when it exits" theTest
   where
 
-  theTest :: MonitorT TestMonitorMsg (ProcessM Void) Unit
+  theTest :: MonitorT TestMonitorMsg (ProcessTM Void _) Unit
   theTest = do
     _pid <- spawnMonitor immediatelyExitNormal $ const TestMonitorMsg
     msg <- receive
@@ -124,7 +125,7 @@ testSpawnLinkMonitor =
   mpTest "spawnLinkMonitor a process, send it a message and confirm we get a monitor message when it exits" theTest
   where
 
-  theTest :: MonitorT TestMonitorMsg (ProcessM Void) Unit
+  theTest :: MonitorT TestMonitorMsg (ProcessTM Void _) Unit
   theTest = do
     pid <- spawnLinkMonitor exitOnMessage $ const TestMonitorMsg
     liftEffect $ pid ! TestAppMsg
@@ -134,10 +135,10 @@ testSpawnLinkMonitor =
       Right _ ->
         unsafeCrashWith "We got sent a void message!"
 
-immediatelyExitNormal :: ProcessM Void Unit
+immediatelyExitNormal :: forall handledMsg. ProcessTM Void handledMsg Unit
 immediatelyExitNormal = pure unit
 
-exitOnMessage :: ProcessM TestAppMsg Unit
+exitOnMessage :: ProcessTM TestAppMsg TestAppMsg Unit
 exitOnMessage = do
   msg <- receive
   case msg of

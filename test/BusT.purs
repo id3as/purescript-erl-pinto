@@ -11,11 +11,11 @@ import Effect (Effect)
 import Effect.Class (liftEffect)
 import Erl.Atom (Atom, atom)
 import Erl.Kernel.Time (milliseconds)
-import Erl.Process (ProcessM)
 import Erl.Test.EUnit (TestF, suite)
 import Partial.Unsafe (unsafeCrashWith)
 import Pinto.ProcessT (Timeout(..), receive, receiveWithTimeout, spawn)
 import Pinto.ProcessT.BusT (Bus, BusT, bus, raise, subscribe, unsubscribe)
+import Pinto.ProcessT.Internal.Types (ProcessTM)
 import Test.Assert (assertEqual)
 import Test.TestHelpers (mpTest)
 
@@ -41,7 +41,7 @@ testReceiveMsg =
   mpTest "Can send and receive messages" theTest
   where
 
-  theTest :: BusT TestBusMsg (ProcessM Void) Unit
+  theTest :: BusT TestBusMsg (ProcessTM Void _) Unit
   theTest = do
     subscribe testBus identity
     void $ liftEffect $ spawn raiseBusMessage
@@ -57,7 +57,7 @@ testMapMsg =
   mpTest "We receive mapped messages" theTest
   where
 
-  theTest :: BusT TestMappedMsg (ProcessM Void) Unit
+  theTest :: BusT TestMappedMsg (ProcessTM Void _) Unit
   theTest = do
     subscribe testBus mapper
     void $ liftEffect $ spawn raiseBusMessage
@@ -75,7 +75,7 @@ testUnsubscribe =
   mpTest "No longer receive messages after unsubscribe" theTest
   where
 
-  theTest :: BusT TestBusMsg (ProcessM Void) Unit
+  theTest :: BusT TestBusMsg (ProcessTM Void _) Unit
   theTest = do
     subscribe testBus identity
     void $ liftEffect $ spawn raiseBusMessage
@@ -99,7 +99,7 @@ testMessageAfterUnsubscribe =
   mpTest "Swallow messages after unsubscribe" theTest
   where
 
-  theTest :: BusT TestBusMsg (ProcessM Void) Unit
+  theTest :: BusT TestBusMsg (ProcessTM Void _) Unit
   theTest = do
     subscribe testBus identity
     void $ liftEffect $ spawn raiseBusMessage
@@ -131,7 +131,7 @@ testMultipleBusses =
   mpTest "Can subscribe to multiple busses - each with their own mapper" theTest
   where
 
-  theTest :: BusT Int (ProcessM Void) Unit
+  theTest :: BusT Int (ProcessTM Void _) Unit
   theTest = do
     subscribe testBus (const 1)
     subscribe testBus2 (const 10)
@@ -152,11 +152,11 @@ testMultipleBusses =
 --------------------------------------------------------------------------------
 -- Helpers
 --------------------------------------------------------------------------------
-raiseBusMessage :: ProcessM Void Unit
+raiseBusMessage :: forall handledMsg. ProcessTM Void handledMsg Unit
 raiseBusMessage = do
   liftEffect $ raise testBus TestBusMsg
 
-raiseBusMessage2 :: ProcessM Void Unit
+raiseBusMessage2 :: forall handledMsg. ProcessTM Void handledMsg Unit
 raiseBusMessage2 = do
   liftEffect $ raise testBus2 TestBusMsg
 

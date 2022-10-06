@@ -8,12 +8,13 @@ import Control.Monad.Free (Free)
 import Data.Either (Either(..))
 import Data.Time.Duration (Milliseconds(..))
 import Effect.Class (liftEffect)
-import Erl.Process (Process, ProcessM, getProcess, self, send, (!))
+import Erl.Process (Process, getProcess, self, send, (!))
 import Erl.Test.EUnit (TestF, suite, test)
 import Partial.Unsafe (unsafeCrashWith)
 import Pinto.GenServer2 (InitResult(..))
 import Pinto.GenServer2 as GS2
 import Pinto.ProcessT (receiveWithTimeout, spawnLink)
+import Pinto.ProcessT.Internal.Types (ProcessTM)
 import Pinto.ProcessT.MonitorT (MonitorT)
 import Pinto.ProcessT.TrapExitT (TrapExitT)
 import Pinto.Types (ExitMessage(..), RegistryReference(..), crashIfNotStarted)
@@ -62,7 +63,7 @@ testStartLinkAnonymous =
     assertEqual { actual: state4, expected: TestState 2 }
     pure unit
   where
-  init :: GS2.InitFn TestState (ProcessM Void)
+  init :: GS2.InitFn TestState (ProcessTM Void Void)
   init = pure $ GS2.InitOk (TestState 0)
 
 testHandleInfo :: Free TestF Unit
@@ -77,7 +78,7 @@ testHandleInfo =
       }
     pure unit
   where
-  init :: GS2.InitFn TestState (ProcessM TestMsg)
+  init :: GS2.InitFn TestState (ProcessTM TestMsg TestMsg)
   init = do
     pure $ GS2.InitOk $ TestState 0
 
@@ -87,7 +88,7 @@ testHandleInfo =
   handleInfo _ _s = do
     unsafeCrashWith "Unexpected message"
 
-type TestMonad = MonitorT TestMonitorMsg (TrapExitT (ProcessM TestMsg))
+type TestMonad = MonitorT TestMonitorMsg (TrapExitT (ProcessTM TestMsg TestMsg))
 
 testCall :: Free TestF Unit
 testCall =
@@ -100,7 +101,7 @@ testCall =
       }
     pure unit
   where
-  init :: GS2.InitFn TestState (ProcessM Void)
+  init :: GS2.InitFn TestState (ProcessTM Void Void)
   init = do
     pure $ InitOk $ TestState 7
 
@@ -116,7 +117,7 @@ testCast =
       }
     pure unit
   where
-  init :: GS2.InitFn TestState (ProcessM Void)
+  init :: GS2.InitFn TestState (ProcessTM Void Void)
   init = do
     pure $ InitOk $ TestState 0
 
@@ -133,7 +134,7 @@ testTrapExits =
     mpTest "Parent exits arrive in the terminate callback" testParentExit
 
   where
-  testChildExit :: ProcessM Void Unit
+  testChildExit :: ProcessTM Void _ Unit
   testChildExit = liftEffect do
     serverPid <- crashIfNotStarted <$> (GS2.startLink' { init, handleInfo })
     state <- getState (ByPid serverPid)
@@ -143,23 +144,23 @@ testTrapExits =
       }
     pure unit
 
-  testParentExit :: ProcessM Boolean Unit
+  testParentExit :: ProcessTM Boolean Boolean Unit
   testParentExit = do
     testPid <- self
     let
-      spawnAndExit :: ProcessM Void Unit
+      spawnAndExit :: ProcessTM Void _ Unit
       spawnAndExit = void $ liftEffect $ crashIfNotStarted <$> (GS2.startLink' $ { init: init2 testPid, terminate })
 
     void $ liftEffect $ spawnLink spawnAndExit
     actual <- receiveWithTimeout (Milliseconds 50.0)
     liftEffect $ assertEqual' "Terminate wasn't called on the genserver" { expected: Right true, actual }
 
-  init :: GS2.InitFn _ (TrapExitT (ProcessM Void))
+  init :: GS2.InitFn _ (TrapExitT (ProcessTM Void _))
   init = do
     pid <- liftEffect $ spawnLink exitsImmediately
     pure $ InitOk $ { testPid: pid, receivedExit: false, receivedTerminate: false }
 
-  init2 :: Process Boolean -> GS2.InitFn TrapExitState (TrapExitT (ProcessM Void))
+  init2 :: Process Boolean -> GS2.InitFn TrapExitState (TrapExitT (ProcessTM Void _))
   init2 pid = do
     pure $ InitOk $ { testPid: pid, receivedExit: false, receivedTerminate: false }
 
@@ -181,5 +182,5 @@ instance Show TestMonitorMsg where
 ---------------------------------------------------------------------------------
 -- Internal
 ---------------------------------------------------------------------------------
-exitsImmediately :: ProcessM Void Unit
+exitsImmediately :: forall handledMsg. ProcessTM Void handledMsg Unit
 exitsImmediately = pure unit

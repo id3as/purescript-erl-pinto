@@ -14,11 +14,12 @@ import Effect (Effect)
 import Effect.Class (class MonadEffect, liftEffect)
 import Effect.Class.Console (log)
 import Erl.Atom (Atom, atom)
-import Erl.Process (Process, ProcessM, self, (!))
+import Erl.Process (Process, self, (!))
 import Erl.Test.EUnit (TestF, suite)
 import Partial.Unsafe (unsafeCrashWith)
 import Pinto.ProcessT (Timeout(..), receive, receiveWithTimeout, spawn)
 import Pinto.ProcessT.BusT.MetadataBusT (Bus, BusMsg(..), BusRef, MetadataBusT, busRef, create, delete, raise, subscribe, unsubscribe, updateMetadata)
+import Pinto.ProcessT.Internal.Types (ProcessTM)
 import Test.Assert (assertEqual)
 import Test.TestHelpers (mpTest)
 
@@ -70,7 +71,7 @@ testInitialMetadataSubscribeThenCreate =
   mpTest "If you subscribe before a bus is created you get initial state" theTest
   where
 
-  theTest :: MetadataBusT (BusMsg TestBusMsg TestBusMetadata) (ProcessM Void) Unit
+  theTest :: MetadataBusT (BusMsg TestBusMsg TestBusMetadata) (ProcessTM Void _) Unit
   theTest = do
     subscribe testBusRef identity >>= expect Nothing
     testBus <- createTestBus
@@ -95,7 +96,7 @@ testInitialMetadataCreateThenSubscribe =
   mpTest "If you subscribe after a bus is created you get initial state" theTest
   where
 
-  theTest :: MetadataBusT (BusMsg TestBusMsg TestBusMetadata) (ProcessM Void) Unit
+  theTest :: MetadataBusT (BusMsg TestBusMsg TestBusMetadata) (ProcessTM Void _) Unit
   theTest = do
     testBus <- createTestBus
     subscribe testBusRef identity >>= (expect (Just (TestBusMetadata 0)))
@@ -119,7 +120,7 @@ testInitialMetadataAfterUpdates =
   mpTest "If you subscribe after messages have been raised, you received the latest state" theTest
   where
 
-  theTest :: MetadataBusT (BusMsg TestBusMsg TestBusMetadata) (ProcessM Void) Unit
+  theTest :: MetadataBusT (BusMsg TestBusMsg TestBusMetadata) (ProcessTM Void _) Unit
   theTest = do
     testBus <- createTestBus
 
@@ -147,7 +148,7 @@ testMapMsg =
   mpTest "We receive mapped messages" theTest
   where
 
-  theTest :: MetadataBusT TestMappedMsg (ProcessM Void) Unit
+  theTest :: MetadataBusT TestMappedMsg (ProcessTM Void _) Unit
   theTest = do
     testBus <- createTestBus
     raiseBusMessage testBus
@@ -170,7 +171,7 @@ testUnsubscribe =
   mpTest "No longer receive messages after unsubscribe" theTest
   where
 
-  theTest :: MetadataBusT (BusMsg TestBusMsg TestBusMetadata) (ProcessM Void) Unit
+  theTest :: MetadataBusT (BusMsg TestBusMsg TestBusMetadata) (ProcessTM Void _) Unit
   theTest = do
     testBus <- createTestBus
     subscribe testBusRef identity >>= expect (Just (TestBusMetadata 0))
@@ -195,7 +196,7 @@ testSenderExits = do
   mpTest "Receive BusTerminated if sender exits (subscribe then create, deletion)" (theTest2 DeleteAndWait)
   where
 
-  theTest :: _ -> MetadataBusT (BusMsg TestBusMsg TestBusMetadata) (ProcessM Ack) Unit
+  theTest :: _ -> MetadataBusT (BusMsg TestBusMsg TestBusMetadata) (ProcessTM Ack _) Unit
   theTest howToExit = do
     -- Create a MetadataBus
     -- Register for it
@@ -227,7 +228,7 @@ testSenderExits = do
     when (howToExit == DeleteAndWait) do
       liftEffect $ senderPid ! ExitNormal
 
-  theTest2 :: _ -> MetadataBusT (BusMsg TestBusMsg TestBusMetadata) (ProcessM Void) Unit
+  theTest2 :: _ -> MetadataBusT (BusMsg TestBusMsg TestBusMetadata) (ProcessTM Void _) Unit
   theTest2 howToExit = do
     let ourTestBus = busRef $ atom "TestingBus"
     me <- self
@@ -292,7 +293,7 @@ testMultipleBusses =
   mpTest "Can subscribe to multiple busses - each with their own mapper" theTest
   where
 
-  theTest :: MetadataBusT Int (ProcessM Void) Unit
+  theTest :: MetadataBusT Int (ProcessTM Void _) Unit
   theTest = do
     testBus <- createTestBus
     subscribe testBusRef (const 1) >>= expect (Just (TestBusMetadata 0))
@@ -334,10 +335,10 @@ raiseBusState :: forall m. MonadEffect m => TestBus -> TestBusMetadata -> m Unit
 raiseBusState testBus m = do
   liftEffect $ updateMetadata testBus m
 
-createTestBus :: forall busMsg. MetadataBusT busMsg (ProcessM Void) TestBus
+createTestBus :: forall busMsg handledMsg. MetadataBusT busMsg (ProcessTM Void handledMsg) TestBus
 createTestBus = liftEffect $ create testBusRef (TestBusMetadata 0)
 
-testBus2Thread :: (Bus Atom TestBusMsg TestBusMetadata -> Effect Unit) -> ProcessM Void Unit
+testBus2Thread :: (Bus Atom TestBusMsg TestBusMetadata -> Effect Unit) -> ProcessTM Void Void Unit
 testBus2Thread doStuff = liftEffect do
   testBus2 <- create testBusRef2 (TestBusMetadata 0)
   doStuff testBus2
@@ -355,7 +356,7 @@ data HelperMsg
   | ExitCrash
 derive instance Eq HelperMsg
 
-testBusThreadHelper :: forall ack. Maybe ack -> Process ack -> BusRef Atom TestBusMsg TestBusMetadata -> ProcessM HelperMsg Unit
+testBusThreadHelper :: forall ack. Maybe ack -> Process ack -> BusRef Atom TestBusMsg TestBusMetadata -> ProcessTM HelperMsg HelperMsg Unit
 testBusThreadHelper ack parent localBusRef = do
   localBus <- receive >>= case _ of
     CreateBus initialMetadata -> do
@@ -399,7 +400,7 @@ expect a b = liftEffect $ expect' a b
 expect' :: forall a. Eq a => Show a => a -> a -> Effect Unit
 expect' expected actual = assertEqual { actual, expected: expected }
 
-noMoreMessages :: forall a b. MetadataBusT a (ProcessM b) Unit
+noMoreMessages :: forall a b. MetadataBusT a (ProcessTM b (Either a b)) Unit
 noMoreMessages = receiveWithTimeout (Milliseconds 6.0) >>= case _ of
   Left _ -> pure unit
   Right _ -> unsafeCrashWith "Received unexpected message"

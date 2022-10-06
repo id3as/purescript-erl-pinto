@@ -9,6 +9,7 @@ import Erl.Process (ProcessM)
 import Erl.Test.EUnit (TestF, suite)
 import Partial.Unsafe (unsafeCrashWith)
 import Pinto.ProcessT (receive, spawnLink)
+import Pinto.ProcessT.Internal.Types (ProcessTM)
 import Pinto.ProcessT.TrapExitT (TrapExitT)
 import Test.TestHelpers (mpTest)
 
@@ -25,7 +26,7 @@ testTrapExit =
   mpTest "Spawn a process and confirm we get a message when it exits" theTest
   where
 
-  theTest :: TrapExitT (ProcessM TestAppMsg) Unit
+  theTest :: TrapExitT (ProcessTM TestAppMsg _) Unit
   theTest = do
     _pid <- liftEffect $ spawnLink immediatelyExitNormal
     msg <- receive
@@ -34,5 +35,5 @@ testTrapExit =
       Right _ ->
         unsafeCrashWith "We got sent a void message!"
 
-immediatelyExitNormal :: ProcessM Void Unit
+immediatelyExitNormal :: ProcessTM Void Void Unit
 immediatelyExitNormal = pure unit

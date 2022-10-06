@@ -15,15 +15,15 @@ import Effect (Effect)
 import Effect.Class (class MonadEffect, liftEffect)
 import Effect.Class.Console (log)
 import Erl.Atom (Atom, atom)
-import Erl.Process (Process, ProcessM, self, spawn, (!))
+import Erl.Process (Process, self, (!))
 import Erl.Test.EUnit (TestF, suite)
 import Partial.Unsafe (unsafeCrashWith)
-import Pinto.ProcessT (receive, receiveWithTimeout)
+import Pinto.ProcessT (receive, receiveWithTimeout, spawn)
 import Pinto.ProcessT.BusT.MetadataBusT (MetadataBusT)
 import Pinto.ProcessT.BusT.MetadataBusT as M
 import Pinto.ProcessT.BusT.StateBusT (class UpdateState, StateBusT)
 import Pinto.ProcessT.BusT.StateBusT as S
-import Pinto.ProcessT.Internal.Types (class MonadProcessTrans)
+import Pinto.ProcessT.Internal.Types (class MonadProcessHandled, class MonadProcessTrans, ProcessTM)
 import Test.Assert (assertEqual)
 import Test.TestHelpers (mpTest)
 
@@ -36,7 +36,7 @@ type TestBusRefS = S.BusRef String TestBusMsg TestBusState
 type StackM = MetadataBusT TestMappedMsg
 type StackS = StateBusT TestMappedMsg
 
-type StackMS = StackM (StackS (ProcessM Ack)) Unit
+type StackMS = StackM (StackS (ProcessTM Ack (Either TestMappedMsg (Either TestMappedMsg Ack)))) Unit
 
 data TestBusMsg = TestBusMsg
 
@@ -197,7 +197,7 @@ data HelperMsg
   | ExitCrash
 derive instance Eq HelperMsg
 
-testBusThreadHelperM :: forall ack. Maybe ack -> Process ack -> M.BusRef Atom TestBusMsg TestBusMetadata -> ProcessM HelperMsg Unit
+testBusThreadHelperM :: forall ack. Maybe ack -> Process ack -> M.BusRef Atom TestBusMsg TestBusMetadata -> ProcessTM HelperMsg HelperMsg Unit
 testBusThreadHelperM ack parent localBusRef = do
   localBus <- receive >>= case _ of
     CreateBus initialMetadata -> do
@@ -247,7 +247,7 @@ expect a b = liftEffect $ expect' a b
 expect' :: forall a. Eq a => Show a => a -> a -> Effect Unit
 expect' expected actual = assertEqual { actual, expected: expected }
 
-noMoreMessages :: forall m mState appMsg parsedMsg. MonadProcessTrans m mState appMsg parsedMsg => MonadEffect m => m Unit
+noMoreMessages :: forall m mState appMsg parsedMsg. MonadProcessHandled m parsedMsg => MonadProcessTrans m mState appMsg parsedMsg => MonadEffect m => m Unit
 noMoreMessages = receiveWithTimeout (Milliseconds 6.0) >>= case _ of
   Left _ -> pure unit
   Right _ -> unsafeCrashWith "Received unexpected message"
