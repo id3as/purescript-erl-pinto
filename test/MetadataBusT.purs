@@ -17,9 +17,8 @@ import Erl.Atom (Atom, atom)
 import Erl.Process (Process, self, (!))
 import Erl.Test.EUnit (TestF, suite)
 import Partial.Unsafe (unsafeCrashWith)
-import Pinto.ProcessT (Timeout(..), receive, receiveWithTimeout, spawn)
+import Pinto.ProcessT (ProcessTM, Timeout(..), ProcessM, receive, receiveWithTimeout, spawn)
 import Pinto.ProcessT.BusT.MetadataBusT (Bus, BusMsg(..), BusRef, MetadataBusT, busRef, create, delete, raise, subscribe, unsubscribe, updateMetadata)
-import Pinto.ProcessT.Internal.Types (ProcessTM)
 import Test.Assert (assertEqual)
 import Test.TestHelpers (mpTest)
 
@@ -338,7 +337,7 @@ raiseBusState testBus m = do
 createTestBus :: forall busMsg handledMsg. MetadataBusT busMsg (ProcessTM Void handledMsg) TestBus
 createTestBus = liftEffect $ create testBusRef (TestBusMetadata 0)
 
-testBus2Thread :: (Bus Atom TestBusMsg TestBusMetadata -> Effect Unit) -> ProcessTM Void Void Unit
+testBus2Thread :: (Bus Atom TestBusMsg TestBusMetadata -> Effect Unit) -> ProcessM Void Unit
 testBus2Thread doStuff = liftEffect do
   testBus2 <- create testBusRef2 (TestBusMetadata 0)
   doStuff testBus2

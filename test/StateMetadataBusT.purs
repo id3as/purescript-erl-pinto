@@ -18,12 +18,11 @@ import Erl.Atom (Atom, atom)
 import Erl.Process (Process, self, (!))
 import Erl.Test.EUnit (TestF, suite)
 import Partial.Unsafe (unsafeCrashWith)
-import Pinto.ProcessT (receive, receiveWithTimeout, spawn)
+import Pinto.ProcessT (class MonadProcessHandled, class MonadProcessTrans, ProcessTM, ProcessM, receive, receiveWithTimeout, spawn)
 import Pinto.ProcessT.BusT.MetadataBusT (MetadataBusT)
 import Pinto.ProcessT.BusT.MetadataBusT as M
 import Pinto.ProcessT.BusT.StateBusT (class UpdateState, StateBusT)
 import Pinto.ProcessT.BusT.StateBusT as S
-import Pinto.ProcessT.Internal.Types (class MonadProcessHandled, class MonadProcessTrans, ProcessTM)
 import Test.Assert (assertEqual)
 import Test.TestHelpers (mpTest)
 
@@ -197,7 +196,7 @@ data HelperMsg
   | ExitCrash
 derive instance Eq HelperMsg
 
-testBusThreadHelperM :: forall ack. Maybe ack -> Process ack -> M.BusRef Atom TestBusMsg TestBusMetadata -> ProcessTM HelperMsg HelperMsg Unit
+testBusThreadHelperM :: forall ack. Maybe ack -> Process ack -> M.BusRef Atom TestBusMsg TestBusMetadata -> ProcessM HelperMsg Unit
 testBusThreadHelperM ack parent localBusRef = do
   localBus <- receive >>= case _ of
     CreateBus initialMetadata -> do

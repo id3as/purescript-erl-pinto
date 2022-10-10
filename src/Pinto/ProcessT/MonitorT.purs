@@ -74,9 +74,7 @@ foreign import parseMonitorMsg :: Foreign -> Maybe MonitorMsg
 --     getTypedPid _ = getTypedPid (Proxy :: Proxy m)
 
 instance
-  ( MonadProcessTrans m innerState appMsg innerOutMsg
-  , Monad m
-  ) =>
+  MonadProcessTrans m innerState appMsg innerOutMsg =>
   MonadProcessTrans (MonitorT monitorMsg m) (Tuple (MonitorMap monitorMsg) innerState) appMsg (Either monitorMsg innerOutMsg) where
   parseForeign fgn = MonitorT do
     case parseMonitorMsg fgn of

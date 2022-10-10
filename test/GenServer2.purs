@@ -13,8 +13,7 @@ import Erl.Test.EUnit (TestF, suite, test)
 import Partial.Unsafe (unsafeCrashWith)
 import Pinto.GenServer2 (InitResult(..))
 import Pinto.GenServer2 as GS2
-import Pinto.ProcessT (receiveWithTimeout, spawnLink)
-import Pinto.ProcessT.Internal.Types (ProcessTM)
+import Pinto.ProcessT (ProcessTM, ProcessM, receiveWithTimeout, spawnLink)
 import Pinto.ProcessT.MonitorT (MonitorT)
 import Pinto.ProcessT.TrapExitT (TrapExitT)
 import Pinto.Types (ExitMessage(..), RegistryReference(..), crashIfNotStarted)
@@ -101,7 +100,7 @@ testCall =
       }
     pure unit
   where
-  init :: GS2.InitFn TestState (ProcessTM Void Void)
+  init :: GS2.InitFn TestState (ProcessM Void)
   init = do
     pure $ InitOk $ TestState 7
 
@@ -117,7 +116,7 @@ testCast =
       }
     pure unit
   where
-  init :: GS2.InitFn TestState (ProcessTM Void Void)
+  init :: GS2.InitFn TestState (ProcessM Void)
   init = do
     pure $ InitOk $ TestState 0
 
@@ -134,7 +133,7 @@ testTrapExits =
     mpTest "Parent exits arrive in the terminate callback" testParentExit
 
   where
-  testChildExit :: ProcessTM Void _ Unit
+  testChildExit :: ProcessM Void Unit
   testChildExit = liftEffect do
     serverPid <- crashIfNotStarted <$> (GS2.startLink' { init, handleInfo })
     state <- getState (ByPid serverPid)
@@ -144,11 +143,11 @@ testTrapExits =
       }
     pure unit
 
-  testParentExit :: ProcessTM Boolean Boolean Unit
+  testParentExit :: ProcessM Boolean Unit
   testParentExit = do
     testPid <- self
     let
-      spawnAndExit :: ProcessTM Void _ Unit
+      spawnAndExit :: ProcessM Void Unit
       spawnAndExit = void $ liftEffect $ crashIfNotStarted <$> (GS2.startLink' $ { init: init2 testPid, terminate })
 
     void $ liftEffect $ spawnLink spawnAndExit

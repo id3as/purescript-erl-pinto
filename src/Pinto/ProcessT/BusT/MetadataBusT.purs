@@ -184,9 +184,7 @@ toBusMsg currentGeneration busMsgInternal =
             Nothing
 
 instance
-  ( MonadProcessTrans m innerMetadata appMsg innerOutMsg
-  , MonadEffect m
-  ) =>
+  MonadProcessTrans m innerMetadata appMsg innerOutMsg =>
   MonadProcessTrans (MetadataBusT msgOut m) (Tuple (MetadataBusInternal msgOut) innerMetadata) appMsg (Either msgOut innerOutMsg) where
   parseForeign fgn = MetadataBusT do
     case parseBusMsg fgn of

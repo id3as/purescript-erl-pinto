@@ -17,15 +17,14 @@ import Foreign (unsafeToForeign)
 import Partial.Unsafe (unsafeCrashWith)
 import Pinto.GenServer.ContStop (Action(..), InitResult(..), ContinueFn)
 import Pinto.GenServer.ContStop as GS2
-import Pinto.ProcessT (receive)
-import Pinto.ProcessT.Internal.Types (ProcessTM)
+import Pinto.ProcessT (ProcessM, ProcessTM, receive)
 import Pinto.ProcessT.MonitorT (MonitorT, monitor, spawnLinkMonitor)
 import Pinto.ProcessT.TrapExitT (TrapExitT)
 import Pinto.Types (NotStartedReason(..), RegistryName(..), RegistryReference(..), StartLinkResult, crashIfNotStarted)
 import Test.Assert (assert', assertEqual)
 import Test.TestHelpers (getState, mpTest, setState, setStateCast, sleep)
 
-type TestServerType = GS2.ServerType TestCont TestStop TestState (ProcessTM TestMsg TestMsg)
+type TestServerType = GS2.ServerType TestCont TestStop TestState (ProcessM TestMsg)
 
 genServer2Suite :: Free TestF Unit
 genServer2Suite =

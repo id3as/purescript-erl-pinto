@@ -10,8 +10,7 @@ import Effect.Class (liftEffect)
 import Erl.Process (toPid, (!))
 import Erl.Test.EUnit (TestF, suite)
 import Partial.Unsafe (unsafeCrashWith)
-import Pinto.ProcessT (Timeout(..), receive, receiveWithTimeout, spawn, spawnLink)
-import Pinto.ProcessT.Internal.Types (ProcessTM)
+import Pinto.ProcessT (ProcessTM, Timeout(..), ProcessM, receive, receiveWithTimeout, spawn, spawnLink)
 import Pinto.ProcessT.MonitorT (MonitorT, demonitor, monitor, spawnLinkMonitor, spawnMonitor)
 import Pinto.ProcessT.TrapExitT (TrapExitT)
 import Pinto.Types (ExitMessage(..))
@@ -138,7 +137,7 @@ testSpawnLinkMonitor =
 immediatelyExitNormal :: forall handledMsg. ProcessTM Void handledMsg Unit
 immediatelyExitNormal = pure unit
 
-exitOnMessage :: ProcessTM TestAppMsg TestAppMsg Unit
+exitOnMessage :: ProcessM TestAppMsg Unit
 exitOnMessage = do
   msg <- receive
   case msg of

@@ -18,7 +18,7 @@ import Erl.Process.Raw (class HasPid)
 import Erl.Test.EUnit (TestF, test)
 import Pinto.GenServer2 (InitFn, InitResult(..), ServerPid, ServerType)
 import Pinto.GenServer2 as GS
-import Pinto.ProcessT.Internal.Types (ProcessTM)
+import Pinto.ProcessT (ProcessM)
 import Pinto.Types (RegistryName(..), RegistryReference(..), crashIfNotStarted)
 import Test.Assert (assertEqual)
 
@@ -26,9 +26,9 @@ data Msg = SetValue Int
 
 type State = { value :: Int }
 
-type ValueServerType = ServerType State (ProcessTM Msg Msg)
+type ValueServerType = ServerType State (ProcessM Msg)
 
-newtype ValueServerPid = ValueServerPid (ServerPid State (ProcessTM Msg Msg))
+newtype ValueServerPid = ValueServerPid (ServerPid State (ProcessM Msg))
 
 -- Only surface the raw pid, don't implement HasProcess - we don't want folks sending us messages using our Info
 -- type
@@ -43,7 +43,7 @@ startLink = do
     <$> crashIfNotStarted
     <$> (GS.startLink' { serverName, init })
   where
-  init :: InitFn State (ProcessTM Msg Msg)
+  init :: InitFn State (ProcessM Msg)
   init =
     let
       state = { value: 0 }

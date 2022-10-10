@@ -33,9 +33,7 @@ instance (HasSelf m msg, Monad m) => HasSelf (TrapExitT m) msg where
   self = lift self
 
 instance
-  ( MonadProcessTrans m innerState appMsg innerOutMsg
-  , Monad m
-  ) =>
+  MonadProcessTrans m innerState appMsg innerOutMsg =>
   MonadProcessTrans (TrapExitT m) innerState appMsg (Either ExitMessage innerOutMsg) where
   parseForeign fgn = TrapExitT do
     case parseTrappedExitFFI fgn Exit of

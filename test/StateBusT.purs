@@ -18,9 +18,8 @@ import Erl.Kernel.Erlang (sleep)
 import Erl.Process (Process, self, (!))
 import Erl.Test.EUnit (TestF, suite)
 import Partial.Unsafe (unsafeCrashWith)
-import Pinto.ProcessT (Timeout(..), receive, receiveWithTimeout, spawn)
+import Pinto.ProcessT (ProcessTM, Timeout(..), ProcessM, receive, receiveWithTimeout, spawn)
 import Pinto.ProcessT.BusT.StateBusT (class UpdateState, Bus, BusMsg(..), BusRef, StateBusT, busRef, create, delete, raise, subscribe, unsubscribe)
-import Pinto.ProcessT.Internal.Types (ProcessTM)
 import Test.Assert (assertEqual)
 import Test.TestHelpers (mpTest)
 
@@ -328,7 +327,7 @@ raiseBusMessage testBus = do
 createTestBus :: forall handledMsg busMsg. StateBusT busMsg (ProcessTM Void handledMsg) TestBus
 createTestBus = liftEffect $ create testBusRef (TestBusState 0)
 
-testBus2Thread :: (Bus Atom TestBusMsg TestBusState -> Effect Unit) -> ProcessTM Void Void Unit
+testBus2Thread :: (Bus Atom TestBusMsg TestBusState -> Effect Unit) -> ProcessM Void Unit
 testBus2Thread doStuff = liftEffect do
   testBus2 <- create testBusRef2 (TestBusState 0)
   doStuff testBus2
@@ -346,7 +345,7 @@ data HelperMsg
   | ExitCrash
 derive instance Eq HelperMsg
 
-testBusThreadHelper :: forall ack. Maybe ack -> Process ack -> BusRef Atom TestBusMsg TestBusState -> ProcessTM HelperMsg HelperMsg Unit
+testBusThreadHelper :: forall ack. Maybe ack -> Process ack -> BusRef Atom TestBusMsg TestBusState -> ProcessM HelperMsg Unit
 testBusThreadHelper ack parent localBusRef = do
   localBus <- receive >>= case _ of
     CreateBus initialState -> do

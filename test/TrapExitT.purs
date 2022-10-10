@@ -5,11 +5,9 @@ import Prelude
 import Control.Monad.Free (Free)
 import Data.Either (Either(..))
 import Effect.Class (liftEffect)
-import Erl.Process (ProcessM)
 import Erl.Test.EUnit (TestF, suite)
 import Partial.Unsafe (unsafeCrashWith)
-import Pinto.ProcessT (receive, spawnLink)
-import Pinto.ProcessT.Internal.Types (ProcessTM)
+import Pinto.ProcessT (ProcessTM, ProcessM, receive, spawnLink)
 import Pinto.ProcessT.TrapExitT (TrapExitT)
 import Test.TestHelpers (mpTest)
 
@@ -35,5 +33,5 @@ testTrapExit =
       Right _ ->
         unsafeCrashWith "We got sent a void message!"
 
-immediatelyExitNormal :: ProcessTM Void Void Unit
+immediatelyExitNormal :: ProcessM Void Unit
 immediatelyExitNormal = pure unit

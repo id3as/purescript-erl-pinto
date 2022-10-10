@@ -188,9 +188,7 @@ toBusMsg currentGeneration busMsgInternal =
             Nothing
 
 instance
-  ( MonadProcessTrans m innerState appMsg innerOutMsg
-  , MonadEffect m
-  ) =>
+  MonadProcessTrans m innerState appMsg innerOutMsg =>
   MonadProcessTrans (StateBusT msgOut m) (Tuple (StateBusInternal msgOut) innerState) appMsg (Either msgOut innerOutMsg) where
   parseForeign fgn = StateBusT do
     case parseBusMsg fgn of

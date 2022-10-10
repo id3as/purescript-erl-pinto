@@ -7,6 +7,7 @@ module Pinto.ProcessT
   , unsafeEvalProcess
   , unsafeExecProcess
   , unsafeRunProcess
+  , module ReExports
   ) where
 
 import Prelude
@@ -22,6 +23,7 @@ import Erl.Process (Process)
 import Erl.Process.Raw as Raw
 import Foreign (unsafeToForeign)
 import Pinto.ProcessT.Internal.Types (class MonadProcessHandled, class MonadProcessTrans, initialise, parseForeign, run)
+import Pinto.ProcessT.Internal.Types (class MonadProcessHandled, class MonadProcessTrans, ProcessM, ProcessTM) as ReExports
 import Type.Prelude (Proxy(..))
 import Unsafe.Coerce (unsafeCoerce)
 

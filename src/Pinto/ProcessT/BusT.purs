@@ -90,9 +90,7 @@ toMapperForeign :: forall inMsg outMsg. (inMsg -> outMsg) -> (BusMsgForeign -> o
 toMapperForeign = unsafeCoerce
 
 instance
-  ( MonadProcessTrans m innerState appMsg innerOutMsg
-  , Monad m
-  ) =>
+  MonadProcessTrans m innerState appMsg innerOutMsg =>
   MonadProcessTrans (BusT busMsg m) (Tuple (BusMap busMsg) innerState) appMsg (Either busMsg innerOutMsg) where
   parseForeign fgn = BusT do
     case parseBusMsg fgn of
