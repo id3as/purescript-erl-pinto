@@ -91,12 +91,6 @@ testStateMetadataBusT :: Free TestF Unit
 testStateMetadataBusT =
   suite "StateMetadataBusT tests" do
     mainTest
-    -- testInitialMetadataCreateThenSubscribe
-    -- testInitialMetadataAfterUpdates
-    -- testMapMsg
-    -- testUnsubscribe
-    -- testMultipleBusses
-    -- testSenderExits
 
 expectMessage :: String -> StackMS
 expectMessage whence = receive >>= expect (Right (Left (TestMappedMsg whence)))
@@ -184,8 +178,10 @@ createTestBusS :: forall m. MonadEffect m => m TestBusS
 createTestBusS = liftEffect $ S.create testBusRefS (TestBusState 0)
 
 data Ack = Ack
+
 derive instance Eq Ack
-instance Show Ack where show Ack = "Ack"
+instance Show Ack where
+  show Ack = "Ack"
 
 data HelperMsg
   = CreateBus TestBusMetadata
@@ -194,6 +190,7 @@ data HelperMsg
   | DeleteAndExit
   | ExitNormal
   | ExitCrash
+
 derive instance Eq HelperMsg
 
 testBusThreadHelperM :: forall ack. Maybe ack -> Process ack -> M.BusRef Atom TestBusMsg TestBusMetadata -> ProcessM HelperMsg Unit

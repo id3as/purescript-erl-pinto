@@ -20,7 +20,6 @@ import Pinto.ProcessT.Internal.Types (class MonadProcessTrans, initialise, parse
 import Type.Prelude (Proxy(..))
 import Unsafe.Coerce (unsafeCoerce)
 
-
 newtype Bus :: Type -> Type -> Type -> Type
 newtype Bus name msg metadata = Bus name
 
@@ -40,6 +39,7 @@ instance Ord Generation where
   compare = \(Generation tg1) -> tg1 # uncurry2 \t1 g1 ->
     \(Generation tg2) -> tg2 # uncurry2 \t2 g2 ->
       compare t1 t2 <> compare g1 g2
+
 instance Show (Generation) where
   show (Generation gen) = "Generation " <> uncurry2 (const show) gen
 
@@ -91,6 +91,7 @@ create :: forall name msg metadata. BusRef name msg metadata -> metadata -> Effe
 create busName metadata = do
   t <- monotonicTime
   createImpl busName (Generation (tuple2 t 0)) metadata
+
 foreign import createImpl :: forall name msg metadata. BusRef name msg metadata -> Generation -> metadata -> Effect (Bus name msg metadata)
 foreign import deleteImpl :: forall name msg metadata. Bus name msg metadata -> (Generation -> BusMsgInternal msg metadata) -> Effect Unit
 

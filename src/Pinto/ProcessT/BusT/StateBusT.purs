@@ -42,6 +42,7 @@ instance Ord Generation where
   compare = \(Generation tg1) -> tg1 # uncurry2 \t1 g1 ->
     \(Generation tg2) -> tg2 # uncurry2 \t2 g2 ->
       compare t1 t2 <> compare g1 g2
+
 instance Show (Generation) where
   show (Generation gen) = "Generation " <> uncurry2 (const show) gen
 
@@ -93,6 +94,7 @@ create :: forall name msg state. BusRef name msg state -> state -> Effect (Bus n
 create busName state = do
   t <- monotonicTime
   createImpl busName (Generation (tuple2 t 0)) state
+
 foreign import createImpl :: forall name msg state. BusRef name msg state -> Generation -> state -> Effect (Bus name msg state)
 foreign import deleteImpl :: forall name msg state. Bus name msg state -> (Generation -> BusMsgInternal msg state) -> Effect Unit
 

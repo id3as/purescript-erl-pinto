@@ -286,7 +286,6 @@ testMessageAfterUnsubscribe =
     | otherwise = pure unit
 -}
 
-
 testMultipleBusses :: Free TestF Unit
 testMultipleBusses =
   mpTest "Can subscribe to multiple busses - each with their own mapper" theTest
@@ -343,8 +342,10 @@ testBus2Thread doStuff = liftEffect do
   doStuff testBus2
 
 data Ack = Ack
+
 derive instance Eq Ack
-instance Show Ack where show Ack = "Ack"
+instance Show Ack where
+  show Ack = "Ack"
 
 data HelperMsg
   = CreateBus TestBusMetadata
@@ -353,6 +354,7 @@ data HelperMsg
   | DeleteAndExit
   | ExitNormal
   | ExitCrash
+
 derive instance Eq HelperMsg
 
 testBusThreadHelper :: forall ack. Maybe ack -> Process ack -> BusRef Atom TestBusMsg TestBusMetadata -> ProcessTM HelperMsg HelperMsg Unit

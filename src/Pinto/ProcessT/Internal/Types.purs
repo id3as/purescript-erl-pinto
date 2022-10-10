@@ -16,8 +16,10 @@ import Type.Prelude (class TypeEquals, Proxy(..))
 import Unsafe.Coerce (unsafeCoerce)
 
 type ProcessM msg = ProcessTM msg msg
+
 newtype ProcessTM :: Type -> Type -> Type -> Type
 newtype ProcessTM userMsg handledMsg a = ProcessTM (Effect a)
+
 derive newtype instance Functor (ProcessTM userMsg inMsg)
 derive newtype instance Apply (ProcessTM userMsg inMsg)
 derive newtype instance Applicative (ProcessTM userMsg inMsg)
@@ -55,14 +57,15 @@ instance MonadProcessTrans m mState appMsg outMsg => MonadProcessTrans (Identity
   run (IdentityT m) = run m
   initialise _ = initialise (Proxy :: Proxy m)
 
-
 class MonadProcessHandled :: (Type -> Type) -> Type -> Constraint
 class MonadProcessHandled m handledMsg
 
 instance TypeEquals topMsg handledMsg => MonadProcessHandled (ProcessTM appMsg handledMsg) topMsg
-else instance TE.Fail
-  (TE.Above
-    (TE.Above (TE.Text "Usage of old type, please upgrade from") (TE.Beside (TE.Text "  ") (TE.Quote (Old.ProcessM appMsg))))
-    (TE.Above (TE.Text "to the new type") (TE.Beside (TE.Text "  ") (TE.Quote (ProcessTM appMsg topMsg))))
-  ) => MonadProcessHandled (Old.ProcessM appMsg) topMsg
+else instance
+  TE.Fail
+    ( TE.Above
+        (TE.Above (TE.Text "Usage of old type, please upgrade from") (TE.Beside (TE.Text "  ") (TE.Quote (Old.ProcessM appMsg))))
+        (TE.Above (TE.Text "to the new type") (TE.Beside (TE.Text "  ") (TE.Quote (ProcessTM appMsg topMsg))))
+    ) =>
+  MonadProcessHandled (Old.ProcessM appMsg) topMsg
 else instance MonadProcessHandled m handledMsg => MonadProcessHandled (stack m) handledMsg
