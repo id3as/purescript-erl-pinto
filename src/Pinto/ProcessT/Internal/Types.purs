@@ -1,4 +1,14 @@
-module Pinto.ProcessT.Internal.Types where
+module Pinto.ProcessT.Internal.Types
+  ( ProcessM
+  , ProcessTM
+  , class MonadProcessHandled
+  , class MonadProcessTrans
+  , initialise
+  , parseForeign
+  , run
+  , unsafeRunProcessTM
+  )
+  where
 
 import Prelude
 
