@@ -9,7 +9,9 @@ module Pinto.ProcessT.MonitorT
   , demonitor
   , monitor
   , spawnLinkMonitor
+  , spawnLinkMonitor'
   , spawnMonitor
+  , spawnMonitor'
   ) where
 
 import Prelude
@@ -28,8 +30,8 @@ import Erl.Process.Raw (class HasPid, getPid)
 import Erl.Process.Raw as Raw
 import Foreign (Foreign)
 import Partial.Unsafe (unsafeCrashWith)
-import Pinto.ProcessT (spawn, spawnLink)
-import Pinto.ProcessT.Internal.Types (class MonadProcessHandled, class MonadProcessTrans, initialise, parseForeign, run)
+import Pinto.ProcessT (spawn, spawn', spawnLink, spawnLink')
+import Pinto.ProcessT.Internal.Types (class MonadProcessHandled, class MonadProcessRun, class MonadProcessTrans, initialise, parseForeign, run)
 import Type.Prelude (Proxy(..))
 
 newtype MonitorT monitorMsg m a = MonitorT (StateT (MonitorMap monitorMsg) m a)
@@ -89,6 +91,9 @@ instance
       Nothing -> do
         (map Right) <$> (lift $ parseForeign fgn)
 
+instance
+  MonadProcessRun base m innerState appMsg innerOutMsg =>
+  MonadProcessRun base (MonitorT monitorMsg m) (Tuple (MonitorMap monitorMsg) innerState) appMsg (Either monitorMsg innerOutMsg) where
   run (MonitorT mt) (Tuple mtState is) = do
     (Tuple (Tuple res newMtState) newIs) <- run (runStateT mt mtState) is
     pure $ Tuple res $ Tuple newMtState newIs
@@ -126,8 +131,7 @@ demonitor ref = do
 spawnMonitor
   :: forall m mState msg outMsg m2 monitorMsg
    . MonadProcessHandled m outMsg
-  => MonadProcessTrans m mState msg outMsg
-  => MonadEffect m
+  => MonadProcessRun Effect m mState msg outMsg
   => MonadEffect m2
   => m Unit
   -> (MonitorMsg -> monitorMsg)
@@ -137,13 +141,34 @@ spawnMonitor = doSpawnMonitor spawn
 spawnLinkMonitor
   :: forall m mState msg outMsg m2 monitorMsg
    . MonadProcessHandled m outMsg
-  => MonadProcessTrans m mState msg outMsg
-  => MonadEffect m
+  => MonadProcessRun Effect m mState msg outMsg
   => MonadEffect m2
   => m Unit
   -> (MonitorMsg -> monitorMsg)
   -> MonitorT monitorMsg m2 (Process msg)
 spawnLinkMonitor = doSpawnMonitor spawnLink
+
+spawnMonitor'
+  :: forall base m mState msg outMsg m2 monitorMsg
+   . MonadProcessHandled m outMsg
+  => MonadProcessRun base m mState msg outMsg
+  => MonadEffect m2
+  => (base ~> Effect)
+  -> m Unit
+  -> (MonitorMsg -> monitorMsg)
+  -> MonitorT monitorMsg m2 (Process msg)
+spawnMonitor' runBase = doSpawnMonitor (spawn' runBase)
+
+spawnLinkMonitor'
+  :: forall base m mState msg outMsg m2 monitorMsg
+   . MonadProcessHandled m outMsg
+  => MonadProcessRun base m mState msg outMsg
+  => MonadEffect m2
+  => (base ~> Effect)
+  -> m Unit
+  -> (MonitorMsg -> monitorMsg)
+  -> MonitorT monitorMsg m2 (Process msg)
+spawnLinkMonitor' runBase = doSpawnMonitor (spawnLink' runBase)
 
 -- TODO - consider modelling the erlang capabilities around  alias, reply_demonitor, user defined tags etc
 

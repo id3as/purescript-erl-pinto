@@ -37,7 +37,7 @@ import Effect.Class (class MonadEffect)
 import Pinto.GenServer.ContStop (Action(Hibernate, StopNormal), InitResult(InitOk, InitOkHibernate, InitStop, InitIgnore), From, noReply, noReplyWithAction, reply, return, returnWithAction, replyWithAction) as CSExports
 import Pinto.GenServer.ContStop (From)
 import Pinto.GenServer.ContStop as CS
-import Pinto.ProcessT.Internal.Types (class MonadProcessHandled, class MonadProcessTrans)
+import Pinto.ProcessT.Internal.Types (class MonadProcessHandled, class MonadProcessRun, class MonadProcessTrans)
 import Pinto.Types (RegistryInstance, RegistryReference, ShutdownReason, StartLinkResult)
 
 -- In general a gen_server can return continue and stop actions but in practice they
@@ -92,7 +92,7 @@ type GSConfig parsedMsg state m = CS.GSConfig Void Void parsedMsg state m
 startLink
   :: forall appMsg parsedMsg state m mState
    . MonadProcessHandled m parsedMsg
-  => MonadProcessTrans m mState appMsg parsedMsg
+  => MonadProcessRun Effect m mState appMsg parsedMsg
   => GSConfig parsedMsg state m
   -> Effect (StartLinkResult (ServerPid state m))
 startLink = CS.startLink
@@ -100,7 +100,7 @@ startLink = CS.startLink
 startLink'
   :: forall providedConfig appMsg parsedMsg state m mState
    . MonadProcessHandled m parsedMsg
-  => MonadProcessTrans m mState appMsg parsedMsg
+  => MonadProcessRun Effect m mState appMsg parsedMsg
   => ConvertOptionsWithDefaults CS.OptionToMaybe { | OptionalConfig parsedMsg state m } { | providedConfig } { | AllConfig parsedMsg state m }
   => { | providedConfig }
   -> Effect (StartLinkResult (ServerPid state m))

@@ -12,11 +12,11 @@ import Control.Monad.Free (Free)
 import Effect (Effect)
 import Erl.Test.EUnit (TestF, test)
 import Pinto.GenServer.ContStop as GS
-import Pinto.ProcessT (unsafeEvalProcess, class MonadProcessHandled, class MonadProcessTrans)
+import Pinto.ProcessT (class MonadProcessHandled, class MonadProcessRun, class MonadProcessTrans, unsafeEvalProcess)
 
 mpTest
   :: forall m mState appMsg parsedMsg
-   . MonadProcessTrans m mState appMsg parsedMsg
+   . MonadProcessRun Effect m mState appMsg parsedMsg
   => MonadProcessHandled m parsedMsg
   => String
   -> m Unit

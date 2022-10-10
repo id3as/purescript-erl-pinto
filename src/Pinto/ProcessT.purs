@@ -3,7 +3,9 @@ module Pinto.ProcessT
   , receive
   , receiveWithTimeout
   , spawn
+  , spawn'
   , spawnLink
+  , spawnLink'
   , unsafeEvalProcess
   , unsafeExecProcess
   , unsafeRunProcess
@@ -22,8 +24,8 @@ import Erl.Kernel.Time (milliseconds)
 import Erl.Process (Process)
 import Erl.Process.Raw as Raw
 import Foreign (unsafeToForeign)
-import Pinto.ProcessT.Internal.Types (class MonadProcessHandled, class MonadProcessTrans, initialise, parseForeign, run)
-import Pinto.ProcessT.Internal.Types (class MonadProcessHandled, class MonadProcessTrans, ProcessM, ProcessTM) as ReExports
+import Pinto.ProcessT.Internal.Types (class MonadProcessHandled, class MonadProcessRun, class MonadProcessTrans, initialise, parseForeign, run)
+import Pinto.ProcessT.Internal.Types (class MonadProcessHandled, class MonadProcessRun, class MonadProcessTrans, ProcessM, ProcessTM) as ReExports
 import Type.Prelude (Proxy(..))
 import Unsafe.Coerce (unsafeCoerce)
 
@@ -32,7 +34,6 @@ receive
   :: forall m mState appMsg parsedMsg
    . MonadProcessHandled m parsedMsg
   => MonadProcessTrans m mState appMsg parsedMsg
-  => MonadEffect m
   => m parsedMsg
 receive = do
   mParsedMsg <- parseForeign =<< liftEffect Raw.receive
@@ -57,7 +58,6 @@ receiveWithTimeout
   :: forall m mState appMsg parsedMsg
    . MonadProcessHandled m parsedMsg
   => MonadProcessTrans m mState appMsg parsedMsg
-  => MonadEffect m
   => Milliseconds
   -> m (Either Timeout parsedMsg)
 receiveWithTimeout ms@(Milliseconds msNum) = do
@@ -80,47 +80,64 @@ receiveWithTimeout ms@(Milliseconds msNum) = do
           pure $ Right parsed
 
 unsafeEvalProcess
-  :: forall m mState appMsg parsedMsg a
+  :: forall base m mState appMsg parsedMsg a
    . MonadProcessHandled m parsedMsg
-  => MonadProcessTrans m mState appMsg parsedMsg
+  => MonadProcessRun base m mState appMsg parsedMsg
   => m a
-  -> Effect a
+  -> base  a
 unsafeEvalProcess mpt =
   fst <$> unsafeRunProcess mpt
 
 unsafeExecProcess
-  :: forall m mState appMsg parsedMsg
+  :: forall base m mState appMsg parsedMsg
    . MonadProcessHandled m parsedMsg
-  => MonadProcessTrans m mState appMsg parsedMsg
+  => MonadProcessRun base m mState appMsg parsedMsg
   => m appMsg
-  -> Effect mState
+  -> base mState
 unsafeExecProcess mpt =
   snd <$> unsafeRunProcess mpt
 
 unsafeRunProcess
-  :: forall m mState appMsg parsedMsg a
+  :: forall base m mState appMsg parsedMsg a
    . MonadProcessHandled m parsedMsg
-  => MonadProcessTrans m mState appMsg parsedMsg
+  => MonadProcessRun base m mState appMsg parsedMsg
   => m a
-  -> Effect (Tuple a mState)
+  -> base (Tuple a mState)
 unsafeRunProcess mpt =
   run mpt =<< initialise (Proxy :: Proxy m)
 
 spawn
   :: forall m mState appMsg parsedMsg
    . MonadProcessHandled m parsedMsg
-  => MonadProcessTrans m mState appMsg parsedMsg
-  => MonadEffect m
+  => MonadProcessRun Effect m mState appMsg parsedMsg
   => m Unit
   -> Effect (Process appMsg)
-spawn = unsafeCoerce <<< Raw.spawn <<< unsafeEvalProcess
+spawn = spawn' identity
+
+spawn'
+  :: forall base m mState appMsg parsedMsg
+   . MonadProcessHandled m parsedMsg
+  => MonadProcessRun base m mState appMsg parsedMsg
+  => (base ~> Effect)
+  -> m Unit
+  -> Effect (Process appMsg)
+spawn' runBase = unsafeCoerce <<< Raw.spawn <<< runBase <<< unsafeEvalProcess
 
 spawnLink
   :: forall m mState appMsg parsedMsg
    . MonadProcessHandled m parsedMsg
-  => MonadProcessTrans m mState appMsg parsedMsg
-  => MonadEffect m
+  => MonadProcessRun Effect m mState appMsg parsedMsg
   => m Unit
   -> Effect (Process appMsg)
-spawnLink = unsafeCoerce <<< Raw.spawnLink <<< unsafeEvalProcess
+spawnLink = spawnLink' identity
+
+spawnLink'
+  :: forall base m mState appMsg parsedMsg
+   . MonadProcessHandled m parsedMsg
+  => MonadProcessRun base m mState appMsg parsedMsg
+  => MonadEffect m
+  => (base ~> Effect)
+  -> m Unit
+  -> Effect (Process appMsg)
+spawnLink' runBase = map unsafeCoerce <<< Raw.spawnLink <<< runBase <<< unsafeEvalProcess
 

@@ -3,6 +3,7 @@ module Pinto.ProcessT.Internal.Types
   , ProcessTM
   , class MonadProcessHandled
   , class MonadProcessTrans
+  , class MonadProcessRun
   , initialise
   , parseForeign
   , run
@@ -16,7 +17,7 @@ import Control.Monad.Identity.Trans (IdentityT(..))
 import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple(..))
 import Effect (Effect)
-import Effect.Class (class MonadEffect)
+import Effect.Class (class MonadEffect, liftEffect)
 import Erl.Process (class HasReceive, class HasSelf, self)
 import Erl.Process as Old
 import Erl.Process.Raw as Raw
@@ -52,25 +53,29 @@ instance TypeEquals userMsg handledMsg => HasReceive (ProcessTM userMsg handledM
 class MonadProcessTrans :: (Type -> Type) -> Type -> Type -> Type -> Constraint
 class (MonadEffect m) <= MonadProcessTrans m mState appMsg outMsg | m -> mState appMsg outMsg where
   parseForeign :: Foreign -> m (Maybe outMsg)
-  run :: forall a. m a -> mState -> Effect (Tuple a mState)
-  initialise :: Proxy m -> Effect mState
+class MonadProcessRun :: (Type -> Type) -> (Type -> Type) -> Type -> Type -> Type -> Constraint
+class (MonadEffect base, MonadProcessTrans m mState appMsg outMsg) <= MonadProcessRun base m mState appMsg outMsg | m -> mState appMsg outMsg where
+  run :: forall a. m a -> mState -> base (Tuple a mState)
+  initialise :: Proxy m -> base mState
 
 instance MonadProcessTrans (ProcessTM appMsg handledMsg) Unit appMsg appMsg where
   parseForeign = pure <<< Just <<< unsafeCoerce
-  run pm _ = do
+instance (MonadEffect base) => MonadProcessRun base (ProcessTM appMsg handledMsg) Unit appMsg appMsg where
+  run pm _ = liftEffect do
     res <- unsafeRunProcessTM pm
     pure $ Tuple res unit
   initialise _ = pure unit
 
 instance MonadProcessTrans m mState appMsg outMsg => MonadProcessTrans (IdentityT m) mState appMsg outMsg where
   parseForeign = IdentityT <<< parseForeign
+instance MonadProcessRun base m mState appMsg outMsg => MonadProcessRun base (IdentityT m) mState appMsg outMsg where
   run (IdentityT m) = run m
   initialise _ = initialise (Proxy :: Proxy m)
 
 class MonadProcessHandled :: (Type -> Type) -> Type -> Constraint
 class MonadProcessHandled m handledMsg
 
-instance TypeEquals topMsg handledMsg => MonadProcessHandled (ProcessTM appMsg handledMsg) topMsg
+instance (TypeEquals topMsg handledMsg) => MonadProcessHandled (ProcessTM appMsg handledMsg) topMsg
 else instance
   TE.Fail
     ( TE.Above

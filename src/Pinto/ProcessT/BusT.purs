@@ -24,7 +24,7 @@ import Erl.Data.Map as Map
 import Erl.Data.Tuple (Tuple2, fst, snd)
 import Erl.Process (class HasSelf, self)
 import Foreign (Foreign)
-import Pinto.ProcessT.Internal.Types (class MonadProcessTrans, initialise, parseForeign, run)
+import Pinto.ProcessT.Internal.Types (class MonadProcessRun, class MonadProcessTrans, initialise, parseForeign, run)
 import Type.Prelude (Proxy(..))
 import Unsafe.Coerce (unsafeCoerce)
 
@@ -104,6 +104,9 @@ instance
       Nothing -> do
         (map Right) <$> (lift $ parseForeign fgn)
 
+instance
+  MonadProcessRun base m innerState appMsg innerOutMsg =>
+  MonadProcessRun base (BusT busMsg m) (Tuple (BusMap busMsg) innerState) appMsg (Either busMsg innerOutMsg) where
   run (BusT mt) (Tuple mtState is) = do
     (Tuple (Tuple res newMtState) newIs) <- run (runStateT mt mtState) is
     pure $ Tuple res $ Tuple newMtState newIs

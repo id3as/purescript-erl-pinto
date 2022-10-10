@@ -16,7 +16,7 @@ import Erl.Kernel.Erlang (monotonicTime)
 import Erl.Process (class HasSelf, self)
 import Erl.Types (MonotonicTime)
 import Foreign (Foreign)
-import Pinto.ProcessT.Internal.Types (class MonadProcessTrans, initialise, parseForeign, run)
+import Pinto.ProcessT.Internal.Types (class MonadProcessRun, class MonadProcessTrans, initialise, parseForeign, run)
 import Type.Prelude (Proxy(..))
 import Unsafe.Coerce (unsafeCoerce)
 
@@ -217,6 +217,9 @@ instance
       Nothing -> do
         (map Right) <$> (lift $ parseForeign fgn)
 
+instance
+  MonadProcessRun base m innerMetadata appMsg innerOutMsg =>
+  MonadProcessRun base (MetadataBusT msgOut m) (Tuple (MetadataBusInternal msgOut) innerMetadata) appMsg (Either msgOut innerOutMsg) where
   run (MetadataBusT mt) (Tuple mtMetadata is) = do
     (Tuple (Tuple res newMtMetadata) newIs) <- run (runStateT mt mtMetadata) is
     pure $ Tuple res $ Tuple newMtMetadata newIs

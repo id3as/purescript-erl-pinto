@@ -9,12 +9,12 @@ import Control.Monad.Identity.Trans (IdentityT, runIdentityT)
 import Control.Monad.Trans.Class (class MonadTrans, lift)
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
-import Effect.Class (class MonadEffect)
+import Effect.Class (class MonadEffect, liftEffect)
 import Erl.Process (class HasSelf, self)
 import Erl.Process.Raw (setProcessFlagTrapExit)
-import Pinto.ProcessT.Internal.Types (class MonadProcessTrans, initialise, parseForeign, run)
-import Pinto.Types (ExitMessage(..), parseTrappedExitFFI)
+import Pinto.ProcessT.Internal.Types (class MonadProcessRun, class MonadProcessTrans, initialise, parseForeign, run)
 import Pinto.Types (ExitMessage(..)) as TypeExports
+import Pinto.Types (ExitMessage(..), parseTrappedExitFFI)
 import Type.Prelude (Proxy(..))
 
 newtype TrapExitT :: forall k. (k -> Type) -> k -> Type
@@ -42,10 +42,13 @@ instance
       Nothing -> do
         (map Right) <$> (lift $ parseForeign fgn)
 
+instance
+  MonadProcessRun base m innerState appMsg innerOutMsg =>
+  MonadProcessRun base (TrapExitT m) innerState appMsg (Either ExitMessage innerOutMsg) where
   run (TrapExitT mt) is =
     run (runIdentityT mt) is
 
   initialise _ = do
-    void $ setProcessFlagTrapExit true
+    void $ liftEffect $ setProcessFlagTrapExit true
     innerState <- initialise (Proxy :: Proxy m)
     pure $ innerState

@@ -68,7 +68,7 @@ import Erl.Process.Raw as Raw
 import Foreign (Foreign)
 import Partial.Unsafe (unsafePartial)
 import Pinto.ModuleNames (pintoGenServerCS)
-import Pinto.ProcessT.Internal.Types (class MonadProcessHandled, class MonadProcessTrans, initialise, parseForeign, run)
+import Pinto.ProcessT.Internal.Types (class MonadProcessHandled, class MonadProcessRun, class MonadProcessTrans, initialise, parseForeign, run)
 import Pinto.ProcessT.MonitorT (MonitorT)
 import Pinto.Types (RegistryInstance, RegistryName, RegistryReference, ShutdownReason, StartLinkResult, parseShutdownReasonFFI, registryInstance)
 import Type.Prelude (Proxy(..))
@@ -248,7 +248,7 @@ foreign import startLinkFFI
 startLink
   :: forall cont stop appMsg parsedMsg state m mState
    . MonadProcessHandled m parsedMsg
-  => MonadProcessTrans m mState appMsg parsedMsg
+  => MonadProcessRun Effect m mState appMsg parsedMsg
   => GSConfig cont stop parsedMsg state m
   -> Effect (StartLinkResult (ServerPid cont stop state m))
 startLink { serverName: maybeName, init: initFn, handleInfo, handleContinue, terminate: terminate' } = startLinkFFI maybeName (nativeModuleName pintoGenServerCS) initEffect
@@ -278,7 +278,7 @@ startLink { serverName: maybeName, init: initFn, handleInfo, handleContinue, ter
 startLink'
   :: forall providedConfig cont stop appMsg parsedMsg state m mState
    . MonadProcessHandled m parsedMsg
-  => MonadProcessTrans m mState appMsg parsedMsg
+  => MonadProcessRun Effect m mState appMsg parsedMsg
   => ConvertOptionsWithDefaults OptionToMaybe { | OptionalConfig cont stop parsedMsg state m } { | providedConfig } { | AllConfig cont stop parsedMsg state m }
   => { | providedConfig }
   -> Effect (StartLinkResult (ServerPid cont stop state m))
