@@ -26,10 +26,11 @@ import Prim.TypeError as TE
 import Type.Prelude (class TypeEquals, Proxy(..))
 import Unsafe.Coerce (unsafeCoerce)
 
-type ProcessM msg = ProcessTM msg msg
-
 newtype ProcessTM :: Type -> Type -> Type -> Type
 newtype ProcessTM userMsg handledMsg a = ProcessTM (Effect a)
+
+-- For running ProcessTM without any transformers on top
+type ProcessM msg = ProcessTM msg msg
 
 derive newtype instance Functor (ProcessTM userMsg inMsg)
 derive newtype instance Apply (ProcessTM userMsg inMsg)

@@ -8,7 +8,8 @@ module Pinto.ProcessT.BusT
   , raise
   , subscribe
   , unsubscribe
-  ) where
+  )
+  where
 
 import Prelude
 

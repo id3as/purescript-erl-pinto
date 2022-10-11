@@ -1,4 +1,19 @@
-module Pinto.ProcessT.BusT.StateBusT where
+module Pinto.ProcessT.BusT.StateBusT
+  ( Bus
+  , BusMsg(..)
+  , BusRef
+  , StateBusT
+  , StateBusInternal
+  , busRef
+  , class UpdateState
+  , updateState
+  , create
+  , delete
+  , raise
+  , subscribe
+  , unsubscribe
+  )
+  where
 
 import Prelude
 
@@ -68,12 +83,13 @@ foreign import data BusNameForeign :: Type
 foreign import data BusMsgForeign :: Type
 foreign import data BusStateForeign :: Type
 
-type StateBusInternal msg =
-  Map BusNameForeign
+newtype StateBusInternal msg = StateBusInternal
+  (Map BusNameForeign
     { generation :: Maybe Generation
     , monitorRef :: Maybe StateBusMonitorRef
     , mapper :: BusMsg BusMsgForeign BusStateForeign -> msg
     }
+  )
 
 newtype StateBusT msg m a = StateBusT (StateT (StateBusInternal msg) m a)
 
@@ -135,10 +151,10 @@ subscribe bus mapper =
     resp <- liftEffect $ subscribeImpl bus
     case resp of
       Nothing -> do
-        modify_ \mm -> Map.insert (toBusNameForeign bus) { mapper: toMapperForeign mapper, generation: Nothing, monitorRef: Nothing } mm
+        modify_ \(StateBusInternal mm) -> StateBusInternal (Map.insert (toBusNameForeign bus) { mapper: toMapperForeign mapper, generation: Nothing, monitorRef: Nothing } mm)
         pure Nothing
       Just genStatePidRef -> genStatePidRef # uncurry3 \gen state ref -> do
-        modify_ \mm -> Map.insert (toBusNameForeign bus) { mapper: toMapperForeign mapper, generation: Just gen, monitorRef: Just ref } mm
+        modify_ \(StateBusInternal mm) -> StateBusInternal (Map.insert (toBusNameForeign bus) { mapper: toMapperForeign mapper, generation: Just gen, monitorRef: Just ref } mm)
         pure $ Just $ state
 
 unsubscribe
@@ -148,8 +164,8 @@ unsubscribe
   -> StateBusT msgOut m Unit
 unsubscribe bus =
   StateBusT do
-    maybeRef <- gets \mm -> Map.lookup (toBusNameForeign bus) mm >>= _.monitorRef
-    modify_ \mm -> Map.delete (toBusNameForeign bus) mm
+    maybeRef <- gets \(StateBusInternal mm) -> Map.lookup (toBusNameForeign bus) mm >>= _.monitorRef
+    modify_ \(StateBusInternal mm) -> StateBusInternal (Map.delete (toBusNameForeign bus) mm)
     liftEffect $ unsubscribeImpl maybeRef bus
 
 foreign import parseBusMsg :: Foreign -> Maybe (Either (Tuple3 BusNameForeign (BusMsgInternal BusMsgForeign BusStateForeign) StateBusPid) BusNameForeign)
@@ -196,7 +212,7 @@ instance
     case parseBusMsg fgn of
       Just (Left busNameMsg) ->
         busNameMsg # uncurry3 \busName busMsgInternal busPid -> do
-          mtState <- get
+          StateBusInternal mtState <- get
           case Map.lookup busName mtState of
             Nothing -> do
               pure Nothing
@@ -208,15 +224,15 @@ instance
                   monitorRef <- case maybeMonitorRef of
                     Just monitorRef -> pure monitorRef
                     Nothing -> liftEffect $ monitorImpl busPid busName
-                  put $ Map.insert busName { generation: Just newGeneration, mapper, monitorRef: Just monitorRef } mtState
+                  put $ StateBusInternal $ Map.insert busName { generation: Just newGeneration, mapper, monitorRef: Just monitorRef } mtState
                   pure $ Just $ Left $ mapper busMsg
       Just (Right busName) -> do
-        mtState <- get
+        StateBusInternal mtState <- get
         case Map.lookup busName mtState of
           Nothing -> do
             pure Nothing
           Just { mapper, monitorRef } -> do
-            put $ Map.delete busName mtState
+            put $ StateBusInternal $ Map.delete busName mtState
             liftEffect $ unsubscribeImpl monitorRef (BusRef busName)
             pure $ Just $ Left $ mapper BusTerminated
       Nothing -> do
@@ -231,7 +247,7 @@ instance
 
   initialise _ = do
     innerState <- initialise (Proxy :: Proxy m)
-    pure $ Tuple Map.empty innerState
+    pure $ Tuple (StateBusInternal Map.empty) innerState
 
 instance (HasSelf m msg, Monad m) => HasSelf (StateBusT msgOut m) msg where
   self = lift self

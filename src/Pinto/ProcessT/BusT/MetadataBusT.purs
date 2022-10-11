@@ -1,4 +1,18 @@
-module Pinto.ProcessT.BusT.MetadataBusT where
+module Pinto.ProcessT.BusT.MetadataBusT
+  ( Bus
+  , BusMsg(..)
+  , BusRef
+  , MetadataBusT
+  , MetadataBusInternal
+  , busRef
+  , create
+  , delete
+  , raise
+  , subscribe
+  , unsubscribe
+  , updateMetadata
+  )
+  where
 
 import Prelude
 
@@ -65,12 +79,13 @@ foreign import data BusNameForeign :: Type
 foreign import data BusDataForeign :: Type
 foreign import data BusMetadataForeign :: Type
 
-type MetadataBusInternal msg =
-  Map BusNameForeign
+newtype MetadataBusInternal msg = MetadataBusInternal
+  (Map BusNameForeign
     { generation :: Maybe Generation
     , monitorRef :: Maybe MetadataBusMonitorRef
     , mapper :: BusMsg BusDataForeign BusMetadataForeign -> msg
     }
+  )
 
 newtype MetadataBusT msg m a = MetadataBusT (StateT (MetadataBusInternal msg) m a)
 
@@ -129,10 +144,10 @@ subscribe bus mapper =
     resp <- liftEffect $ subscribeImpl bus
     case resp of
       Nothing -> do
-        modify_ \mm -> Map.insert (toBusNameForeign bus) { mapper: toMapperForeign mapper, generation: Nothing, monitorRef: Nothing } mm
+        modify_ \(MetadataBusInternal mm) -> MetadataBusInternal (Map.insert (toBusNameForeign bus) { mapper: toMapperForeign mapper, generation: Nothing, monitorRef: Nothing } mm)
         pure Nothing
       Just genMetadataPidRef -> genMetadataPidRef # uncurry3 \gen metadata ref -> do
-        modify_ \mm -> Map.insert (toBusNameForeign bus) { mapper: toMapperForeign mapper, generation: Just gen, monitorRef: Just ref } mm
+        modify_ \(MetadataBusInternal mm) -> MetadataBusInternal (Map.insert (toBusNameForeign bus) { mapper: toMapperForeign mapper, generation: Just gen, monitorRef: Just ref } mm)
         pure $ Just $ metadata
 
 unsubscribe
@@ -142,8 +157,8 @@ unsubscribe
   -> MetadataBusT msgOut m Unit
 unsubscribe bus =
   MetadataBusT do
-    maybeRef <- gets \mm -> Map.lookup (toBusNameForeign bus) mm >>= _.monitorRef
-    modify_ \mm -> Map.delete (toBusNameForeign bus) mm
+    maybeRef <- gets \(MetadataBusInternal mm) -> Map.lookup (toBusNameForeign bus) mm >>= _.monitorRef
+    modify_ \(MetadataBusInternal mm) -> MetadataBusInternal (Map.delete (toBusNameForeign bus) mm)
     liftEffect $ unsubscribeImpl maybeRef bus
 
 foreign import parseBusMsg :: Foreign -> Maybe (Either (Tuple3 BusNameForeign (BusMsgInternal BusDataForeign BusMetadataForeign) MetadataBusPid) BusNameForeign)
@@ -191,7 +206,7 @@ instance
     case parseBusMsg fgn of
       Just (Left busNameMsg) ->
         busNameMsg # uncurry3 \busName busMsgInternal busPid -> do
-          mtMetadata <- get
+          MetadataBusInternal mtMetadata <- get
           case Map.lookup busName mtMetadata of
             Nothing -> do
               pure Nothing
@@ -203,15 +218,15 @@ instance
                   monitorRef <- case maybeMonitorRef of
                     Just monitorRef -> pure monitorRef
                     Nothing -> liftEffect $ monitorImpl busPid busName
-                  put $ Map.insert busName { generation: Just newGeneration, mapper, monitorRef: Just monitorRef } mtMetadata
+                  put $ MetadataBusInternal $ Map.insert busName { generation: Just newGeneration, mapper, monitorRef: Just monitorRef } mtMetadata
                   pure $ Just $ Left $ mapper busMsg
       Just (Right busName) -> do
-        mtMetadata <- get
+        MetadataBusInternal mtMetadata <- get
         case Map.lookup busName mtMetadata of
           Nothing -> do
             pure Nothing
           Just { mapper, monitorRef } -> do
-            put $ Map.delete busName mtMetadata
+            put $ MetadataBusInternal $ Map.delete busName mtMetadata
             liftEffect $ unsubscribeImpl monitorRef (BusRef busName)
             pure $ Just $ Left $ mapper BusTerminated
       Nothing -> do
@@ -226,7 +241,7 @@ instance
 
   initialise _ = do
     innerMetadata <- initialise (Proxy :: Proxy m)
-    pure $ Tuple Map.empty innerMetadata
+    pure $ Tuple (MetadataBusInternal Map.empty) innerMetadata
 
 instance (HasSelf m msg, Monad m) => HasSelf (MetadataBusT msgOut m) msg where
   self = lift self

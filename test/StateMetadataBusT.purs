@@ -32,10 +32,10 @@ type TestBusRefM = M.BusRef String TestBusMsg TestBusMetadata
 type TestBusS = S.Bus String TestBusMsg TestBusState
 type TestBusRefS = S.BusRef String TestBusMsg TestBusState
 
-type StackM = MetadataBusT TestMappedMsg
-type StackS = StateBusT TestMappedMsg
+type StackM = MetadataBusT TestMappedMsgM
+type StackS = StateBusT TestMappedMsgS
 
-type StackMS = StackM (StackS (ProcessTM Ack (Either TestMappedMsg (Either TestMappedMsg Ack)))) Unit
+type StackMS = StackM (StackS (ProcessTM Ack (Either TestMappedMsgM (Either TestMappedMsgS Ack)))) Unit
 
 data TestBusMsg = TestBusMsg
 
@@ -61,25 +61,34 @@ derive instance Generic TestBusMetadata _
 instance Show TestBusMetadata where
   show = genericShow
 
-data TestMappedMsg
+data TestMappedMsgM
   = TestMappedMetadata String String
-  | TestMappedState String Int
-  | TestMappedMsg String
-  | TestMappedTerminated String
+  | TestMappedMsgM String
+  | TestMappedTerminatedM String
 
-mapperM :: String -> M.BusMsg TestBusMsg TestBusMetadata -> TestMappedMsg
+data TestMappedMsgS
+  = TestMappedState String Int
+  | TestMappedMsgS String
+  | TestMappedTerminatedS String
+
+mapperM :: String -> M.BusMsg TestBusMsg TestBusMetadata -> TestMappedMsgM
 mapperM whence (M.MetadataMsg (TestBusMetadata i)) = TestMappedMetadata whence i
-mapperM whence (M.DataMsg TestBusMsg) = TestMappedMsg whence
-mapperM whence M.BusTerminated = TestMappedTerminated whence
+mapperM whence (M.DataMsg TestBusMsg) = TestMappedMsgM whence
+mapperM whence M.BusTerminated = TestMappedTerminatedM whence
 
-mapperS :: String -> S.BusMsg TestBusMsg TestBusState -> TestMappedMsg
+mapperS :: String -> S.BusMsg TestBusMsg TestBusState -> TestMappedMsgS
 mapperS whence (S.State (TestBusState i)) = TestMappedState whence i
-mapperS whence (S.Msg TestBusMsg) = TestMappedMsg whence
-mapperS whence S.BusTerminated = TestMappedTerminated whence
+mapperS whence (S.Msg TestBusMsg) = TestMappedMsgS whence
+mapperS whence S.BusTerminated = TestMappedTerminatedS whence
 
-derive instance Eq TestMappedMsg
-derive instance Generic TestMappedMsg _
-instance Show TestMappedMsg where
+derive instance Eq TestMappedMsgM
+derive instance Generic TestMappedMsgM _
+instance Show TestMappedMsgM where
+  show = genericShow
+
+derive instance Eq TestMappedMsgS
+derive instance Generic TestMappedMsgS _
+instance Show TestMappedMsgS where
   show = genericShow
 
 data TestAppMsg = TestAppMsg
@@ -93,16 +102,16 @@ testStateMetadataBusT =
     mainTest
 
 expectMessage :: String -> StackMS
-expectMessage whence = receive >>= expect (Right (Left (TestMappedMsg whence)))
+expectMessage whence = receive >>= expect (Right (Left (TestMappedMsgS whence)))
 
 expectState :: String -> Int -> StackMS
 expectState whence s = receive >>= expect (Right (Left (TestMappedState whence s)))
 
 expectTerminated :: String -> StackMS
-expectTerminated whence = receive >>= expect (Left (TestMappedTerminated whence))
+expectTerminated whence = receive >>= expect (Left (TestMappedTerminatedM whence))
 
 expectData :: String -> StackMS
-expectData whence = receive >>= expect (Left (TestMappedMsg whence))
+expectData whence = receive >>= expect (Left (TestMappedMsgM whence))
 
 expectMetadata :: String -> String -> StackMS
 expectMetadata whence m = receive >>= expect (Left (TestMappedMetadata whence m))
