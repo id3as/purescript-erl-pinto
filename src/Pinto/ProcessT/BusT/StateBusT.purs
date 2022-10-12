@@ -47,6 +47,10 @@ instance Show name => Show (Bus name msg state) where
 newtype BusRef :: Type -> Type -> Type -> Type
 newtype BusRef name msg state = BusRef name
 
+derive newtype instance Eq name => Eq (BusRef name msg metadata)
+derive newtype instance Ord name => Ord (BusRef name msg metadata)
+derive newtype instance Show name => Show (BusRef name msg metadata)
+
 busRef :: forall name msg state. name -> BusRef name msg state
 busRef = BusRef
 

@@ -45,7 +45,7 @@ derive newtype instance Monad m => Monad (BusT busMsg m)
 derive newtype instance MonadEffect m => MonadEffect (BusT busMsg m)
 derive newtype instance MonadTrans (BusT busMsg)
 
-newtype Bus :: forall k. Type -> k -> Type
+newtype Bus :: Type -> Type -> Type
 newtype Bus name msg = Bus name
 
 --------------------------------------------------------------------------------
