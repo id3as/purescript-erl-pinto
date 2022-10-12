@@ -31,7 +31,7 @@ import Erl.Kernel.Erlang (monotonicTime)
 import Erl.Process (class HasSelf, self)
 import Erl.Types (MonotonicTime)
 import Foreign (Foreign)
-import Pinto.ProcessT.Internal.Types (class MonadProcessRun, class MonadProcessTrans, initialise, parseForeign, run)
+import Pinto.ProcessT.Internal.Types (class MonadProcessHandled, class MonadProcessRun, class MonadProcessTrans, initialise, parseForeign, run)
 import Type.Prelude (Proxy(..))
 import Unsafe.Coerce (unsafeCoerce)
 
@@ -248,6 +248,8 @@ instance
   initialise _ = do
     innerState <- initialise (Proxy :: Proxy m)
     pure $ Tuple (StateBusInternal Map.empty) innerState
+
+instance MonadProcessHandled m handledMsg => MonadProcessHandled (StateBusT msgOut m) handledMsg
 
 instance (HasSelf m msg, Monad m) => HasSelf (StateBusT msgOut m) msg where
   self = lift self

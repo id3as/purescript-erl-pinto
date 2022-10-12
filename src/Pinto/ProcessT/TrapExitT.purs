@@ -12,7 +12,7 @@ import Data.Maybe (Maybe(..))
 import Effect.Class (class MonadEffect, liftEffect)
 import Erl.Process (class HasSelf, self)
 import Erl.Process.Raw (setProcessFlagTrapExit)
-import Pinto.ProcessT.Internal.Types (class MonadProcessRun, class MonadProcessTrans, initialise, parseForeign, run)
+import Pinto.ProcessT.Internal.Types (class MonadProcessHandled, class MonadProcessRun, class MonadProcessTrans, initialise, parseForeign, run)
 import Pinto.Types (ExitMessage(..)) as TypeExports
 import Pinto.Types (ExitMessage(..), parseTrappedExitFFI)
 import Type.Prelude (Proxy(..))
@@ -52,3 +52,5 @@ instance
     void $ liftEffect $ setProcessFlagTrapExit true
     innerState <- initialise (Proxy :: Proxy m)
     pure $ innerState
+
+instance MonadProcessHandled m handledMsg => MonadProcessHandled (TrapExitT m) handledMsg

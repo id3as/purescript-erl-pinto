@@ -25,7 +25,7 @@ import Erl.Data.Map as Map
 import Erl.Data.Tuple (Tuple2, fst, snd)
 import Erl.Process (class HasSelf, self)
 import Foreign (Foreign)
-import Pinto.ProcessT.Internal.Types (class MonadProcessRun, class MonadProcessTrans, initialise, parseForeign, run)
+import Pinto.ProcessT.Internal.Types (class MonadProcessHandled, class MonadProcessRun, class MonadProcessTrans, initialise, parseForeign, run)
 import Type.Prelude (Proxy(..))
 import Unsafe.Coerce (unsafeCoerce)
 
@@ -115,6 +115,8 @@ instance
   initialise _ = do
     innerState <- initialise (Proxy :: Proxy m)
     pure $ Tuple Map.empty innerState
+
+instance MonadProcessHandled m handledMsg => MonadProcessHandled (BusT busMsg m) handledMsg
 
 instance (HasSelf m msg, Monad m) => HasSelf (BusT busMsgOut m) msg where
   self = lift self

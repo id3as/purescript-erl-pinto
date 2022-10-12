@@ -102,6 +102,8 @@ instance
     innerState <- initialise (Proxy :: Proxy m)
     pure $ Tuple Map.empty innerState
 
+instance MonadProcessHandled m handledMsg => MonadProcessHandled (MonitorT monitorMsg m) handledMsg
+
 --------------------------------------------------------------------------------
 -- Public API
 --------------------------------------------------------------------------------

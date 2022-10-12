@@ -77,11 +77,11 @@ class MonadProcessHandled :: (Type -> Type) -> Type -> Constraint
 class MonadProcessHandled m handledMsg
 
 instance (TypeEquals topMsg handledMsg) => MonadProcessHandled (ProcessTM appMsg handledMsg) topMsg
-else instance
+instance
   TE.Fail
     ( TE.Above
         (TE.Above (TE.Text "Usage of old type, please upgrade from") (TE.Beside (TE.Text "  ") (TE.Quote (Old.ProcessM appMsg))))
         (TE.Above (TE.Text "to the new type") (TE.Beside (TE.Text "  ") (TE.Quote (ProcessTM appMsg topMsg))))
     ) =>
   MonadProcessHandled (Old.ProcessM appMsg) topMsg
-else instance MonadProcessHandled m handledMsg => MonadProcessHandled (stack m) handledMsg
+-- else instance MonadProcessHandled m handledMsg => MonadProcessHandled (stack m) handledMsg

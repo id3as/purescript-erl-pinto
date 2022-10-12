@@ -30,7 +30,7 @@ import Erl.Kernel.Erlang (monotonicTime)
 import Erl.Process (class HasSelf, self)
 import Erl.Types (MonotonicTime)
 import Foreign (Foreign)
-import Pinto.ProcessT.Internal.Types (class MonadProcessRun, class MonadProcessTrans, initialise, parseForeign, run)
+import Pinto.ProcessT.Internal.Types (class MonadProcessHandled, class MonadProcessRun, class MonadProcessTrans, initialise, parseForeign, run)
 import Type.Prelude (Proxy(..))
 import Unsafe.Coerce (unsafeCoerce)
 
@@ -242,6 +242,8 @@ instance
   initialise _ = do
     innerMetadata <- initialise (Proxy :: Proxy m)
     pure $ Tuple (MetadataBusInternal Map.empty) innerMetadata
+
+instance MonadProcessHandled m handledMsg => MonadProcessHandled (MetadataBusT msgOut m) handledMsg
 
 instance (HasSelf m msg, Monad m) => HasSelf (MetadataBusT msgOut m) msg where
   self = lift self
