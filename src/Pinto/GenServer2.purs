@@ -34,10 +34,10 @@ import Prelude
 import ConvertableOptions (class ConvertOptionsWithDefaults)
 import Effect (Effect)
 import Effect.Class (class MonadEffect)
+import Erl.ProcessT.Internal.Types (class MonadProcessHandled, class MonadProcessRun, class MonadProcessTrans)
 import Pinto.GenServer.ContStop (Action(Hibernate, StopNormal), InitResult(InitOk, InitOkHibernate, InitStop, InitIgnore), From, noReply, noReplyWithAction, reply, return, returnWithAction, replyWithAction) as CSExports
 import Pinto.GenServer.ContStop (From)
 import Pinto.GenServer.ContStop as CS
-import Pinto.ProcessT.Internal.Types (class MonadProcessHandled, class MonadProcessRun, class MonadProcessTrans)
 import Pinto.Types (RegistryInstance, RegistryReference, ShutdownReason, StartLinkResult)
 
 -- In general a gen_server can return continue and stop actions but in practice they

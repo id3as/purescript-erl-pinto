@@ -5,3 +5,25 @@ let upstream =
 
 
 in upstream
+
+  with erl-process-trans =
+    { dependencies =
+      [ "datetime"
+      , "effect"
+      , "either"
+      , "erl-kernel"
+      , "erl-maps"
+      , "erl-process"
+      , "erl-tuples"
+      , "foreign"
+      , "maybe"
+      , "partial"
+      , "prelude"
+      , "transformers"
+      , "tuples"
+      , "typelevel-prelude"
+      , "unsafe-coerce"
+      ]
+    , repo = "ssh://git@github.com/id3as/purescript-erl-process-trans"
+    , version = "2e864358a89da996d37f579b739f64d355f9ff83"
+    }

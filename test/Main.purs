@@ -13,7 +13,6 @@ import Erl.Test.EUnit (TestF, runTests, suite, test)
 import Pinto (StartLinkResult)
 import Pinto.GenServer2 (InitFn, InitResult(..), ServerPid)
 import Pinto.GenServer2 as GS2
-import Pinto.ProcessT (ProcessM)
 import Pinto.Supervisor (ChildShutdownTimeoutStrategy(..), ChildType(..), RestartStrategy(..), Strategy(..), SupervisorSpec, ChildSpec, spec)
 import Pinto.Supervisor as Sup
 import Pinto.Supervisor.SimpleOneForOne as DynamicSup
@@ -23,12 +22,7 @@ import Test.BusT (testBusT)
 import Test.DoorLock as DoorLock
 import Test.GenServer as TGS
 import Test.GenServer2 as TGS2
-import Test.MetadataBusT (testMetadataBusT)
-import Test.MonitorT (testMonitorT)
-import Test.StateBusT (testStateBusT)
-import Test.StateMetadataBusT (testStateMetadataBusT)
 import Test.TestHelpers (getState)
-import Test.TrapExitT (testTrapExitT)
 import Test.ValueServer (testValueServer)
 
 foreign import filterSasl :: Effect Unit
@@ -41,12 +35,6 @@ main = do
     TGS.genServerSuite
     TGS2.genServer2Suite
     DoorLock.testSuite
-    testMonitorT
-    testTrapExitT
-    testBusT
-    testStateBusT
-    testMetadataBusT
-    testStateMetadataBusT
     testValueServer
 
 -- testValueServer

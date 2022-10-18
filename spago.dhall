@@ -16,6 +16,7 @@ You can edit this file as you like.
   , "erl-maps"
   , "erl-modules"
   , "erl-process"
+  , "erl-process-trans"
   , "erl-tuples"
   , "erl-untagged-union"
   , "foreign"
