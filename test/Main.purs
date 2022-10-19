@@ -9,6 +9,7 @@ import Effect (Effect)
 import Erl.Atom (atom)
 import Erl.Data.List (nil, (:))
 import Erl.Kernel.Application (ensureAllStarted)
+import Erl.ProcessT (ProcessM)
 import Erl.Test.EUnit (TestF, runTests, suite, test)
 import Pinto (StartLinkResult)
 import Pinto.GenServer2 (InitFn, InitResult(..), ServerPid)
@@ -18,7 +19,6 @@ import Pinto.Supervisor as Sup
 import Pinto.Supervisor.SimpleOneForOne as DynamicSup
 import Pinto.Types (RegistryName(..), RegistryReference(..), crashIfNotStarted)
 import Test.Assert (assertEqual)
-import Test.BusT (testBusT)
 import Test.DoorLock as DoorLock
 import Test.GenServer as TGS
 import Test.GenServer2 as TGS2

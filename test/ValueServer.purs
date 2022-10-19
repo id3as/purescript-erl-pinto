@@ -18,7 +18,7 @@ import Erl.Process.Raw (class HasPid)
 import Erl.Test.EUnit (TestF, test)
 import Pinto.GenServer2 (InitFn, InitResult(..), ServerPid, ServerType)
 import Pinto.GenServer2 as GS
-import Pinto.ProcessT (ProcessM)
+import Erl.ProcessT (ProcessM)
 import Pinto.Types (RegistryName(..), RegistryReference(..), crashIfNotStarted)
 import Test.Assert (assertEqual)
 
