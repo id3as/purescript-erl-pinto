@@ -9,6 +9,7 @@ module Pinto.Supervisor
   , ErlChildSpec
   , Flags
   , RestartStrategy(..)
+  , StopTimeoutStrategy(..)
   , Strategy(..)
   , SupervisorSpec
   , SupervisorRef(..)
@@ -128,11 +129,15 @@ foreign import startLink
   -> Effect SupervisorSpec
   -> Effect (StartLinkResult SupervisorPid)
 
-foreign import stopFFI :: SupervisorInstance -> Effect Unit
-
 -- | A convenience mechanism to stop a supervisor using sys:terminate
-stop :: SupervisorRef -> Effect Unit
-stop = registryInstance >>> stopFFI
+data StopTimeoutStrategy
+  = StopInfinity
+  | StopTimeout Milliseconds
+
+foreign import stopFFI :: StopTimeoutStrategy -> SupervisorInstance -> Effect Unit
+
+stop :: StopTimeoutStrategy -> SupervisorRef -> Effect Unit
+stop timeout = registryInstance >>> stopFFI timeout
 
 foreign import data ErlChildSpec :: Type
 
