@@ -29,7 +29,7 @@ maybeStartRouterImpl(Ref, RegisterListener, DeregisterListener, Callback, State)
                   exit(normal);
                 Msg ->
                   InnerState2 = try
-                    ((Callback(Msg))(InnerState))()
+                    ((Callback(InnerState))(Msg))()
                   catch
                     Class:Reason:Stack ->
                       Recipient ! {error, {message_router_callback_failed, {Class, Reason, Stack}}},
