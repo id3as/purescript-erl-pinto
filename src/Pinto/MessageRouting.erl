@@ -1,7 +1,7 @@
 -module(pinto_messageRouting@foreign).
 
--export([ startRouterImpl/4
-        , maybeStartRouterImpl/4
+-export([ startRouterImpl/5
+        , maybeStartRouterImpl/5
         , stopRouter/1
         , stopRouterFromCallback/0
         ]).
@@ -9,15 +9,15 @@
 %% RegisterListener is of type Effect msg (so is effectively a function with no args)
 %% DeregisterListener is of type (msg -> Effect Unit) and takes this  value and gives us an Effect
 %% with which we will need to invoke manually here
-startRouterImpl(Ref, RegisterListener, DeregisterListener, Callback) ->
+startRouterImpl(Ref, RegisterListener, DeregisterListener, Callback, State) ->
   fun() ->
-      {just, Result } = (maybeStartRouterImpl(Ref, fun() -> { just, RegisterListener() } end, DeregisterListener, Callback))(),
+      {just, Result } = (maybeStartRouterImpl(Ref, fun() -> { just, RegisterListener() } end, DeregisterListener, Callback, State))(),
       Result
   end.
 
-maybeStartRouterImpl(Ref, RegisterListener, DeregisterListener, Callback) ->
+maybeStartRouterImpl(Ref, RegisterListener, DeregisterListener, Callback, State) ->
   Recipient = self(),
-  Fun = fun Fun(Handle, MonitorRef) ->
+  Fun = fun Fun(Handle, MonitorRef, InnerState) ->
               receive
                 {stop, From, StopRef} ->
                   (DeregisterListener(Handle))(),
@@ -28,14 +28,14 @@ maybeStartRouterImpl(Ref, RegisterListener, DeregisterListener, Callback) ->
                   (DeregisterListener(Handle))(),
                   exit(normal);
                 Msg ->
-                  try
-                    (Callback(Msg))()
+                  InnerState2 = try
+                    ((Callback(Msg))(InnerState))()
                   catch
                     Class:Reason:Stack ->
                       Recipient ! {error, {message_router_callback_failed, {Class, Reason, Stack}}},
                       exit(error)
                   end,
-                  Fun(Handle, MonitorRef)
+                  Fun(Handle, MonitorRef, InnerState2)
               end
            end,
   fun() ->
@@ -45,7 +45,7 @@ maybeStartRouterImpl(Ref, RegisterListener, DeregisterListener, Callback) ->
                                             {just, Handle} ->
                                               Recipient ! { start_result, Handle },
                                               MonitorRef = monitor(process, Recipient),
-                                              Fun(Handle, MonitorRef);
+                                              Fun(Handle, MonitorRef, State);
                                             {nothing} ->
                                               Recipient ! { start_result, undefined }
                                           end

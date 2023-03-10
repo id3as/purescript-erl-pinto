@@ -50,9 +50,9 @@ monitor
   -> m (MR.RouterRef MonitorRef)
 monitor process f = do
   me <- self
-  liftEffect $ MR.startRouter (startMonitor $ getPid process) stopMonitor (handleMessage me)
+  liftEffect $ MR.startRouter (startMonitor $ getPid process) (\_ -> stopMonitor) (handleMessage me) unit
   where
-  handleMessage me msg = do
+  handleMessage me _ msg = do
     _ <- handleMonitorMessage Down (send me <<< f) msg
     _ <- MR.stopRouterFromCallback
     pure unit
@@ -70,9 +70,9 @@ monitorTo
   -> Effect (MR.RouterRef MonitorRef)
 monitorTo process target f = do
   let p = getProcess target
-  MR.startRouter (startMonitor $ getPid process) stopMonitor (handleMessage p)
+  MR.startRouter (startMonitor $ getPid process) (\_ -> stopMonitor) (handleMessage p) unit
   where
-  handleMessage target' msg = do
+  handleMessage target' _ msg = do
     _ <- handleMonitorMessage Down (send target' <<< f) msg
     _ <- MR.stopRouterFromCallback
     pure unit

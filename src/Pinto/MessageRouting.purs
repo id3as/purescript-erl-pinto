@@ -23,12 +23,12 @@ data RouterRef handle = RouterRef handle Pid
 -- |
 -- | The `(handle -> Effect Unit)` parameter will be invoked when the router is stopped
 -- | and the `(msg -> Effect Unit)` parameter will be invoked whenever a message is received by the router
-startRouter :: forall handle msg. Effect handle -> (handle -> Effect Unit) -> (msg -> Effect Unit) -> Effect (RouterRef handle)
+startRouter :: forall handle state msg. Effect handle -> (state -> handle -> Effect Unit) -> (state -> msg -> Effect state) -> state -> Effect (RouterRef handle)
 startRouter = startRouterImpl RouterRef
 
 -- | Given an `Effect (Maybe handle)`,  run that effect in a new process. If the effect returns Nothing, the process is terminated
 -- | else, a `RouterRef handle` is returned
-maybeStartRouter :: forall handle msg. Effect (Maybe handle) -> (handle -> Effect Unit) -> (msg -> Effect Unit) -> Effect (Maybe (RouterRef handle))
+maybeStartRouter :: forall handle state msg. Effect (Maybe handle) -> (state -> handle -> Effect Unit) -> (state -> msg -> Effect state) -> state -> Effect (Maybe (RouterRef handle))
 maybeStartRouter = maybeStartRouterImpl RouterRef
 
 -- | Terminates a router by invoking the 'stop' mechanism registered when the router was first started with the
@@ -40,6 +40,6 @@ foreign import stopRouter :: forall handle. RouterRef handle -> Effect Unit
 -- | Note: This should only be called from within that callback as it results in a message being sent to the current process
 foreign import stopRouterFromCallback :: Effect Unit
 
-foreign import startRouterImpl :: forall handle msg. (handle -> Pid -> RouterRef handle) -> Effect handle -> (handle -> Effect Unit) -> (msg -> Effect Unit) -> Effect (RouterRef handle)
+foreign import startRouterImpl :: forall handle state msg. (handle -> Pid -> RouterRef handle) -> Effect handle -> (state -> handle -> Effect Unit) -> (state -> msg -> Effect state) -> state -> Effect (RouterRef handle)
 
-foreign import maybeStartRouterImpl :: forall handle msg. (handle -> Pid -> RouterRef handle) -> Effect (Maybe handle) -> (handle -> Effect Unit) -> (msg -> Effect Unit) -> Effect (Maybe (RouterRef handle))
+foreign import maybeStartRouterImpl :: forall handle state msg. (handle -> Pid -> RouterRef handle) -> Effect (Maybe handle) -> (state -> handle -> Effect Unit) -> (state -> msg -> Effect state) -> state -> Effect (Maybe (RouterRef handle))
