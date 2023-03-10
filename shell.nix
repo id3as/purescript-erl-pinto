@@ -1,8 +1,6 @@
 
 let
-  erlangReleases = builtins.fetchTarball https://github.com/nixerl/nixpkgs-nixerl/archive/v1.0.18-devel.tar.gz;
-
-  pinnedNixHash = "e5f945b13b3f6a39ec9fbb66c9794b277dc32aa1";
+  pinnedNixHash = "7c3d4d3af8e9319ccd2a74c31cf247b0fcd08bc2";
   pinnedNix =
     builtins.fetchGit {
       name = "nixpkgs-pinned";
@@ -10,18 +8,18 @@ let
       rev = "${pinnedNixHash}";
     };
 
+  erlangReleases =
+    builtins.fetchGit {
+      name = "nixpkgs-nixerl";
+      url = "https://github.com/id3as/nixpkgs-nixerl.git";
+      rev = "9c74cc241f7a13e2ea8ebe765cb3959501c5c404";
+    };
+
   purerlReleases =
     builtins.fetchGit {
       url = "https://github.com/purerl/nixpkgs-purerl.git";
       ref = "master";
-      rev = "16582722c40f4c1a65c15f23e5f2438c6905981f";
-    };
-
-  purerlSupport =
-    builtins.fetchGit {
-      name = "purerl-support-packages";
-      url = "git@github.com:id3as/nixpkgs-purerl-support.git";
-      rev = "52926a56da6a8c526c403d26feaf52cc5f87a5d0";
+      rev = "1d59def257ad38fcbc17782591e5a21df3fd2557";
     };
 
   nixpkgs =
@@ -29,35 +27,19 @@ let
       overlays = [
         (import erlangReleases)
         (import purerlReleases)
-        (import purerlSupport)
       ];
     };
 
-  erlangChannel = nixpkgs.nixerl.erlang-23-2-1.overrideScope' (self: super: {
-    erlang = super.erlang.override {
-      wxSupport = false;
-    };
-  });
+  easy-ps = import
+    (nixpkgs.pkgs.fetchFromGitHub {
+      ## Temporarily on Fabrizio's fork to get spago-next
+      owner = "f-f";
+      repo = "easy-purescript-nix";
+      rev = "880d958dd9909872629e3f040da2b4ec2ef6e990";
+      sha256 = "sha256-+6lTkonRAY6KvDIweRU5DeuWMryFELJTEzg8P2OSjgM=";
+    }) { pkgs = nixpkgs; };
 
-  pls = nixpkgs.nodePackages.purescript-language-server.override {
-    version = "0.15.4";
-    src = builtins.fetchurl {
-      url = "https://registry.npmjs.org/purescript-language-server/-/purescript-language-server-0.15.4.tgz";
-    };
-  };
-
-  pose = nixpkgs.nodePackages.purty.override {
-      name = "prettier-plugin-purescript";
-      packageName = "prettier-plugin-purescript";
-      version = "1.11.1";
-      src = builtins.fetchurl {
-        url = "https://registry.npmjs.org/@rowtype-yoga/prettier-plugin-purescript/-/prettier-plugin-purescript-1.11.1.tgz";
-      };
-      meta = {
-        description = "Hacked in Purescript Prettier Plugin";
-        license = "MIT";
-      };
-    };
+  erlang = nixpkgs.nixerl.erlang-25-0;
 in
 
 with nixpkgs;
@@ -65,24 +47,16 @@ with nixpkgs;
 mkShell {
   buildInputs = with pkgs; [
 
-    erlangChannel.erlang
-    erlangChannel.rebar3
-    erlangChannel.erlang-ls
+    erlang.erlang
+    erlang.rebar3
+    erlang.erlang-ls
 
     # Purescript itself
-    purerl-support.purescript-0-14-4
-    purerl-support.spago-0-20-3
-    purerl-support.dhall-json-1-5-0
-    purerl-support.psa-0-8-2
-
-    # Purerl backend for purescript
-    purerl.purerl-0-0-12
-    
-    # The Language server for purescript
-    pls
-
-    # The current hotness for code formatting
-    pose
-
+    easy-ps.purs-0_15_7
+    easy-ps.spago
+    easy-ps.psa
+    easy-ps.purescript-language-server
+    easy-ps.purs-tidy
+    purerl.purerl-0-0-19
    ];
 }
