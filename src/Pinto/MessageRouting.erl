@@ -20,12 +20,12 @@ maybeStartRouterImpl(Ref, RegisterListener, DeregisterListener, Callback, State)
   Fun = fun Fun(Handle, MonitorRef, InnerState) ->
               receive
                 {stop, From, StopRef} ->
-                  (DeregisterListener(Handle))(),
+                  ((DeregisterListener(InnerState))(Handle))(),
                   demonitor(MonitorRef),
                   From ! {stopped, StopRef},
                   exit(normal);
                 {'DOWN', MonitorRef, _, _, _} ->
-                  (DeregisterListener(Handle))(),
+                  ((DeregisterListener(InnerState))(Handle))(),
                   exit(normal);
                 Msg ->
                   InnerState2 = try
