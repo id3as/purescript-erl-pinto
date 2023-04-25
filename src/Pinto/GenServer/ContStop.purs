@@ -27,6 +27,7 @@ module Pinto.GenServer.ContStop
   , TerminateFn
   , TestState
   , call
+  , callWithTimeout
   , cast
   , defaultSpec
   , exportInitResult
@@ -67,6 +68,7 @@ import Erl.Process.Raw (class HasPid)
 import Erl.Process.Raw as Raw
 import Erl.ProcessT.Internal.Types (class MonadProcessHandled, class MonadProcessRun, class MonadProcessTrans, initialise, parseForeign, run)
 import Erl.ProcessT.MonitorT (MonitorT)
+import Erl.Types (Timeout, toErl)
 import Foreign (Foreign)
 import Partial.Unsafe (unsafePartial)
 import Pinto.ModuleNames (pintoGenServerCS)
@@ -294,11 +296,26 @@ foreign import callFFI
 call
   :: forall reply cont stop appMsg parsedMsg state m mState
    . MonadProcessTrans m mState appMsg parsedMsg
-  => Monad m -- TODO - why is the monad constraint needed?
   => ServerRef cont stop state m
   -> CallFn reply cont stop state m
   -> Effect reply
 call r callFn = callFFI (registryInstance r) callFn
+
+foreign import callWithTimeoutFFI
+  :: forall reply cont stop state m
+   . ServerInstance cont stop state m
+  -> CallFn reply cont stop state m
+  -> Foreign
+  -> Effect reply
+
+callWithTimeout
+  :: forall reply cont stop appMsg parsedMsg state m mState
+   . MonadProcessTrans m mState appMsg parsedMsg
+  => Timeout
+  -> ServerRef cont stop state m
+  -> CallFn reply cont stop state m
+  -> Effect reply
+callWithTimeout timeout r callFn = callWithTimeoutFFI (registryInstance r) callFn (toErl timeout)
 
 foreign import castFFI
   :: forall cont stop state m

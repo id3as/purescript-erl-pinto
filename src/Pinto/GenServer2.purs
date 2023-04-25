@@ -20,6 +20,7 @@ module Pinto.GenServer2
   , ServerType
   , TerminateFn
   , call
+  , callWithTimeout
   , cast
   , defaultSpec
   , replyTo
@@ -35,6 +36,7 @@ import ConvertableOptions (class ConvertOptionsWithDefaults)
 import Effect (Effect)
 import Effect.Class (class MonadEffect)
 import Erl.ProcessT.Internal.Types (class MonadProcessHandled, class MonadProcessRun, class MonadProcessTrans)
+import Erl.Types (Timeout)
 import Pinto.GenServer.ContStop (Action(Hibernate, StopNormal), InitResult(InitOk, InitOkHibernate, InitStop, InitIgnore), From, noReply, noReplyWithAction, reply, return, returnWithAction, replyWithAction) as CSExports
 import Pinto.GenServer.ContStop (From)
 import Pinto.GenServer.ContStop as CS
@@ -110,11 +112,20 @@ call
   :: forall reply appMsg parsedMsg state m mState
    . MonadProcessHandled m parsedMsg
   => MonadProcessTrans m mState appMsg parsedMsg
-  => Monad m -- TODO - why is the monad constraint needed?
   => ServerRef state m
   -> CallFn reply state m
   -> Effect reply
 call = CS.call
+
+callWithTimeout
+  :: forall reply appMsg parsedMsg state m mState
+   . MonadProcessHandled m parsedMsg
+  => MonadProcessTrans m mState appMsg parsedMsg
+  => Timeout
+  -> ServerRef state m
+  -> CallFn reply state m
+  -> Effect reply
+callWithTimeout = CS.callWithTimeout
 
 cast
   :: forall appMsg parsedMsg state m mState

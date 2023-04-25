@@ -21,6 +21,7 @@ module Pinto.GenServer
   , defaultSpec
   , startLink
   , call
+  , callWithTimeout
   , cast
   , stop
   , reply
@@ -50,6 +51,7 @@ module Pinto.GenServer
   ) where
 
 import Prelude
+
 import Control.Monad.Reader (ReaderT, runReaderT)
 import Data.Function.Uncurried (mkFn2, runFn2)
 import Data.Maybe (Maybe(..), fromJust)
@@ -63,6 +65,7 @@ import Erl.Data.Tuple (tuple2, tuple3, tuple4)
 import Erl.ModuleName (NativeModuleName, nativeModuleName)
 import Erl.Process (class HasProcess, getProcess, class HasSelf, Process)
 import Erl.Process.Raw (class HasPid, setProcessFlagTrapExit)
+import Erl.Types (Timeout, toErl)
 import Erl.Untagged.Union (class ReceivesMessage)
 import Foreign (Foreign, unsafeFromForeign)
 import Partial.Unsafe (unsafePartial)
@@ -303,6 +306,21 @@ call
   -> CallFn reply cont stop msg state
   -> Effect reply
 call r callFn = callFFI (registryInstance r) callFn
+
+foreign import callWithTimeoutFFI
+  :: forall reply cont stop msg state
+   . ServerInstance cont stop msg state
+  -> CallFn reply cont stop msg state
+  -> Foreign
+  -> Effect reply
+
+callWithTimeout
+  :: forall reply cont stop msg state
+   . Timeout
+  -> ServerRef cont stop msg state
+  -> CallFn reply cont stop msg state
+  -> Effect reply
+callWithTimeout timeout r callFn = callWithTimeoutFFI (registryInstance r) callFn (toErl timeout)
 
 foreign import replyToFFI :: forall reply. From reply -> reply -> Effect Unit
 

@@ -4,6 +4,7 @@
 
 -export([ startLinkFFI/3
         , callFFI/2
+        , callWithTimeoutFFI/3
         , castFFI/2
         , replyToFFI/2
         , stopFFI/1
@@ -41,6 +42,11 @@ castFFI(ServerRef, CastFn) ->
 callFFI(ServerRef, CallFn) ->
   fun() ->
       gen_server:call(ServerRef, CallFn)
+  end.
+
+callWithTimeoutFFI(ServerRef, CallFn, Timeout) ->
+  fun() ->
+      gen_server:call(ServerRef, CallFn, Timeout)
   end.
 
 replyToFFI(From, Reply) ->
