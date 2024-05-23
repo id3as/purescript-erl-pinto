@@ -26,6 +26,8 @@ module Pinto.GenServer2
   , replyTo
   , startLink
   , startLink'
+  , start
+  , start'
   , stop
   , module CSExports
   ) where
@@ -107,6 +109,23 @@ startLink'
   => { | providedConfig }
   -> Effect (StartLinkResult (ServerPid state m))
 startLink' = CS.startLink'
+
+start
+  :: forall appMsg parsedMsg state m mState
+   . MonadProcessHandled m parsedMsg
+  => MonadProcessRun Effect m mState appMsg parsedMsg
+  => GSConfig parsedMsg state m
+  -> Effect (StartLinkResult (ServerPid state m))
+start = CS.start
+
+start'
+  :: forall providedConfig appMsg parsedMsg state m mState
+   . MonadProcessHandled m parsedMsg
+  => MonadProcessRun Effect m mState appMsg parsedMsg
+  => ConvertOptionsWithDefaults CS.OptionToMaybe { | OptionalConfig parsedMsg state m } { | providedConfig } { | AllConfig parsedMsg state m }
+  => { | providedConfig }
+  -> Effect (StartLinkResult (ServerPid state m))
+start' = CS.start'
 
 call
   :: forall reply appMsg parsedMsg state m mState

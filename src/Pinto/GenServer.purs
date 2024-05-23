@@ -20,6 +20,7 @@ module Pinto.GenServer
   , Action(..)
   , defaultSpec
   , startLink
+  , start
   , call
   , callWithTimeout
   , cast
@@ -276,6 +277,25 @@ startLink { name: maybeName, init: initFn, handleInfo, handleContinue, terminate
     innerResult <- (runReaderT $ case initFn of ResultT inner -> inner) context
     pure $ mapInitResult (mkOuterState context) innerResult
 
+start :: forall cont stop msg state. (ServerSpec cont stop msg state) -> Effect (StartLinkResult (ServerPid cont stop msg state))
+start { name: maybeName, init: initFn, handleInfo, handleContinue, terminate: terminate', trapExits } = startFFI maybeName (nativeModuleName pintoGenServer) initEffect
+  where
+  context =
+    Context
+      { handleInfo
+      , handleContinue
+      , terminate: terminate'
+      , trapExits
+      }
+
+  initEffect :: Effect (InitResult cont (OuterState cont stop msg state))
+  initEffect = do
+    _ <- case trapExits of
+      Nothing -> pure unit
+      Just _ -> void $ setProcessFlagTrapExit true
+    innerResult <- (runReaderT $ case initFn of ResultT inner -> inner) context
+    pure $ mapInitResult (mkOuterState context) innerResult
+
 --------------------------------------------------------------------------------
 -- Internal types
 --------------------------------------------------------------------------------
@@ -352,6 +372,13 @@ stop
 stop r = stopFFI $ registryInstance r
 
 foreign import startLinkFFI
+  :: forall cont stop msg state
+   . Maybe (RegistryName (ServerType cont stop msg state))
+  -> NativeModuleName
+  -> Effect (InitResult cont (OuterState cont stop msg state))
+  -> Effect (StartLinkResult (ServerPid cont stop msg state))
+
+foreign import startFFI
   :: forall cont stop msg state
    . Maybe (RegistryName (ServerType cont stop msg state))
   -> NativeModuleName

@@ -46,6 +46,8 @@ module Pinto.GenServer.ContStop
   , returnWithAction
   , startLink
   , startLink'
+  , start
+  , start'
   , stop
   , terminate
   , whereIs
@@ -286,6 +288,53 @@ startLink'
   -> Effect (StartLinkResult (ServerPid cont stop state m))
 startLink' providedConfig =
   startLink $ convertOptionsWithDefaults OptionToMaybe defaultOptions providedConfig
+
+foreign import startFFI
+  :: forall cont stop parsedMsg state m
+   . Maybe (RegistryName (ServerType cont stop state m))
+  -> NativeModuleName
+  -> Effect (InitResult cont (OTPState cont stop parsedMsg state m))
+  -> Effect (StartLinkResult (ServerPid cont stop state m))
+
+start
+  :: forall cont stop appMsg parsedMsg state m mState
+   . MonadProcessHandled m parsedMsg
+  => MonadProcessRun Effect m mState appMsg parsedMsg
+  => GSConfig cont stop parsedMsg state m
+  -> Effect (StartLinkResult (ServerPid cont stop state m))
+start { serverName: maybeName, init: initFn, handleInfo, handleContinue, terminate: terminate' } = startFFI maybeName (nativeModuleName pintoGenServerCS) initEffect
+  where
+  initEffect :: Effect (InitResult cont (OTPState cont stop parsedMsg state m))
+  initEffect = do
+    initialMState <- initialise (Proxy :: Proxy m)
+    Tuple innerResult newMState <- run initFn initialMState
+
+    pure $ OTPState
+      <$>
+        { context
+        , mState: unsafeCoerce newMState -- TODO - add in the bug again (initialMState) and have a failing test
+        , innerState: _
+        }
+      <$> innerResult
+
+  context :: Context cont stop parsedMsg state m
+  context =
+    { handleInfo: handleInfo
+    , handleContinue: handleContinue
+    , terminate: terminate'
+    , mParse: unsafeCoerce (parseForeign :: (Foreign -> m (Maybe parsedMsg)))
+    , mRun: unsafeCoerce (run :: forall a. m a -> mState -> Effect (Tuple a mState))
+    }
+
+start'
+  :: forall providedConfig cont stop appMsg parsedMsg state m mState
+   . MonadProcessHandled m parsedMsg
+  => MonadProcessRun Effect m mState appMsg parsedMsg
+  => ConvertOptionsWithDefaults OptionToMaybe { | OptionalConfig cont stop parsedMsg state m } { | providedConfig } { | AllConfig cont stop parsedMsg state m }
+  => { | providedConfig }
+  -> Effect (StartLinkResult (ServerPid cont stop state m))
+start' providedConfig =
+  start $ convertOptionsWithDefaults OptionToMaybe defaultOptions providedConfig
 
 foreign import callFFI
   :: forall reply cont stop state m

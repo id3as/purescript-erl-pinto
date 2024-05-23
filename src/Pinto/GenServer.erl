@@ -4,6 +4,7 @@
 
 -export([ selfFFI/0
         , startLinkFFI/3
+        , startFFI/3
         , callFFI/2
         , callWithTimeoutFFI/3
         , castFFI/2
@@ -29,6 +30,19 @@ startLinkFFI(MaybeName, Module, InitEffect) ->
             gen_server:start_link(Module, [InitEffect], []);
           ?just(Name) ->
             gen_server:start_link(Name, Module, [InitEffect], [])
+        end,
+
+      start_link_result_to_ps(Result)
+  end.
+
+startFFI(MaybeName, Module, InitEffect) ->
+  fun() ->
+      Result =
+        case MaybeName of
+          ?nothing ->
+            gen_server:start(Module, [InitEffect], []);
+          ?just(Name) ->
+            gen_server:start(Name, Module, [InitEffect], [])
         end,
 
       start_link_result_to_ps(Result)
