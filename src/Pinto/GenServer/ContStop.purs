@@ -94,6 +94,7 @@ newtype ServerPid :: Type -> Type -> Type -> (Type -> Type) -> Type
 newtype ServerPid cont stop state m = ServerPid Raw.Pid
 
 derive newtype instance Eq (ServerPid cont stop state m)
+derive newtype instance Ord (ServerPid cont stop state m)
 
 instance
   ( MonadProcessTrans m innerState appMsg parsedMsg
