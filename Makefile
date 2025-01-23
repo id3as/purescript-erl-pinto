@@ -29,7 +29,7 @@ docs: output/.complete
 	spago docs --format markdown
 	cp generated-docs/md/Erl.Quorum*.md docs
 
-.spago: spago.dhall test.dhall packages.dhall
+.spago: spago.json test.dhall packages.dhall
 	spago install
 	spago -x test.dhall install
 	touch .spago

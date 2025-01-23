@@ -75,7 +75,7 @@ procLibStartLinkFFI(MaybeName, Module, Spec) ->
 
 callFFI(StatemRef, CallFn) ->
   fun() ->
-      gen_server:call(StatemRef, CallFn)
+      gen_server:call(StatemRef, CallFn, infinity)
   end.
 
 castFFI(StatemRef, CastFn) ->

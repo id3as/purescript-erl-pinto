@@ -24,10 +24,68 @@ package:
     - tuples
     - typelevel-prelude
     - unsafe-coerce
+    - erl-test-eunit
+    - erl-test-eunit-discovery
 workspace:
   backend:
     cmd: purerl
-  package_set:
+  packageSet:
     url: https://raw.githubusercontent.com/purerl/package-sets/erl-0.15.3-20220629/packages.json
     hash: sha256-kLmZv2u5dWVUUaQEwK0b3T1Ghce5a/hG0zlizaYfcXs=
-  extra_packages: {}
+  extraPackages:
+    erl-process:
+      dependencies:
+        - datetime
+        - effect
+        - either
+        - foreign
+        - integers
+        - prelude
+      git: https://github.com/id3as/purescript-erl-process.git
+      ref: 5df4b6fbac7eeedcbd0f6c731949b1fed8a35b99
+    erl-test-eunit:
+      dependencies:
+        - assert
+        - console
+        - debug
+        - erl-atom
+        - erl-lists
+        - erl-tuples
+        - foreign
+        - free
+        - prelude
+        - psci-support
+      git: https://github.com/id3as/purescript-erl-test-eunit.git
+      ref: 2e61fdae477f7c560accea3ffc552a1134f7cc61
+    erl-test-eunit-discovery:
+      dependencies:
+        - effect
+        - erl-lists
+        - erl-modules
+        - erl-test-eunit
+        - filterable
+        - foldable-traversable
+        - free
+        - maybe
+        - prelude
+      git: https://github.com/id3as/purescript-erl-test-eunit-discovery.git
+      ref: b9cb158f9dbd5e617a1da727fafc14d9d4f0f915
+    erl-process-trans:
+      dependencies:
+        - datetime
+        - effect
+        - either
+        - erl-kernel
+        - erl-maps
+        - erl-process
+        - erl-tuples
+        - foreign
+        - maybe
+        - partial
+        - prelude
+        - transformers
+        - tuples
+        - typelevel-prelude
+        - unsafe-coerce
+      git: https://github.com/id3as/purescript-erl-process-trans.git
+      ref: 2b48f7ce2d6862245b8e615df0ad25cc41b4bbd2

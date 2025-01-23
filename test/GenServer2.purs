@@ -8,7 +8,8 @@ import Control.Monad.Free (Free)
 import Data.Either (Either(..))
 import Data.Time.Duration (Milliseconds(..))
 import Effect.Class (liftEffect)
-import Erl.Process (Process, getProcess, self, send, (!))
+import Erl.Process (Process, getProcess, self, send, (!), unsafeRunProcessM)
+import Erl.Process as Legacy
 import Erl.Test.EUnit (TestF, suite, test)
 import Partial.Unsafe (unsafeCrashWith)
 import Pinto.GenServer2 (InitResult(..))
@@ -136,7 +137,18 @@ testTrapExits =
   testChildExit :: ProcessM Void Unit
   testChildExit = liftEffect do
     serverPid <- crashIfNotStarted <$> (GS2.startLink' { init, handleInfo })
-    state <- getState (ByPid serverPid)
+
+    let waitForValidState  = do 
+          state <- getState (ByPid serverPid)
+          if state.receivedExit then pure state
+          else do 
+            unsafeRunProcessM do
+              _ <- Legacy.receiveWithTimeout (Milliseconds 50.0) unit
+              pure unit
+            waitForValidState
+   
+    state <- waitForValidState  
+
     assertEqual
       { actual: state.receivedExit
       , expected: true
@@ -182,4 +194,5 @@ instance Show TestMonitorMsg where
 -- Internal
 ---------------------------------------------------------------------------------
 exitsImmediately :: forall handledMsg. ProcessTM Void handledMsg Unit
-exitsImmediately = pure unit
+exitsImmediately = do 
+  pure unit

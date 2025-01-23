@@ -55,7 +55,7 @@ castFFI(ServerRef, CastFn) ->
 
 callFFI(ServerRef, CallFn) ->
   fun() ->
-      gen_server:call(ServerRef, CallFn)
+      gen_server:call(ServerRef, CallFn, infinity)
   end.
 
 callWithTimeoutFFI(ServerRef, CallFn, Timeout) ->
