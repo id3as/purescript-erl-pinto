@@ -26,6 +26,9 @@ package:
     - unsafe-coerce
     - erl-test-eunit
     - erl-test-eunit-discovery
+  test:
+    main: Test.Main
+    dependencies: []
 workspace:
   backend:
     cmd: purerl

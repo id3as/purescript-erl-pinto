@@ -36,15 +36,13 @@ main = do
     TGS2.genServer2Suite
     DoorLock.testSuite
     testValueServer
-
--- testValueServer
--- DoorLock.testSuite
--- supervisorSuite
+    supervisorSuite
 
 supervisorSuite :: Free TestF Unit
 supervisorSuite =
   suite "Pinto supervisor tests" do
     testStartWithNamedChild
+    testStartChildLater
     dynamicSupervisor
 
 data TestState = TestState Int
@@ -104,6 +102,51 @@ mkChildSpec id start =
   , restartStrategy: RestartTemporary
   , shutdownStrategy: ShutdownTimeout $ Milliseconds 5000.0
   }
+
+testStartChildLater :: Free TestF Unit
+testStartChildLater =
+  test "Can add a child to a running supervisor, and not twice" do
+    supPid <- crashIfNotStarted <$> Sup.startLink Nothing supInit
+    first <- Sup.startChild (ByPid supPid) myChild
+    childState <- getState $ ByName childName
+    assertEqual
+      { actual: childState
+      , expected: TestState 0
+      }
+    assertEqual
+      { actual: case first of
+          Sup.ChildStarted _ -> true
+          _ -> false
+      , expected: true
+      }
+    again <- Sup.startChild (ByPid supPid) myChild
+    assertEqual
+      { actual: case again of
+          Sup.ChildAlreadyPresent -> true
+          Sup.ChildAlreadyStarted _ -> true
+          _ -> false
+      , expected: true
+      }
+    pure unit
+  where
+  supInit :: Effect SupervisorSpec
+  supInit =
+    pure
+      { flags:
+          { strategy: OneForOne
+          , intensity: 1
+          , period: Seconds 5.0
+          }
+      , childSpecs: nil
+      }
+
+  childInit :: InitFn TestState (ProcessM Void)
+  childInit = do
+    pure $ InitOk $ TestState 0
+
+  childName = Local $ atom "testLaterChild"
+
+  myChild = mkChildSpec "laterChildId" (GS2.startLink $ (GS2.defaultSpec childInit) { serverName = Just childName })
 
 --------------------------------------------------------------------------------
 -- Dynamic Supervisor Test

@@ -156,8 +156,8 @@ spec = specFFI
 foreign import startChildFFI
   :: forall childProcess
    . SupervisorInstance
-  -> ChildSpec childProcess
-  -> StartChildResult childProcess
+  -> ErlChildSpec
+  -> Effect (StartChildResult childProcess)
 
 -- | Given a supervisor reference and a child specification
 -- | start a new child within the context of that supervisor
@@ -167,8 +167,8 @@ startChild
    . HasPid childProcess
   => SupervisorRef
   -> ChildSpec childProcess
-  -> StartChildResult childProcess
-startChild r = startChildFFI $ registryInstance r
+  -> Effect (StartChildResult childProcess)
+startChild r childSpec = startChildFFI (registryInstance r) (spec childSpec)
 
 foreign import terminateChildFFI :: SupervisorInstance -> String -> Effect TerminateChildResult
 foreign import deleteChildFFI :: SupervisorInstance -> String -> Effect DeleteChildResult
